@@ -1,0 +1,6 @@
+vendor/
+*.zip
+.env
+config/
+output/
+Core/

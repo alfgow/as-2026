@@ -1,0 +1,313 @@
+// assets/js/polizas.js
+
+(function () {
+	const BASE_URL = window.BASE_URL || "";
+	console.log(BASE_URL);
+
+	// ---------------- Utilidades de fechas ----------------
+	const MESES = [
+		"Enero",
+		"Febrero",
+		"Marzo",
+		"Abril",
+		"Mayo",
+		"Junio",
+		"Julio",
+		"Agosto",
+		"Septiembre",
+		"Octubre",
+		"Noviembre",
+		"Diciembre",
+	];
+
+	function formatearFecha(yyyy_mm_dd) {
+		if (!yyyy_mm_dd) return "";
+		const [y, m, d] = yyyy_mm_dd.split("-");
+		const idx = parseInt(m, 10) - 1;
+		return `${d} de ${MESES[idx]} de ${y}`;
+	}
+
+	function setFechaFinYVigencia({ inicioEl, finEl, vigenciaEl }) {
+		if (!inicioEl || !finEl) return;
+		if (!inicioEl.value) {
+			finEl.value = "";
+			if (vigenciaEl) vigenciaEl.value = "";
+			return;
+		}
+		const [y, m, d] = inicioEl.value.split("-").map(Number);
+		const f = new Date(y + 1, m - 1, d);
+		f.setDate(f.getDate() - 1);
+		const yf = f.getFullYear();
+		const mf = String(f.getMonth() + 1).padStart(2, "0");
+		const df = String(f.getDate()).padStart(2, "0");
+		finEl.value = `${yf}-${mf}-${df}`;
+		if (vigenciaEl) {
+			vigenciaEl.value = `del ${formatearFecha(
+				inicioEl.value
+			)} al ${formatearFecha(finEl.value)}`;
+		}
+	}
+
+	// ---------------- Cálculo de monto de póliza ----------------
+	function calcularPoliza(montoRenta, tipoPoliza) {
+		const renta = parseFloat(montoRenta) || 0;
+		const tramos = {
+			Clásica: [
+				3700,
+				4300,
+				4500,
+				5200,
+				5500,
+				8100,
+				9300,
+				10000,
+				12000,
+				renta * 0.25,
+			],
+			Plus: [
+				4800,
+				5500,
+				7500,
+				8600,
+				9400,
+				11000,
+				11500,
+				13750,
+				14250,
+				renta * 0.3,
+			],
+		};
+		const rangos = [
+			10000, 15000, 20000, 25000, 30000, 35000, 40000, 45000, 50000,
+		];
+		const precios = tramos[tipoPoliza] || [];
+		for (let i = 0; i < rangos.length; i++) {
+			if (renta <= rangos[i]) return (precios[i] ?? 0).toFixed(2);
+		}
+		return (precios[precios.length - 1] ?? 0).toFixed(2);
+	}
+
+	// ---------------- Enlazadores para EDITAR ----------------
+	function initEditarFormulario() {
+		const form = document.getElementById("form-editar-poliza");
+		if (!form) return;
+
+		const inmuebleSelect = document.getElementById("inmueble-select");
+		const rentaHidden = document.getElementById("monto-renta-hidden");
+		const rentaDisplay = document.getElementById("monto-renta-display");
+		const tipoPoliza = form.tipo_poliza;
+		const montoPoliza = document.getElementById("monto-poliza");
+		const fechaInicio = document.getElementById("fecha-inicio");
+		const fechaFin = document.getElementById("fecha-fin");
+
+		// Cambiar inmueble → refrescar renta y cálculo
+		inmuebleSelect?.addEventListener("change", () => {
+			const opt = inmuebleSelect.options[inmuebleSelect.selectedIndex];
+			const renta = opt?.getAttribute("data-monto") || "";
+			if (rentaHidden) rentaHidden.value = renta;
+			if (rentaDisplay)
+				rentaDisplay.value = renta
+					? parseFloat(renta).toLocaleString(undefined, {
+							minimumFractionDigits: 2,
+					  })
+					: "";
+			if (tipoPoliza && montoPoliza)
+				montoPoliza.value = calcularPoliza(
+					rentaHidden?.value,
+					tipoPoliza.value
+				);
+		});
+
+		// Cambiar tipo póliza → recalcular
+		tipoPoliza?.addEventListener("change", () => {
+			if (montoPoliza)
+				montoPoliza.value = calcularPoliza(
+					rentaHidden?.value,
+					tipoPoliza.value
+				);
+		});
+
+		// Fechas
+		fechaInicio?.addEventListener("change", () =>
+			setFechaFinYVigencia({ inicioEl: fechaInicio, finEl: fechaFin })
+		);
+		// inicial
+		if (tipoPoliza && montoPoliza)
+			montoPoliza.value = calcularPoliza(
+				rentaHidden?.value,
+				tipoPoliza.value
+			);
+
+		// Submit AJAX (editar)
+		form.addEventListener("submit", async (e) => {
+			e.preventDefault();
+
+			const submitBtn = form.querySelector('button[type="submit"]');
+			submitBtn?.setAttribute("disabled", "disabled");
+			submitBtn?.classList.add("opacity-60", "cursor-not-allowed");
+
+			try {
+				const fd = new FormData(form);
+
+				const resp = await fetch(form.action, {
+					method: "POST",
+					body: fd,
+					headers: { "X-Requested-With": "XMLHttpRequest" },
+				});
+
+				// Intenta parsear JSON (y arroja error claro si viene algo raro)
+				let res;
+				try {
+					res = await resp.json();
+				} catch {
+					throw new Error("Respuesta inválida del servidor");
+				}
+
+				if (!resp.ok) {
+					// HTTP no-2xx
+					throw new Error(
+						res?.error || resp.statusText || "Error en la solicitud"
+					);
+				}
+
+				if (res.ok) {
+					Swal.fire({
+						icon: "success",
+						title: "Éxito",
+						text: "Cambios guardados",
+					}).then(() => {
+						const numero = new URLSearchParams(fd).get(
+							"numero_poliza"
+						);
+						const destino = numero
+							? `${BASE_URL}/polizas/${encodeURIComponent(
+									numero
+							  )}`
+							: `${BASE_URL}/polizas`;
+						window.location = destino;
+					});
+				} else {
+					Swal.fire({
+						icon: "error",
+						title: "Error",
+						text: res.error || "No se pudo guardar",
+					});
+				}
+			} catch (err) {
+				Swal.fire({
+					icon: "error",
+					title: "Error",
+					text: err && err.message ? err.message : "Ocurrió un error",
+				});
+			} finally {
+				// Siempre re-habilita el botón si seguimos en la misma página
+				submitBtn?.removeAttribute("disabled");
+				submitBtn?.classList.remove("opacity-60", "cursor-not-allowed");
+			}
+		});
+	}
+
+	// ---------------- Enlazadores para RENOVAR ----------------
+	function initRenovarFormulario() {
+		const form = document.getElementById("form-renovar-poliza");
+		if (!form) return;
+
+		const rentaHidden = document.getElementById("monto-renta-hidden");
+		const montoPoliza = document.getElementById("monto-poliza");
+		const fechaInicio = document.getElementById("fecha-inicio");
+		const fechaFin = document.getElementById("fecha-fin");
+		const vigenciaText = document.getElementById("vigencia-texto");
+
+		// Inicial: calcular monto
+		if (montoPoliza) {
+			// El tipo viene fijo desde PHP; si necesitas alternar, agrega data-tipo-poliza en el form
+			const tipo =
+				form.dataset.tipoPoliza ||
+				form.querySelector('input[name="tipo_poliza"]')?.value ||
+				"Clásica";
+			montoPoliza.value = calcularPoliza(rentaHidden?.value, tipo);
+		}
+
+		// Fechas
+		fechaInicio?.addEventListener("change", () =>
+			setFechaFinYVigencia({
+				inicioEl: fechaInicio,
+				finEl: fechaFin,
+				vigenciaEl: vigenciaText,
+			})
+		);
+		fechaFin?.addEventListener("change", () =>
+			setFechaFinYVigencia({
+				inicioEl: fechaInicio,
+				finEl: fechaFin,
+				vigenciaEl: vigenciaText,
+			})
+		);
+		setFechaFinYVigencia({
+			inicioEl: fechaInicio,
+			finEl: fechaFin,
+			vigenciaEl: vigenciaText,
+		});
+
+		// Submit AJAX (renovar)
+		form.addEventListener("submit", async (e) => {
+			e.preventDefault();
+
+			const submitBtn = form.querySelector('button[type="submit"]');
+			submitBtn?.setAttribute("disabled", "disabled");
+			submitBtn?.classList.add("opacity-60", "cursor-not-allowed");
+
+			try {
+				const fd = new FormData(form);
+				const resp = await fetch(form.action, {
+					method: "POST",
+					body: fd,
+				});
+
+				let res;
+				try {
+					res = await resp.json();
+				} catch {
+					throw new Error("Respuesta inválida del servidor");
+				}
+
+				if (!resp.ok) {
+					throw new Error(
+						res?.error || resp.statusText || "Error en la solicitud"
+					);
+				}
+
+				if (res.ok) {
+					Swal.fire(
+						"Perfecto, se ha renovado la póliza",
+						"",
+						"success"
+					).then(() => {
+						window.location = `${BASE_URL}/polizas`;
+					});
+				} else {
+					Swal.fire(
+						"Error",
+						res.error || "No se pudo guardar",
+						"error"
+					);
+				}
+			} catch (err) {
+				Swal.fire({
+					icon: "error",
+					title: "Error",
+					text: err && err.message ? err.message : "Ocurrió un error",
+				});
+			} finally {
+				submitBtn?.removeAttribute("disabled");
+				submitBtn?.classList.remove("opacity-60", "cursor-not-allowed");
+			}
+		});
+	}
+
+	// ---------------- Bootstrap por vista ----------------
+	document.addEventListener("DOMContentLoaded", () => {
+		initEditarFormulario();
+		initRenovarFormulario();
+	});
+})();

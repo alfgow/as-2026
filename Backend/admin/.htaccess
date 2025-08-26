@@ -1,0 +1,19 @@
+# # Backend/admin/.htaccess
+
+ RewriteEngine On
+# # # Redirige todo (menos archivos/directorios reales) a router.php
+ RewriteCond %{REQUEST_FILENAME} !-f
+ RewriteCond %{REQUEST_FILENAME} !-d
+ RewriteRule ^(.*)$ router.php [QSA,L]
+
+#  <IfModule mod_rewrite.c>
+#      RewriteEngine On
+#      RewriteBase /
+    
+#      # Si la solicitud no es para un archivo existente
+#      RewriteCond %{REQUEST_FILENAME} !-f
+#     # Si la solicitud no es para un directorio existente
+#     RewriteCond %{REQUEST_FILENAME} !-d
+#     # Redirige todas las demás solicitudes a router.php
+#     RewriteRule ^(.*)$ router.php?url=$1 [QSA,L]
+# </IfModule>
