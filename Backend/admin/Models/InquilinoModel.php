@@ -157,43 +157,35 @@ public function getLastError(): ?string { return $this->lastError; }
      * @param array  $datos               JSON completo de la validación
      * @return bool
      */
-    public function guardarValidacionIdentidad(int $id_inquilino, int $estatus, string $resumen = '', array $datos = []): bool
+    public function guardarValidacionIdentidad(int $idInq, string $json, string|array $resumen): bool
     {
-        $json = !empty($datos) ? json_encode($datos, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) : null;
-
-        // Primero intentamos actualizar
-        $stmt = $this->db->prepare("
-            UPDATE inquilinos_validaciones
-            SET proceso_validacion_id = :estatus,
-                validacion_id_resumen  = :resumen,
-                validacion_id_json     = :json,
-                updated_at = CURRENT_TIMESTAMP
-            WHERE id_inquilino = :id
-        ");
-        $stmt->execute([
-            ':estatus' => $estatus,
-            ':resumen' => $resumen,
-            ':json'    => $json,
-            ':id'      => $id_inquilino
-        ]);
-
-        // Si no existía registro, insertamos uno nuevo
-        if ($stmt->rowCount() === 0) {
-            $stmt = $this->db->prepare("
-                INSERT INTO inquilinos_validaciones
-                    (id_inquilino, proceso_validacion_id, validacion_id_resumen, validacion_id_json)
-                VALUES
-                    (:id, :estatus, :resumen, :json)
-            ");
-            return $stmt->execute([
-                ':id'      => $id_inquilino,
-                ':estatus' => $estatus,
-                ':resumen' => $resumen,
-                ':json'    => $json
-            ]);
+        if (is_array($resumen)) {
+            $resumen = json_encode($resumen, JSON_UNESCAPED_UNICODE);
         }
 
-        return true;
+        $sql = "UPDATE inquilinos_validaciones 
+                SET proceso_validacion_id = 1,
+                    validacion_id_resumen = :resumen,
+                    validacion_id_json = :json,
+                    updated_at = NOW()
+                WHERE id_inquilino = :id";
+
+        $stmt = $this->db->prepare($sql);
+        return $stmt->execute([
+            ':json'    => $json,
+            ':resumen' => $resumen,
+            ':id'      => $idInq
+        ]);
+    }
+
+    public function actualizarCurp(int $idInq, string $curp): bool
+    {
+        $sql = "UPDATE inquilinos SET curp = :curp, updated_at = NOW() WHERE id = :id";
+        $stmt = $this->db->prepare($sql);
+        return $stmt->execute([
+            ':curp' => $curp,
+            ':id'   => $idInq
+        ]);
     }
 
 
@@ -1510,6 +1502,16 @@ public function obtenerArchivosPorSlug(string $slug): array
     }
 }
 
+public function obtenerArchivos(int $idInquilino): array
+{
+    $stmt = $this->db->prepare("
+        SELECT tipo, s3_key 
+        FROM inquilinos_archivos 
+        WHERE id_inquilino = ?
+    ");
+    $stmt->execute([$idInquilino]);
+    return $stmt->fetchAll(\PDO::FETCH_ASSOC);
+}
 
 
 }

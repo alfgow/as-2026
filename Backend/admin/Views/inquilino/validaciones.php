@@ -1,9 +1,20 @@
 <?php
-$h       = fn($s) => htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
-$nombre  = $h($inquilino['nombre_inquilino'] ?? 'Nombre Apellido');
-$slug    = $h($inquilino['slug'] ?? 'slug-ejemplo');
-$idInq   = (int)($inquilino['id'] ?? 0);
-$ADMIN_BASE = $admin_base_url ?? '';
+    $h       = fn($s) => htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
+    $nombreCompleto = trim(
+        ($inquilino['nombre_inquilino'] ?? '') . ' ' .
+        ($inquilino['apellidop_inquilino'] ?? '') . ' ' .
+        ($inquilino['apellidom_inquilino'] ?? '')
+    );
+    $nombre = $h($nombreCompleto ?: 'Nombre Apellido');
+    $slug    = $h($inquilino['slug'] ?? 'slug-ejemplo');
+    $idInq   = (int)($inquilino['id'] ?? 0);
+    $ADMIN_BASE = $admin_base_url ?? '';
+    $idInquilino = (int)($inquilino['id'] ?? $idInquilino ?? 0);
+    $apP         = $inquilino['apellidop_inquilino'] ?? '';
+    $apM         = $inquilino['apellidom_inquilino'] ?? '';
+    $curp        = $inquilino['curp'] ?? null;
+    $rfc         = $inquilino['rfc'] ?? null;
+    $slug        = $inquilino['slug'] ?? ($slug ?? null);
 ?>
 <script src="https://cdn.tailwindcss.com"></script>
 <style>
@@ -18,372 +29,353 @@ $ADMIN_BASE = $admin_base_url ?? '';
 <!-- 👇 container mobile-first + sin overflow lateral -->
 <div id="validaciones-app" class="mx-auto w-full max-w-screen-xl px-3 sm:px-4 lg:px-6 text-slate-100 overflow-x-hidden">
 
-  <!-- HERO -->
-  <section class="grid gap-4 md:grid-cols-2">
-    <!-- Card izquierda -->
-    <div class="rounded-2xl border border-white/10 bg-white/5 p-4 shadow-xl backdrop-blur">
-      <div class="text-xl font-bold tracking-tight" id="vh-nombre"><?= $nombre ?></div>
-      <div class="mt-1 text-sm text-slate-400 break-words">
-        Slug: <code class="break-all" id="vh-slug"><?= $slug ?></code> • Proceso de validaciones
-      </div>
-      <div class="mt-3 flex min-w-0 flex-wrap gap-2">
-        <span id="pill-archivos"   class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-sm"><span class="h-2 w-2 rounded-full bg-emerald-500"></span>Archivos</span>
-        <span id="pill-rostro"     class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-sm"><span class="h-2 w-2 rounded-full bg-amber-500"></span>Rostro</span>
-        <span id="pill-identidad"  class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-sm"><span class="h-2 w-2 rounded-full bg-amber-500"></span>Identidad</span>
-        <span id="pill-documentos" class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-sm"><span class="h-2 w-2 rounded-full bg-amber-500"></span>Documentos</span>
-        <span id="pill-ingresos"   class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-sm"><span class="h-2 w-2 rounded-full bg-rose-500"></span>Ingresos</span>
-        <span id="pill-pago"       class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-sm"><span class="h-2 w-2 rounded-full bg-amber-500"></span>Pago inicial</span>
-        <span id="pill-demandas"   class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-sm"><span class="h-2 w-2 rounded-full bg-amber-500"></span>Demandas</span>
-      </div>
-    </div>
+    <!-- HERO -->
+    <section class="grid gap-4 md:grid-cols-1">
+    
+        <!-- Card superior (nombre + estatus validaciones) -->
+        <div class="rounded-2xl border border-white/10 bg-white/5 p-6 shadow-xl backdrop-blur flex flex-col items-center justify-center text-center">
+            <div class="text-xl font-bold tracking-tight" id="vh-nombre"><?= $nombre ?></div>
+            <div class="mt-1 text-sm text-slate-400 break-words">
+            🦖 Estatus de validaciones:
+            </div>
+            <div class="mt-3 flex flex-wrap justify-center gap-2">
+            <span id="pill-archivos"   class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-sm"><span class="h-2 w-2 rounded-full bg-emerald-500"></span>Archivos</span>
+            <span id="pill-rostro"     class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-sm"><span class="h-2 w-2 rounded-full bg-amber-500"></span>Rostro</span>
+            <span id="pill-identidad"  class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-sm"><span class="h-2 w-2 rounded-full bg-amber-500"></span>Identidad</span>
+            <span id="pill-documentos" class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-sm"><span class="h-2 w-2 rounded-full bg-amber-500"></span>Documentos</span>
+            <span id="pill-ingresos"   class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-sm"><span class="h-2 w-2 rounded-full bg-rose-500"></span>Ingresos</span>
+            <span id="pill-pago"       class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-sm"><span class="h-2 w-2 rounded-full bg-amber-500"></span>Pago inicial</span>
+            <span id="pill-demandas"   class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-sm"><span class="h-2 w-2 rounded-full bg-amber-500"></span>Demandas</span>
+            </div>
+        </div>
 
-    <!-- Card derecha -->
-    <div class="rounded-2xl border border-white/10 bg-white/5 p-4 shadow-xl backdrop-blur">
-      <h3 class="mb-2 text-sm font-semibold">Progreso</h3>
-      <div class="h-2 w-full overflow-hidden rounded-full border border-white/10 bg-white/10">
-        <span id="vh-progress" class="block h-full bg-gradient-to-r from-cyan-400 to-indigo-400" style="width:64%"></span>
-      </div>
-      <div id="vh-progress-text" class="mt-2 text-sm text-slate-300">4 de 7 validaciones completas</div>
-      <div class="mt-3 grid grid-cols-1 gap-2 sm:auto-cols-max sm:grid-flow-col">
-        <button id="btn-recalc"    class="w-full sm:w-auto rounded-xl border border-white/10 bg-white/10 px-4 py-2 font-semibold hover:bg-white/15">Recalcular</button>
-        <button id="btn-resumen"   class="w-full sm:w-auto rounded-xl border border-white/10 bg-white/10 px-4 py-2 font-semibold hover:bg-white/15">Regenerar resúmenes</button>
-        <button id="btn-continuar" class="w-full sm:w-auto rounded-xl bg-gradient-to-r from-indigo-400 to-cyan-400 px-4 py-2 font-semibold text-black">Continuar</button>
-      </div>
-    </div>
-  </section>
+        <!-- Card inferior (contenedor de sub-cards) -->
+        <div class="grid gap-4 md:grid-cols-2">
 
-  <!-- RESUMEN -->
-  <section class="mt-4">
-    <div class="rounded-2xl border border-white/10 bg-white/5 p-4 shadow-xl backdrop-blur">
-      <h3 class="text-sm font-semibold">Resumen humano</h3>
-      <p id="vh-resumen" class="mt-1 text-slate-300 break-words">
-        ✔️ Identidad consistente con INE (nombres). ⏳ Falta confirmar CURP/CIC. ✖️ Ingresos: meses insuficientes (0/6).
-      </p>
-      <div id="vh-ts" class="mt-3 text-xs text-slate-400">Última actualización —</div>
-    </div>
-  </section>
+            <!-- Sub-card: Progreso -->
+            <div class="rounded-2xl border border-white/10 bg-white/5 p-4 shadow-xl backdrop-blur">
+                <h3 class="mb-2 text-sm font-semibold">Progreso</h3>
+                
+                <div class="h-2 w-full overflow-hidden rounded-full border border-white/10 bg-white/10">
+                    <span id="vh-progress" class="block h-full bg-gradient-to-r from-cyan-400 to-indigo-400" style="width:64%"></span>
+                </div>
+                <div id="vh-progress-text" class="mt-2 text-sm text-slate-300">0 de 7 validaciones completas</div>
 
-  <!-- GRID VALIDACIONES -->
-<section class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
-  <!-- Card base -->
-  <div class="min-w-0">
-    <!-- Archivos -->
-    <div class="w-full max-w-full overflow-hidden rounded-2xl border border-white/10 bg-white/5 p-4 shadow-xl backdrop-blur" data-cat="archivos">
-      <h3 class="text-base font-semibold">Archivos</h3>
-    <div id="chips-archivos" class="mt-2 flex flex-wrap gap-2">
-        <span data-key="selfie" class="rounded-full border border-rose-400/30 bg-rose-400/15 px-3 py-1 text-xs">Selfie</span>
-        <span data-key="ine_frontal" class="rounded-full border border-rose-400/30 bg-rose-400/15 px-3 py-1 text-xs">INE - frontal</span>
-        <span data-key="ine_reverso" class="rounded-full border border-rose-400/30 bg-rose-400/15 px-3 py-1 text-xs">INE - reverso</span>
-        <span data-key="pasaporte" class="rounded-full border border-rose-400/30 bg-rose-400/15 px-3 py-1 text-xs">Pasaporte</span>
-        <span data-key="fm" class="rounded-full border border-rose-400/30 bg-rose-400/15 px-3 py-1 text-xs">FM2/FM3</span>
-        <span data-key="comprobante_ingreso" class="rounded-full border border-rose-400/30 bg-rose-400/15 px-3 py-1 text-xs">Comprobantes</span>
-    </div>
-      <p id="txt-archivos" class="mt-2 max-h-24 overflow-y-auto pr-1 text-sm text-slate-300 break-words">
-        🚫No hay archivos, necesitas actualizar el perfil del inquilino 🚫.
-      </p>
-      <div class="mt-2 grid grid-cols-1 gap-2 sm:auto-cols-max sm:grid-flow-col">
-        <button class="vh-detalle w-full sm:w-auto rounded-xl border border-white/10 bg-white/10 px-4 py-2 text-sm font-semibold hover:bg-white/15" data-cat="archivos">Ver detalle</button>
-        
-      </div>
-    </div>
-  </div>
+                <div class="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <button id="btn-recalc" class="rounded-xl border border-white/10 bg-white/10 px-4 py-2 font-semibold hover:bg-white/15">
+                        Recalcular Proceso
+                    </button>
+                    <button id="btn-resumen" class="rounded-xl border border-white/10 bg-white/10 px-4 py-2 font-semibold hover:bg-white/15">
+                        Regenerar resúmenes
+                    </button>
+                </div>
 
-<div class="min-w-0">
-  <!-- Rostro -->
-  <div class="w-full max-w-full overflow-hidden rounded-2xl border border-white/10 bg-white/5 p-4 shadow-xl backdrop-blur" data-cat="rostro">
-    <h3 class="text-base font-semibold">Rostro</h3>
-
-    <div id="chips-rostro" class="mt-2 flex flex-wrap gap-2">
-      <span id="chip-rostro-score" data-key="comparefaces"
-            class="rounded-full border border-rose-400/30 bg-rose-400/15 px-3 py-1 text-xs">
-        CompareFaces ≥ 0%
-      </span>
-      <span id="chip-rostro-matches" data-key="matches"
-            class="rounded-full border border-rose-400/30 bg-rose-400/15 px-3 py-1 text-xs">
-        1 coincidencia
-      </span>
-    </div>
-
-    <p id="txt-rostro" class="mt-2 max-h-24 overflow-y-auto pr-1 text-sm text-slate-300 break-words">
-      🚫No hay información, actualiza el perfil del inquilino🚫.
-    </p>
-
-    <div class="mt-2 grid grid-cols-1 gap-2 sm:auto-cols-max sm:grid-flow-col">
-      <button class="vh-detalle w-full sm:w-auto rounded-xl border border-white/10 bg-white/10 px-4 py-2 text-sm font-semibold hover:bg-white/15" data-cat="rostro">Ver detalle</button>
-      <button class="vh-recalc w-full sm:w-auto rounded-xl border border-white/10 bg-white/10 px-4 py-2 text-sm font-semibold hover:bg-white/15" data-check="save_face">Volver a comparar</button>
-    </div>
-  </div>
-</div>
-
-
-<div class="min-w-0">
-  <!-- Identidad -->
-  <div class="w-full max-w-full overflow-hidden rounded-2xl border border-white/10 bg-white/5 p-4 shadow-xl backdrop-blur" data-cat="identidad">
-    <h3 class="text-base font-semibold">Identidad</h3>
-
-    <div id="chips-identidad" class="mt-2 flex flex-wrap gap-2">
-      <span id="chip-identidad-nombres" data-key="nombres_apellidos"
-            class="rounded-full border border-rose-400/30 bg-rose-400/15 px-3 py-1 text-xs">
-       
-      </span>
-      <span id="chip-identidad-curp" data-key="curp_cic"
-            class="rounded-full border border-rose-400/30 bg-rose-400/15 px-3 py-1 text-xs">
-      
-      </span>
-    </div>
-
-    <p id="txt-identidad" class="vh-scroll mt-2 pr-2 text-sm text-slate-300 break-words">
-     
-    </p>
-
-    <div class="mt-2 grid grid-cols-1 gap-2 sm:auto-cols-max sm:grid-flow-col">
-      <button class="vh-detalle w-full sm:w-auto rounded-xl border border-white/10 bg-white/10 px-4 py-2 text-sm font-semibold hover:bg-white/15" data-cat="identidad">Ver detalle</button>
-      <button class="vh-recalc w-full sm:w-auto rounded-xl border border-white/10 bg-white/10 px-4 py-2 text-sm font-semibold hover:bg-white/15" data-check="save_match">Leer CURP/CIC</button>
-    </div>
-  </div>
-</div>
-
-<!-- div pago inicial -->
-
-<!-- Pago inicial -->
-<div class="w-full max-w-full overflow-hidden rounded-2xl border border-white/10 bg-white/5 p-4 shadow-xl backdrop-blur" data-cat="pago_inicial">
-  <h3 class="text-base font-semibold">Pago inicial</h3>
-
-  <div class="mt-3 flex items-center gap-3">
-    <label class="flex items-center gap-3 select-none">
-  <span class="text-sm text-slate-300">Pago Recibido?</span>
-
-  <!-- el peer -->
-  <input id="toggle-pago" type="checkbox" class="peer sr-only" />
-
-  <!-- track -->
-  <div
-    class="relative h-7 w-12 rounded-full border border-white/10 bg-white/10 shadow-inner
-           transition-colors duration-300 ease-out
-           focus-within:outline-none focus-within:ring-2 focus-within:ring-fuchsia-500/40
-           peer-checked:bg-gradient-to-r peer-checked:from-fuchsia-500/60 peer-checked:to-indigo-500/60
-
-           /* knob (pseudo) */
-           after:absolute after:top-1 after:left-1 after:h-5 after:w-5 after:rounded-full after:bg-slate-200
-           after:shadow after:transition-all after:duration-300 after:ease-out
-           peer-checked:after:translate-x-5 peer-checked:after:bg-white">
-  </div>
-
-  <em id="toggle-pago-label" class="not-italic text-xs text-slate-400 peer-checked:text-emerald-400"></em>
-</label>
-  </div>
-
-  <div id="pago-status-msg" class="mt-2 text-xs text-slate-400"></div>
-
-  <div class="mt-2 grid grid-cols-1 gap-2 sm:auto-cols-max sm:grid-flow-col">
-    <button class="vh-detalle w-full sm:w-auto rounded-xl border border-white/10 bg-white/10 px-4 py-2 text-sm font-semibold hover:bg-white/15" data-cat="pago_inicial">Ver detalle</button>
-  </div>
-</div>
-
-
-
-  <!-- Aquí continuarías con Documentos, Ingresos, Pago inicial y Demandas repitiendo el patrón -->
-</section>
-
-<?php
-// Asegúrate de tener estos datos disponibles en la vista.
-// Si tienes $inquilino, úsalo; si no, ajusta a tus variables.
-$idInquilino = (int)($inquilino['id'] ?? $idInquilino ?? 0);
-$nombre      = $inquilino['nombre_inquilino'] ?? '';
-$apP         = $inquilino['apellidop_inquilino'] ?? '';
-$apM         = $inquilino['apellidom_inquilino'] ?? '';
-$curp        = $inquilino['curp'] ?? null;
-$rfc         = $inquilino['rfc'] ?? null;
-$slug        = $inquilino['slug'] ?? ($slug ?? null);
-?>
-<div id="validacionMeta"
-     data-id="<?= $idInquilino ?>"
-     data-nombre="<?= htmlspecialchars($nombre) ?>"
-     data-apellido_p="<?= htmlspecialchars($apP) ?>"
-     data-apellido_m="<?= htmlspecialchars($apM) ?>"
-     data-curp="<?= htmlspecialchars($curp ?? '') ?>"
-     data-rfc="<?= htmlspecialchars($rfc ?? '') ?>"
-     data-slug="<?= htmlspecialchars($slug ?? '') ?>">
-</div>
-<section class="bg-gray-900 border border-white/10 rounded-2xl p-6 shadow-xl my-6">
-  <div class="flex items-center justify-between mb-4">
-    <div class="flex items-center gap-3">
-      <div class="p-2 bg-indigo-600/30 rounded-xl">
-        <svg class="w-6 h-6 text-indigo-300" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-          <path d="M3 7h18M3 12h18M3 17h18" />
-        </svg>
-      </div>
-      <h2 class="text-xl font-semibold text-white">Demandas y litigios</h2>
-    </div>
-    <div class="flex gap-2">
-      <button id="btnRunValidacion"
-        class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white shadow">
-        Ejecutar validación ahora
-      </button>
-      <button id="btnVerUltimo"
-        class="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white">
-        Ver último reporte
-      </button>
-    </div>
-  </div>
-
-  <!-- Chips dinámicos -->
-  <div id="chipsPortales" class="flex flex-wrap gap-2 mb-4">
-    <!-- Se llenan vía fetch -->
-  </div>
-
-  <!-- Último reporte -->
-  <div id="reporteContainer" class="bg-white/5 rounded-xl p-4 text-sm text-gray-200 hidden">
-    <!-- Se llena con JS -->
-  </div>
-
-  <!-- Historial completo -->
-  <div id="historialContainer" class="mt-6">
-    <h3 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-      <svg class="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-        <path d="M12 20l9-5-9-5-9 5 9 5z" />
-        <path d="M12 12V4l9-5-9-5-9 5z" />
-      </svg>
-      Historial de demandas
-    </h3>
-
-    <div class="grid md:grid-cols-2 gap-6">
-      <?php if (!empty($historial)): ?>
-        <?php foreach ($historial as $item): ?>
-          <div class="bg-gray-800 border border-gray-700 rounded-xl p-5 shadow-xl">
-            <div class="flex justify-between items-center mb-3">
-              <span class="text-sm text-gray-400"><?= htmlspecialchars($item['portal']) ?></span>
-              <span class="px-3 py-1 text-xs rounded-full
-                <?= $item['clasificacion'] === 'match_alto' ? 'bg-red-600 text-white' :
-                    ($item['clasificacion'] === 'posible_match' ? 'bg-yellow-500 text-black' : 'bg-green-600 text-white') ?>">
-                <?= htmlspecialchars($item['clasificacion']) ?>
-              </span>
             </div>
 
-            <p class="text-gray-300 text-sm mb-2">Score: <?= (int)$item['score_max'] ?></p>
-            <p class="text-gray-400 text-xs mb-4">Fecha: <?= htmlspecialchars($item['searched_at']) ?></p>
+            <!-- Sub-card: Archivos recibidos -->
+            <div class="rounded-2xl border border-white/10 bg-white/5 p-4 shadow-xl backdrop-blur">
+                <h3 class="mb-2 text-sm font-semibold">Archivos Recibidos</h3>
+                <div id="chips-archivos" class="mt-2 flex flex-wrap justify-center sm:justify-start gap-2">
+                    <span data-key="selfie" class="rounded-full border border-rose-400/30 bg-rose-400/15 px-3 py-1 text-xs">Selfie</span>
+                    <span data-key="ine_frontal" class="rounded-full border border-rose-400/30 bg-rose-400/15 px-3 py-1 text-xs">INE - frontal</span>
+                    <span data-key="ine_reverso" class="rounded-full border border-rose-400/30 bg-rose-400/15 px-3 py-1 text-xs">INE - reverso</span>
+                    <span data-key="pasaporte" class="rounded-full border border-rose-400/30 bg-rose-400/15 px-3 py-1 text-xs">Pasaporte</span>
+                    <span data-key="fm" class="rounded-full border border-rose-400/30 bg-rose-400/15 px-3 py-1 text-xs">FM2/FM3</span>
+                    <span data-key="comprobante_ingreso" class="rounded-full border border-rose-400/30 bg-rose-400/15 px-3 py-1 text-xs">Comprobantes</span>
+                </div>
 
-            <div class="flex gap-3">
-              <?php if ($item['evidencia_s3_key']): ?>
-                <a href="https://<?= getenv('S3_BUCKET_INQUILINOS') ?>.s3.amazonaws.com/<?= urlencode($item['evidencia_s3_key']) ?>"
-                   target="_blank"
-                   class="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white text-xs rounded-lg">
-                  Ver evidencia
-                </a>
-              <?php endif; ?>
-
-              <?php if ($item['raw_json_s3_key']): ?>
-                <a href="https://<?= getenv('S3_BUCKET_INQUILINOS') ?>.s3.amazonaws.com/<?= urlencode($item['raw_json_s3_key']) ?>"
-                   target="_blank"
-                   class="px-3 py-1 bg-gray-600 hover:bg-gray-500 text-white text-xs rounded-lg">
-                  Ver JSON
-                </a>
-              <?php endif; ?>
+                <div class="mt-4 flex justify-center">
+                    <button id="btn-actualizar" class="rounded-xl border border-indigo-500/50 bg-indigo-500/10 px-4 py-2 font-semibold hover:bg-indigo-500/20">
+                        Actualizar archivos
+                    </button>
+                </div>
             </div>
-          </div>
-        <?php endforeach; ?>
-      <?php else: ?>
-        <div class="col-span-2 text-center text-gray-400">
-          No hay registros de validaciones legales para este inquilino.
+
         </div>
-      <?php endif; ?>
+    
+    </section>
+
+    <!-- GRID VALIDACIONES -->
+    <section class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+        <!-- Validacion de Rostro=ID -->
+        <div class="min-w-0">
+            <!-- Rostro -->
+            <div class="w-full max-w-full overflow-hidden rounded-2xl border border-white/10 bg-white/5 p-4 shadow-xl backdrop-blur" data-cat="rostro">
+                <h3 class="text-base font-semibold">Rostro</h3>
+                <div id="chips-rostro" class="mt-2 flex flex-wrap justify-center sm:justify-start gap-2 text-center">
+                    <span id="chip-rostro-score" data-key="comparefaces"
+                            class="rounded-full border border-rose-400/30 bg-rose-400/15 px-3 py-1 text-xs">
+                        CompareFaces ≥ 0%
+                    </span>
+                    <span id="chip-rostro-matches" data-key="matches"
+                            class="rounded-full border border-rose-400/30 bg-rose-400/15 px-3 py-1 text-xs">
+                        1 coincidencia
+                    </span>
+                    <p id="txt-rostro" class="mt-2 max-h-24 overflow-y-auto pr-1 text-sm text-slate-300 break-words w-full">
+                        🚫No hay información, actualiza el perfil del inquilino🚫.
+                    </p>
+                </div>
+                <div class="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <button class="vh-detalle rounded-xl border border-white/10 bg-white/10 px-4 py-2 text-sm font-semibold hover:bg-white/15" data-cat="rostro">
+                        Ver detalle
+                    </button>
+                    <button class="vh-recalc rounded-xl border border-white/10 bg-white/10 px-4 py-2 text-sm font-semibold hover:bg-white/15" data-check="save_face">
+                        Volver a comparar
+                    </button>
+                </div>
+
+            </div>
+        </div>
+
+        <div class="min-w-0">
+            <!-- Identidad -->
+            <div class="w-full max-w-full overflow-hidden rounded-2xl border border-white/10 bg-white/5 p-4 shadow-xl backdrop-blur" data-cat="identidad">
+                <h3 class="text-base font-semibold">Identidad</h3>
+
+                <div id="chips-identidad" class="mt-2 flex flex-wrap justify-center sm:justify-start gap-2 text-center">
+                    <span id="chip-identidad-nombres" data-key="nombres_apellidos"
+                            class="rounded-full border border-rose-400/30 bg-rose-400/15 px-3 py-1 text-xs"></span>
+                    <p id="txt-identidad" class="vh-scroll mt-2 pr-2 text-sm text-slate-300 break-words w-full">
+                        🚫No hay información, actualiza el perfil del inquilino🚫.
+                    </p>
+                </div>
+
+                <div class="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <button class="vh-detalle rounded-xl border border-white/10 bg-white/10 px-4 py-2 text-sm font-semibold hover:bg-white/15" data-cat="identidad">
+                        Ver detalle
+                    </button>
+                    <button class="vh-recalc rounded-xl border border-white/10 bg-white/10 px-4 py-2 text-sm font-semibold hover:bg-white/15" data-check="save_match">
+                        Leer CURP/CIC
+                    </button>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- Pago inicial -->
+        <div class="w-full max-w-full overflow-hidden rounded-2xl border border-white/10 bg-white/5 p-4 shadow-xl backdrop-blur" data-cat="pago_inicial">
+        <h3 class="text-base font-semibold">Pago inicial</h3>
+
+        <div class="mt-3 flex items-center gap-3">
+            <label class="flex items-center gap-3 select-none">
+            <span class="text-sm text-slate-300">Pago Recibido?</span>
+            <!-- el peer -->
+            <input id="toggle-pago" type="checkbox" class="peer sr-only" />
+            <!-- track -->
+            <div
+                class="relative h-7 w-12 rounded-full border border-white/10 bg-white/10 shadow-inner
+                    transition-colors duration-300 ease-out
+                    focus-within:outline-none focus-within:ring-2 focus-within:ring-fuchsia-500/40
+                    peer-checked:bg-gradient-to-r peer-checked:from-fuchsia-500/60 peer-checked:to-indigo-500/60
+
+                    /* knob (pseudo) */
+                    after:absolute after:top-1 after:left-1 after:h-5 after:w-5 after:rounded-full after:bg-slate-200
+                    after:shadow after:transition-all after:duration-300 after:ease-out
+                    peer-checked:after:translate-x-5 peer-checked:after:bg-white">
+            </div>
+
+            <em id="toggle-pago-label" class="not-italic text-xs text-slate-400 peer-checked:text-emerald-400"></em>
+            </label>
+        </div>
+
+        <div id="pago-status-msg" class="mt-2 text-xs text-slate-400"></div>
+
+        <div class="mt-2 grid grid-cols-1 gap-2 sm:auto-cols-max sm:grid-flow-col">
+            <button class="vh-detalle w-full sm:w-auto rounded-xl border border-white/10 bg-white/10 px-4 py-2 text-sm font-semibold hover:bg-white/15" data-cat="pago_inicial">Ver detalle</button>
+        </div>
+        </div>
+
+        <!-- Aquí continuarías con Documentos, Ingresos, Pago inicial y Demandas repitiendo el patrón -->
+    </section>
+
+    <div id="validacionMeta"
+        data-id="<?= $idInquilino ?>"
+        data-nombre="<?= htmlspecialchars($nombre) ?>"
+        data-apellido_p="<?= htmlspecialchars($apP) ?>"
+        data-apellido_m="<?= htmlspecialchars($apM) ?>"
+        data-curp="<?= htmlspecialchars($curp ?? '') ?>"
+        data-rfc="<?= htmlspecialchars($rfc ?? '') ?>"
+        data-slug="<?= htmlspecialchars($slug ?? '') ?>">
     </div>
-  </div>
-</section>
 
-<section id="cardJuridico" class="bg-gray-900 border border-white/10 rounded-2xl p-6 shadow-xl mt-6">
-  <div class="flex items-center justify-between mb-4">
-    <h2 class="text-xl font-semibold text-white">Validación jurídica</h2>
-    <span id="juridicoStatus" class="text-sm text-gray-300">cargando…</span>
-  </div>
-
-  <div id="juridicoResumen" class="text-gray-200 text-sm mb-4"></div>
-
-  <div id="juridicoEvidencias" class="space-y-3"></div>
-</section>
-
-
-
-<!-- ARCHIVOS (previews) -->
-<section class="mt-4">
-  <div class="rounded-2xl border border-white/10 bg-white/5 p-4 shadow-xl backdrop-blur">
-    <h3 class="text-base font-semibold">Archivos (previsualización)</h3>
-
-    <div class="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      <!-- Selfie -->
-      <div class="flex flex-col gap-2">
-        <div class="grid h-44 place-items-center overflow-hidden rounded-xl border border-white/10 bg-white/5">
-          <img id="prev-selfie" class="h-full w-full object-cover" src="https://picsum.photos/seed/selfie/600/400" alt="Selfie">
+    <!-- Sección de Demandas y Litigios -->
+    <section id="cardJuridico" class="bg-gray-900 border border-white/10 rounded-2xl p-6 shadow-xl my-6">
+        <!-- Header -->
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 gap-3">
+            <!-- Título -->
+            <div class="flex items-center gap-3">
+            <div class="p-2 bg-indigo-600/30 rounded-xl">
+                <svg class="w-6 h-6 text-indigo-300" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path d="M3 7h18M3 12h18M3 17h18" />
+                </svg>
+            </div>
+            <h2 class="text-xl font-semibold text-white">Demandas y litigios</h2>
+            </div>
+            <!-- Botones -->
+            <div class="flex flex-col sm:flex-row gap-2">
+                <button id="btnRunValidacion"
+                    class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white shadow">
+                    Ejecutar validación ahora
+                </button>
+                <button id="btnVerUltimo"
+                    class="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white">
+                    Ver último reporte
+                </button>
+            </div>
         </div>
-        <div class="flex items-center justify-between text-sm">
-          <span>Selfie</span><button class="rounded-xl border border-white/10 bg-white/10 px-3 py-1.5 font-semibold opacity-50">Reemplazar</button>
-        </div>
-      </div>
 
-      <!-- INE frontal -->
-      <div class="flex flex-col gap-2">
-        <div class="grid h-44 place-items-center overflow-hidden rounded-xl border border-white/10 bg-white/5">
-          <img id="prev-ine-front" class="h-full w-full object-cover" src="https://picsum.photos/seed/inef/600/400" alt="INE frontal">
+        <!-- Chips dinámicos -->
+        <div id="chipsPortales" class="flex flex-wrap justify-center sm:justify-start gap-2 mb-4 text-center">
+            <!-- Se llenan vía fetch -->
         </div>
-        <div class="flex items-center justify-between text-sm">
-          <span>INE — frontal</span><button class="rounded-xl border border-white/10 bg-white/10 px-3 py-1.5 font-semibold opacity-50">Reemplazar</button>
-        </div>
-      </div>
 
-      <!-- INE reverso -->
-      <div class="flex flex-col gap-2">
-        <div class="grid h-44 place-items-center overflow-hidden rounded-xl border border-white/10 bg-white/5">
-          <img id="prev-ine-back" class="h-full w-full object-cover" src="https://picsum.photos/seed/iner/600/400" alt="INE reverso">
+        <!-- Resumen jurídico -->
+        <div id="juridicoResumen" class="bg-white/5 rounded-xl p-4 text-sm text-gray-200 mb-4">
+            <div class="flex items-center justify-between mb-2">
+            <h3 class="text-lg font-semibold text-white">Resumen jurídico</h3>
+            <span id="juridicoStatus" class="text-sm text-gray-300">cargando…</span>
+            </div>
+            <div id="juridicoEvidencias" class="space-y-3">
+            <!-- Evidencias clave se llenan con JS -->
+            </div>
         </div>
-        <div class="flex items-center justify-between text-sm">
-          <span>INE — reverso</span><button class="rounded-xl border border-white/10 bg-white/10 px-3 py-1.5 font-semibold opacity-50">Reemplazar</button>
-        </div>
-      </div>
 
-      <!-- Comprobante 1 -->
-      <div class="flex flex-col gap-2">
-        <div id="prev-comp-1" class="grid h-44 place-items-center rounded-xl border border-white/10 bg-white/5 text-slate-400">PDF</div>
-        <div class="flex items-center justify-between text-sm">
-          <span>Comprobante 1</span><button class="rounded-xl border border-white/10 bg-white/10 px-3 py-1.5 font-semibold opacity-50">Subir</button>
+        <!-- Último reporte (JSON bruto si aplica) -->
+        <div id="reporteContainer" class="bg-white/5 rounded-xl p-4 text-sm text-gray-200 hidden mb-6">
+            <!-- Se llena con JS -->
         </div>
-      </div>
 
-      <!-- Comprobante 2 -->
-      <div class="flex flex-col gap-2">
-        <div id="prev-comp-2" class="grid h-44 place-items-center rounded-xl border border-white/10 bg-white/5 text-slate-400">PDF</div>
-        <div class="flex items-center justify-between text-sm">
-          <span>Comprobante 2</span><button class="rounded-xl border border-white/10 bg-white/10 px-3 py-1.5 font-semibold opacity-50">Subir</button>
-        </div>
-      </div>
+        <!-- Historial de demandas -->
+        <div id="historialContainer">
+            <h3 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+            <svg class="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path d="M12 20l9-5-9-5-9 5 9 5z" />
+                <path d="M12 12V4l9-5-9-5-9 5z" />
+            </svg>
+            Historial de demandas
+            </h3>
 
-      <!-- Comprobante 3 -->
-      <div class="flex flex-col gap-2">
-        <div id="prev-comp-3" class="grid h-44 place-items-center rounded-xl border border-rose-400/30 bg-rose-400/10 text-slate-300">PDF</div>
-        <div class="flex items-center justify-between text-sm">
-          <span>Comprobante 3</span><button class="rounded-xl border border-rose-400/30 bg-rose-400/15 px-3 py-1.5 font-semibold opacity-50">Falta</button>
+            <div class="grid md:grid-cols-2 gap-6">
+            <?php if (!empty($historial)): ?>
+                <?php foreach ($historial as $item): ?>
+                <div class="bg-gray-800 border border-gray-700 rounded-xl p-5 shadow-xl">
+                    <div class="flex justify-between items-center mb-3">
+                    <span class="text-sm text-gray-400"><?= htmlspecialchars($item['portal']) ?></span>
+                    <span class="px-3 py-1 text-xs rounded-full
+                        <?= $item['clasificacion'] === 'match_alto' ? 'bg-red-600 text-white' :
+                            ($item['clasificacion'] === 'posible_match' ? 'bg-yellow-500 text-black' : 'bg-green-600 text-white') ?>">
+                        <?= htmlspecialchars($item['clasificacion']) ?>
+                    </span>
+                    </div>
+
+                    <p class="text-gray-300 text-sm mb-2">Score: <?= (int)$item['score_max'] ?></p>
+                    <p class="text-gray-400 text-xs mb-4">Fecha: <?= htmlspecialchars($item['searched_at']) ?></p>
+
+                    <div class="flex gap-3">
+                    <?php if ($item['evidencia_s3_key']): ?>
+                        <a href="https://<?= getenv('S3_BUCKET_INQUILINOS') ?>.s3.amazonaws.com/<?= urlencode($item['evidencia_s3_key']) ?>"
+                        target="_blank"
+                        class="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white text-xs rounded-lg">
+                        Ver evidencia
+                        </a>
+                    <?php endif; ?>
+
+                    <?php if ($item['raw_json_s3_key']): ?>
+                        <a href="https://<?= getenv('S3_BUCKET_INQUILINOS') ?>.s3.amazonaws.com/<?= urlencode($item['raw_json_s3_key']) ?>"
+                        target="_blank"
+                        class="px-3 py-1 bg-gray-600 hover:bg-gray-500 text-white text-xs rounded-lg">
+                        Ver JSON
+                        </a>
+                    <?php endif; ?>
+                    </div>
+                </div>
+                <?php endforeach; ?>
+            <?php else: ?>
+                <div class="col-span-2 text-center text-gray-400">
+                No hay registros de validaciones legales para este inquilino.
+                </div>
+            <?php endif; ?>
+            </div>
         </div>
-      </div>
+    </section>
+
+    <!-- ARCHIVOS (previews) -->
+    <section class="mt-4">
+    <div class="rounded-2xl border border-white/10 bg-white/5 p-4 shadow-xl backdrop-blur">
+        <h3 class="text-base font-semibold">Archivos (previsualización)</h3>
+
+        <div class="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <!-- Selfie -->
+        <div class="flex flex-col gap-2">
+            <div class="grid h-44 place-items-center overflow-hidden rounded-xl border border-white/10 bg-white/5">
+            <img id="prev-selfie" class="h-full w-full object-cover" src="https://picsum.photos/seed/selfie/600/400" alt="Selfie">
+            </div>
+            <div class="flex items-center justify-between text-sm">
+            <span>Selfie</span><button class="rounded-xl border border-white/10 bg-white/10 px-3 py-1.5 font-semibold opacity-50">Reemplazar</button>
+            </div>
+        </div>
+
+        <!-- INE frontal -->
+        <div class="flex flex-col gap-2">
+            <div class="grid h-44 place-items-center overflow-hidden rounded-xl border border-white/10 bg-white/5">
+            <img id="prev-ine-front" class="h-full w-full object-cover" src="https://picsum.photos/seed/inef/600/400" alt="INE frontal">
+            </div>
+            <div class="flex items-center justify-between text-sm">
+            <span>INE — frontal</span><button class="rounded-xl border border-white/10 bg-white/10 px-3 py-1.5 font-semibold opacity-50">Reemplazar</button>
+            </div>
+        </div>
+
+        <!-- INE reverso -->
+        <div class="flex flex-col gap-2">
+            <div class="grid h-44 place-items-center overflow-hidden rounded-xl border border-white/10 bg-white/5">
+            <img id="prev-ine-back" class="h-full w-full object-cover" src="https://picsum.photos/seed/iner/600/400" alt="INE reverso">
+            </div>
+            <div class="flex items-center justify-between text-sm">
+            <span>INE — reverso</span><button class="rounded-xl border border-white/10 bg-white/10 px-3 py-1.5 font-semibold opacity-50">Reemplazar</button>
+            </div>
+        </div>
+
+        <!-- Comprobante 1 -->
+        <div class="flex flex-col gap-2">
+            <div id="prev-comp-1" class="grid h-44 place-items-center rounded-xl border border-white/10 bg-white/5 text-slate-400">PDF</div>
+            <div class="flex items-center justify-between text-sm">
+            <span>Comprobante 1</span><button class="rounded-xl border border-white/10 bg-white/10 px-3 py-1.5 font-semibold opacity-50">Subir</button>
+            </div>
+        </div>
+
+        <!-- Comprobante 2 -->
+        <div class="flex flex-col gap-2">
+            <div id="prev-comp-2" class="grid h-44 place-items-center rounded-xl border border-white/10 bg-white/5 text-slate-400">PDF</div>
+            <div class="flex items-center justify-between text-sm">
+            <span>Comprobante 2</span><button class="rounded-xl border border-white/10 bg-white/10 px-3 py-1.5 font-semibold opacity-50">Subir</button>
+            </div>
+        </div>
+
+        <!-- Comprobante 3 -->
+        <div class="flex flex-col gap-2">
+            <div id="prev-comp-3" class="grid h-44 place-items-center rounded-xl border border-rose-400/30 bg-rose-400/10 text-slate-300">PDF</div>
+            <div class="flex items-center justify-between text-sm">
+            <span>Comprobante 3</span><button class="rounded-xl border border-rose-400/30 bg-rose-400/15 px-3 py-1.5 font-semibold opacity-50">Falta</button>
+            </div>
+        </div>
+        </div>
     </div>
-  </div>
-</section>
+    </section>
 
-
- <!-- Footer estático -->
-<div class="mt-8">
-  <div class="flex flex-col sm:flex-row items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/5 p-3 shadow-2xl backdrop-blur">
-    <div id="vh-ts-bottom" class="text-sm text-slate-300 text-center sm:text-left">
-      Última actualización —
+    <!-- Footer estático -->
+    <div class="mt-8">
+    <div class="flex flex-col sm:flex-row items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/5 p-3 shadow-2xl backdrop-blur">
+        <div id="vh-ts-bottom" class="text-sm text-slate-300 text-center sm:text-left">
+        Última actualización —
+        </div>
+        <div class="grid grid-cols-1 gap-2 sm:auto-cols-max sm:grid-flow-col">
+        <button id="btn-borrador" class="w-full sm:w-auto rounded-xl border border-white/10 bg-white/10 px-4 py-2 font-semibold hover:bg-white/15">
+            Guardar borrador
+        </button>
+        <button id="btn-continuar" class="w-full sm:w-auto rounded-xl bg-gradient-to-r from-indigo-400 to-cyan-400 px-4 py-2 font-semibold text-black">Finalizar Validación</button>
+        </div>
     </div>
-    <div class="grid grid-cols-1 gap-2 sm:auto-cols-max sm:grid-flow-col">
-      <button id="btn-borrador" class="w-full sm:w-auto rounded-xl border border-white/10 bg-white/10 px-4 py-2 font-semibold hover:bg-white/15">
-        Guardar borrador
-      </button>
-      <button id="btn-finalizar" class="w-full sm:w-auto rounded-xl bg-gradient-to-r from-indigo-400 to-cyan-400 px-4 py-2 font-semibold text-black">
-        Finalizar validación
-      </button>
     </div>
-  </div>
-</div>
 
 </div>
 
@@ -418,6 +410,38 @@ $slug        = $inquilino['slug'] ?? ($slug ?? null);
   </div>
 </div>
 <script>
+  // Contexto global de validaciones
+  window.baseUrl   = <?= json_encode($baseUrl ?? '/as-2026/Backend/admin') ?>;
+  window.ADMIN_BASE = <?= json_encode($ADMIN_BASE ?? '/as-2026/Backend/admin') ?>;
+
+  // 👇 aseguramos que siempre se definan correctamente
+  window.ID_INQ = <?= (int)($inquilino['id'] ?? 0) ?>;
+  window.SLUG   = <?= json_encode($inquilino['slug'] ?? '') ?>;
+
+  // Objeto unificado de contexto
+  window.VH_CTX = {
+    baseUrl: window.baseUrl,
+    adminBase: window.ADMIN_BASE,
+    idInq: window.ID_INQ,
+    slug: window.SLUG
+  };
+</script>
+<script src="<?= $baseUrl ?>/assets/validaciones-core.js"></script>
+<script src="<?= $baseUrl ?>/assets/validaciones-archivos.js"></script>
+<script src="<?= $baseUrl ?>/assets/validaciones-rostro.js"></script>
+<script src="<?= $baseUrl ?>/assets/validaciones-identidad.js"></script>
+<script src="<?= $baseUrl ?>/assets/validaciones-pago.js"></script>
+<script src="<?= $baseUrl ?>/assets/validaciones-modal.js"></script>
+<script src="<?= $baseUrl ?>/assets/validaciones-botones.js"></script>
+<script src="<?= $baseUrl ?>/assets/validaciones-demandas.js"></script>
+
+
+
+
+
+
+
+<!-- <script>
 function setReporteLoading(isLoading){
   const $reporte = document.getElementById('reporteContainer');
   $reporte.classList.remove('hidden');
@@ -1324,5 +1348,44 @@ function postRunAutoRefresh(){
     if (Date.now() - start > 90_000) clearInterval(autoTimer); // 90s
   }, 6_000); // cada 6s
 }
+document.getElementById('btn-actualizar').addEventListener('click', async () => {
+  Swal.fire({
+    title: 'Actualizando archivos...',
+    text: 'Consultando archivos del inquilino',
+    allowOutsideClick: false,
+    didOpen: () => { Swal.showLoading(); }
+  });
 
-</script>
+  try {
+    const resp = await fetch(`${baseUrl}/inquilinos/archivos?slug=${slug}`);
+    const data = await resp.json();
+    Swal.close();
+
+    if (!data.ok) {
+      Swal.fire('Error', data.mensaje, 'error');
+      return;
+    }
+
+    // Reset chips
+    document.querySelectorAll('#chips-archivos span').forEach(chip => {
+      chip.classList.remove('border-emerald-400/30','bg-emerald-400/15');
+      chip.classList.add('border-rose-400/30','bg-rose-400/15');
+    });
+
+    // Marcar los archivos que sí existen
+    data.archivos.forEach(a => {
+      const chip = document.querySelector(`#chips-archivos span[data-key="${a.tipo}"]`);
+      if (chip) {
+        chip.classList.remove('border-rose-400/30','bg-rose-400/15');
+        chip.classList.add('border-emerald-400/30','bg-emerald-400/15');
+      }
+    });
+
+    Swal.fire('Listo', 'Archivos actualizados', 'success');
+  } catch (err) {
+    Swal.close();
+    Swal.fire('Error', 'No se pudieron actualizar los archivos', 'error');
+  }
+});
+
+</script> -->

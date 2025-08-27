@@ -81,10 +81,17 @@ case preg_match('#^/prospectos/code$#', $uri) && $_SERVER['REQUEST_METHOD'] === 
         break;
     
     case $uri === '/prospectos/sendEmails' && $method === 'POST':
-    require __DIR__ . '/Controllers/ProspectAccessController.php';
-    (new \App\Controllers\ProspectAccessController())->sendEmails();
-    exit;
+        require __DIR__ . '/Controllers/ProspectAccessController.php';
+        (new \App\Controllers\ProspectAccessController())->sendEmails();
+        exit;
     break;
+
+    case $uri === '/inquilinos/archivos' && $method === 'GET':
+        require __DIR__ . '/Controllers/InquilinoValidacionAWSController.php';
+        (new \App\Controllers\InquilinoValidacionAWSController())->obtenerArchivos();
+        exit;
+    break;
+
 
 
         // GET /inquilino/{slug}/archivos-presignados

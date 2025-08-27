@@ -110,14 +110,20 @@ class ValidacionResumenHelper
         );
     }
 
-    /* ========== 5) INE OCR (conteo líneas) ========== */
-    public static function ineOcr(int $proceso, array $payload): string {
-        // payload: ['frontal'=>['lineas'=>..], 'reverso'=>['lineas'=>..]]
-        $lf = (int)($payload['frontal']['lineas'] ?? 0);
-        $lr = (int)($payload['reverso']['lineas'] ?? 0);
-        return sprintf('%s INE OCR: %d líneas frente, %d reverso.',
-            self::semaforo($proceso), $lf, $lr
-        );
+    /* ========== 5) DOCUMENTOS OCR (INE, Forma Migratoria, Pasaporte) ========== */
+    public static function docsOcr(int $proceso, array $payload): string {
+        // payload: ['doc_type'=>'ine|forma_migratoria|pasaporte', 'frontal'=>['lineas'], 'reverso'=>['lineas'], 'alt'=>['lineas','tipo']]
+        $docType = $payload['doc_type'] ?? 'ine';
+        $icon = self::semaforo($proceso);
+        if ($docType === 'ine' || $docType === 'forma_migratoria') {
+            $lf = (int)($payload['frontal']['lineas'] ?? 0);
+            $lr = (int)($payload['reverso']['lineas'] ?? 0);
+            $docName = ($docType === 'ine') ? 'INE' : 'Forma Migratoria';
+            return sprintf('%s %s OCR: %d líneas frente, %d reverso.', $icon, $docName, $lf, $lr);
+        } else {
+            $la = (int)($payload['alt']['lineas'] ?? 0);
+            return sprintf('%s Pasaporte OCR: %d líneas detectadas.', $icon, $la);
+        }
     }
 
     /* ========== 6) INGRESOS (listado simple) ========== */

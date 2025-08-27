@@ -163,6 +163,46 @@ private function ensureCopyToUsBucket(string $srcKey): string
         );
     }
 
+    public function obtenerArchivos(): void
+{
+    header('Content-Type: application/json; charset=utf-8');
+    try {
+        $slug = $_GET['slug'] ?? null;
+
+        if (!$slug) {
+            echo json_encode(['ok' => false, 'mensaje' => 'Falta slug del inquilino']);
+            return;
+        }
+
+        require_once __DIR__ . '/../Models/InquilinoModel.php';
+        $model = new \App\Models\InquilinoModel();
+        $inquilino = $model->obtenerPorSlug($slug);
+
+        if (!$inquilino) {
+            echo json_encode(['ok' => false, 'mensaje' => 'Inquilino no encontrado']);
+            return;
+        }
+
+        $archivos = $model->obtenerArchivos((int) $inquilino['id']);
+        echo json_encode(['ok' => true, 'archivos' => $archivos]);
+    } catch (\Throwable $e) {
+        echo json_encode(['ok' => false, 'mensaje' => 'Error interno', 'debug' => $e->getMessage()]);
+    }
+}
+
+private function isCURP(string $s): bool
+{
+    return preg_match(
+        '/^[A-Z][AEIOUX][A-Z]{2}\d{2}'
+      . '(0[1-9]|1[0-2])'
+      . '(0[1-9]|[12]\d|3[01])'
+      . '[HM]'
+      . '(AS|BC|BS|CC|CL|CM|CS|CH|DF|DG|GT|GR|HG|JC|MC|MN|MS|NT|NL|OC|PL|QT|QR|SP|SL|SR|TC|TL|TS|VZ|YN|ZS|NE)'
+      . '[B-DF-HJ-NP-TV-Z]{3}[A-Z\d]\d$/',
+        strtoupper($s)
+    ) === 1;
+}
+
 
 
     public 
@@ -174,9 +214,11 @@ private function ensureCopyToUsBucket(string $srcKey): string
 function validar($slug)
     {
         // 1. Obtener datos del inquilino
-        $inquilino = $this->model->obtenerPorSlug($slug);            
+        $inquilino = $this->model->obtenerPorSlug($slug);  
+        $idInq = (int)$inquilino['id'];          
 
         // --- VALIDACIÓN / RESUMEN DE ARCHIVOS ---------------------------------------
+                // --- VALIDACIÓN / RESUMEN DE ARCHIVOS ---------------------------------------
         if (isset($_GET['check']) && $_GET['check'] === 'archivos') {
             // 1) Leer archivos desde BD
             $rows = $this->model->archivosPorInquilinoId((int)$inquilino['id']);
@@ -243,12 +285,16 @@ function validar($slug)
             }
 
             $hasSelfie  = !empty($map['selfie']['s3_key'] ?? null);
-            $hasFrente  = !empty($map['ine_frontal']['s3_key'] ?? null);
-            $evidencia  = $hasSelfie || $hasFrente || !empty($map['ine_reverso']) || !empty($map['pasaporte']) || !empty($map['forma_migratoria']) || count($map['comprobantes']) > 0;
+            $hasIne = !empty($map['ine_frontal']['s3_key'] ?? null) && !empty($map['ine_reverso']['s3_key'] ?? null);
+            $hasPasaporte = !empty($map['pasaporte']['s3_key'] ?? null);
+            $hasFM = !empty($map['forma_migratoria']['s3_key'] ?? null);
+            $hasComprobantes = count($map['comprobantes']) > 0;
+            $hasIdentificacion = $hasIne || $hasPasaporte || $hasFM;
+            $evidencia  = $hasSelfie || $hasIdentificacion || $hasComprobantes;
 
             // 4) Regla de proceso (0/1/2)
             $proceso = 0; // NO_OK
-            if ($hasSelfie && $hasFrente) {
+            if ($hasSelfie && $hasIdentificacion && $hasComprobantes) {
                 $proceso = 1; // OK
             } elseif ($evidencia) {
                 $proceso = 2; // PENDIENTE
@@ -265,7 +311,8 @@ function validar($slug)
                 ],
                 'requeridos' => [
                     'selfie'      => $hasSelfie,
-                    'ine_frontal' => $hasFrente,
+                    'identificacion' => $hasIdentificacion,
+                    'comprobantes' => $hasComprobantes,
                 ],
                 'ts' => date('c'),
             ];
@@ -281,7 +328,7 @@ function validar($slug)
                 'resultado' => [
                     'proceso'   => $proceso,
                     'resumen'   => $resumen,
-                    'requeridos'=> ['selfie'=>$hasSelfie, 'ine_frontal'=>$hasFrente],
+                    'requeridos'=> ['selfie'=>$hasSelfie, 'identificacion'=>$hasIdentificacion, 'comprobantes'=>$hasComprobantes],
                     'detalles'  => $map,
                 ],
             ], JSON_UNESCAPED_UNICODE);
@@ -428,85 +475,137 @@ function validar($slug)
         *    modelo o un middleware general).
         * ========================================================================== */
 
+                // --- VALIDACIÓN OCR DE DOCUMENTOS ---------------------------------------
+        // --- VALIDACIÓN OCR DE DOCUMENTOS ---------------------------------------
         if (isset($_GET['check']) && $_GET['check'] === 'ocr') {
             // 1) Localizar las s3_key
             $rows = $this->model->archivosPorInquilinoId((int)$inquilino['id']);
-            $frontalKey = null;
-            $reversoKey = null;
+            $frontalKey = $reversoKey = $pasaporteKey = $fmFrontalKey = $fmReversoKey = null;
 
             foreach ($rows as $r) {
                 $tipo = strtolower(trim($r['tipo']));
                 if ($tipo === 'ine_frontal') $frontalKey = $r['s3_key'];
                 if ($tipo === 'ine_reverso') $reversoKey = $r['s3_key'];
+                if ($tipo === 'pasaporte') $pasaporteKey = $r['s3_key'];
+                if ($tipo === 'forma_migratoria_frontal') $fmFrontalKey = $r['s3_key'];
+                if ($tipo === 'forma_migratoria_reverso') $fmReversoKey = $r['s3_key'];
             }
 
-            if (!$frontalKey || !$reversoKey) {
-                echo json_encode(['ok' => false, 'mensaje' => 'Faltan imágenes: se requiere INE frontal y reverso.']);
+            $hasIne = $frontalKey && $reversoKey;
+            $hasFM = $fmFrontalKey && $fmReversoKey;
+            $hasPasaporte = $pasaporteKey;
+
+            if (!$hasIne && !$hasFM && !$hasPasaporte) {
+                echo json_encode([
+                    'ok' => false,
+                    'mensaje' => 'Falta identificación: se requiere INE (frente y reverso), Forma Migratoria (frente y reverso) o Pasaporte.'
+                ]);
                 return;
             }
 
             try {
-                // 2) Descargar bytes desde S3
-                $fr = $this->s3->getObject(['Bucket' => $this->s3Bucket, 'Key' => $frontalKey]);
-                $rv = $this->s3->getObject(['Bucket' => $this->s3Bucket, 'Key' => $reversoKey]);
-                $bytesFrontal = (string)$fr['Body'];
-                $bytesReverso = (string)$rv['Body'];
-
-                // 3) Textract: DetectDocumentText (simple y rápido)
-                $resF = $this->textract->detectDocumentText(['Document' => ['Bytes' => $bytesFrontal]]);
-                $resR = $this->textract->detectDocumentText(['Document' => ['Bytes' => $bytesReverso]]);
-
-                // 4) Nos quedamos con las líneas
-                $linesF = [];
-                foreach (($resF['Blocks'] ?? []) as $b) {
-                    if (($b['BlockType'] ?? '') === 'LINE' && !empty($b['Text'])) $linesF[] = $b['Text'];
+                // 2) Descargar bytes desde S3 según el tipo de documento
+                $bytesFrontal = $bytesReverso = $bytesAlt = null;
+                $docType = null;
+                if ($hasIne) {
+                    $fr = $this->s3->getObject(['Bucket' => $this->s3Bucket, 'Key' => $frontalKey]);
+                    $rv = $this->s3->getObject(['Bucket' => $this->s3Bucket, 'Key' => $reversoKey]);
+                    $bytesFrontal = (string)$fr['Body'];
+                    $bytesReverso = (string)$rv['Body'];
+                    $docType = 'ine';
+                } elseif ($hasFM) {
+                    $fmf = $this->s3->getObject(['Bucket' => $this->s3Bucket, 'Key' => $fmFrontalKey]);
+                    $fmr = $this->s3->getObject(['Bucket' => $this->s3Bucket, 'Key' => $fmReversoKey]);
+                    $bytesFrontal = (string)$fmf['Body'];
+                    $bytesReverso = (string)$fmr['Body'];
+                    $docType = 'forma_migratoria';
+                } elseif ($hasPasaporte) {
+                    $pa = $this->s3->getObject(['Bucket' => $this->s3Bucket, 'Key' => $pasaporteKey]);
+                    $bytesAlt = (string)$pa['Body'];
+                    $docType = 'pasaporte';
                 }
-                $linesR = [];
-                foreach (($resR['Blocks'] ?? []) as $b) {
-                    if (($b['BlockType'] ?? '') === 'LINE' && !empty($b['Text'])) $linesR[] = $b['Text'];
+
+                // 3) Textract: DetectDocumentText
+                $linesF = $linesR = $linesAlt = [];
+                if ($hasIne || $hasFM) {
+                    $resF = $this->textract->detectDocumentText(['Document' => ['Bytes' => $bytesFrontal]]);
+                    $resR = $this->textract->detectDocumentText(['Document' => ['Bytes' => $bytesReverso]]);
+                    foreach (($resF['Blocks'] ?? []) as $b) {
+                        if (($b['BlockType'] ?? '') === 'LINE' && !empty($b['Text'])) $linesF[] = $b['Text'];
+                    }
+                    foreach (($resR['Blocks'] ?? []) as $b) {
+                        if (($b['BlockType'] ?? '') === 'LINE' && !empty($b['Text'])) $linesR[] = $b['Text'];
+                    }
+                } else {
+                    $resAlt = $this->textract->detectDocumentText(['Document' => ['Bytes' => $bytesAlt]]);
+                    foreach (($resAlt['Blocks'] ?? []) as $b) {
+                        if (($b['BlockType'] ?? '') === 'LINE' && !empty($b['Text'])) $linesAlt[] = $b['Text'];
+                    }
                 }
 
-                // 5) Proceso: OK si ambos lados tienen líneas; PEND si uno; NO_OK si ninguno
+                // 4) Determinar proceso: OK si hay texto legible, PEND si parcial, NO_OK si nada
                 $lf = count($linesF);
                 $lr = count($linesR);
-                $proceso = ($lf > 0 && $lr > 0) ? 1 : (($lf > 0 || $lr > 0) ? 2 : 0);
+                $la = count($linesAlt);
+                $proceso = 0;
+                if ($hasIne || $hasFM) {
+                    $proceso = ($lf > 0 && $lr > 0) ? 1 : (($lf > 0 || $lr > 0) ? 2 : 0);
+                } else {
+                    $proceso = ($la > 0) ? 1 : 0; // Para Pasaporte: OK si hay texto
+                }
 
-                // 6) Payload y resumen humano
+                // 5) Payload y resumen humano
                 $payload = [
-                    'tipo'    => 'ine_ocr_detect',
-                    'frontal' => ['lineas' => $lf, 'texto' => $linesF],
-                    'reverso' => ['lineas' => $lr, 'texto' => $linesR],
-                    'archivos'=> ['ine_frontal_key' => $frontalKey, 'ine_reverso_key' => $reversoKey],
-                    'ts'      => date('c'),
+                    'tipo' => 'docs_ocr_detect',
+                    'doc_type' => $docType,
+                    'frontal' => ($hasIne || $hasFM) ? ['lineas' => $lf, 'texto' => $linesF] : null,
+                    'reverso' => ($hasIne || $hasFM) ? ['lineas' => $lr, 'texto' => $linesR] : null,
+                    'alt' => $hasPasaporte ? ['lineas' => $la, 'texto' => $linesAlt, 'tipo' => 'pasaporte'] : null,
+                    'archivos' => array_filter([
+                        'ine_frontal_key' => $frontalKey,
+                        'ine_reverso_key' => $reversoKey,
+                        'forma_migratoria_frontal_key' => $fmFrontalKey,
+                        'forma_migratoria_reverso_key' => $fmReversoKey,
+                        'pasaporte_key' => $pasaporteKey,
+                    ]),
+                    'ts' => date('c'),
                 ];
-                $resumen = \App\Helpers\ValidacionResumenHelper::ineOcr($proceso, $payload);
 
-                // 7) Guardar en BD (usa el bloque de DOCUMENTOS para OCR genérico)
+                // 6) Resumen humano
+                $resumen = \App\Helpers\ValidacionResumenHelper::docsOcr($proceso, $payload);
+
+                // 7) Guardar en BD (usa el bloque de DOCUMENTOS)
                 $ok = $this->model->guardarValidacionDocumentos((int)$inquilino['id'], (int)$proceso, $payload, $resumen);
 
                 // 8) Respuesta
                 echo json_encode([
                     'ok' => (bool)$ok,
-                    'mensaje' => $ok ? 'OCR de INE guardado.' : 'No se pudo guardar.',
+                    'mensaje' => $ok ? 'OCR de documentos guardado.' : 'No se pudo guardar.',
                     'resultado' => [
                         'proceso' => $proceso,
                         'resumen' => $resumen,
-                        'ine_frontal_key' => $frontalKey,
-                        'ine_reverso_key' => $reversoKey,
-                        'frontal' => ['lineas' => $lf],
-                        'reverso' => ['lineas' => $lr],
+                        'doc_type' => $docType,
+                        'archivos' => array_filter([
+                            'ine_frontal_key' => $frontalKey,
+                            'ine_reverso_key' => $reversoKey,
+                            'forma_migratoria_frontal_key' => $fmFrontalKey,
+                            'forma_migratoria_reverso_key' => $fmReversoKey,
+                            'pasaporte_key' => $pasaporteKey,
+                        ]),
+                        'frontal' => ($hasIne || $hasFM) ? ['lineas' => $lf] : null,
+                        'reverso' => ($hasIne || $hasFM) ? ['lineas' => $lr] : null,
+                        'alt' => $hasPasaporte ? ['lineas' => $la] : null,
                     ],
-                ]);
+                ], JSON_UNESCAPED_UNICODE);
             } catch (\Aws\Exception\AwsException $e) {
                 echo json_encode([
                     'ok' => false,
                     'mensaje' => 'Error en Textract: ' . $e->getAwsErrorMessage(),
-                    'codigo'  => $e->getAwsErrorCode()
+                    'codigo' => $e->getAwsErrorCode()
                 ]);
             }
             return;
         }
-
 
         // --- DEBUG: parseo básico de CURP/CIC desde OCR ---
             if (isset($_GET['check']) && $_GET['check'] === 'parse') {
@@ -558,7 +657,7 @@ function validar($slug)
             }
         // --- FIN DEBUG parse ---    
 
-            // --- DEBUG: nombres/apellidos vía AnalyzeDocument(FORMS) ---
+        // --- DEBUG: nombres/apellidos vía AnalyzeDocument(FORMS) ---
         if (isset($_GET['check']) && $_GET['check'] === 'kv') {
             // localizar claves S3
             $rows = $this->model->archivosPorInquilinoId($inquilino['id']);
@@ -569,14 +668,16 @@ function validar($slug)
                 if ($t === 'ine_reverso') $reversoKey = $r['s3_key'];
             }
             if (!$frontalKey || !$reversoKey) {
-                echo json_encode(['ok'=>false,'mensaje'=>'Faltan imágenes: frontal y reverso.']); return;
+                echo json_encode(['ok'=>false,'mensaje'=>'Faltan imágenes: frontal y reverso.']); 
+                return;
             }
 
             try {
                 // descarga
                 $fr = $this->s3->getObject(['Bucket'=>$this->s3Bucket,'Key'=>$frontalKey]);
                 $rv = $this->s3->getObject(['Bucket'=>$this->s3Bucket,'Key'=>$reversoKey]);
-                $bytesF = (string)$fr['Body']; $bytesR = (string)$rv['Body'];
+                $bytesF = (string)$fr['Body']; 
+                $bytesR = (string)$rv['Body'];
 
                 // AnalyzeDocument (FORMS) en frontal y reverso
                 $adF = $this->textract->analyzeDocument([
@@ -601,36 +702,71 @@ function validar($slug)
                 $apPat   = $this->kv_pick($merged, $synApPat);
                 $apMat   = $this->kv_pick($merged, $synApMat);
 
-                // Fallback: si solo tenemos NOMBRE con todo concatenado (APELLIDO P, APELLIDO M, NOMBRES)
-            if (!$apPat && !$apMat && $nombres) {
-            // 1) Cortar cualquier rastro de "DOMICILIO ..." que Textract pegó
-            $clean = strtoupper($nombres);
-            $clean = preg_replace('/\bDOMICILIO\b.*$/u', '', $clean);
-            // Limpieza de espacios
-            $clean = preg_replace('/\s+/', ' ', trim($clean));
+                // Fallback: si solo tenemos NOMBRE con todo concatenado
+                if (!$apPat && !$apMat && $nombres) {
+                    $clean = strtoupper($nombres);
+                    $clean = preg_replace('/\bDOMICILIO\b.*$/u', '', $clean);
+                    $clean = preg_replace('/\s+/', ' ', trim($clean));
+                    $tokens = array_values(array_filter(explode(' ', $clean)));
+                    if (count($tokens) >= 3) {
+                        $apPat   = $tokens[0];
+                        $apMat   = $tokens[1];
+                        $nombres = implode(' ', array_slice($tokens, 2));
+                    }
+                }
 
-            // 2) Partir en tokens
-            $tokens = array_values(array_filter(explode(' ', $clean)));
+                // Construir objeto de validación identidad
+                $j = [
+                    'tipo'     => 'identidad_nombres',
+                    'overall'  => true,
+                    'detalles' => [
+                        'apellidop' => !empty($apPat),
+                        'apellidom' => !empty($apMat),
+                        'nombres'   => !empty($nombres),
+                        'curp'      => $merged['CURP'] ?? null
+                    ],
+                    'ocr' => [
+                        'apellidop' => $apPat,
+                        'apellidom' => $apMat,
+                        'nombres'   => $nombres,
+                        'curp'      => $merged['CURP'] ?? null
+                    ],
+                    'bd' => [
+                        'apellidop' => $inquilino['apellidop_inquilino'] ?? '',
+                        'apellidom' => $inquilino['apellidom_inquilino'] ?? '',
+                        'nombres'   => $inquilino['nombre_inquilino'] ?? '',
+                        'curp'      => $inquilino['curp'] ?? null
+                    ],
+                    'curp'          => $merged['CURP'] ?? null,
+                    'clave_elector' => $merged['CLAVE DE ELECTOR'] ?? null,
+                    'ts'            => gmdate('c')
+                ];
 
-            // 3) Heurística INE: [APELLIDO_P, APELLIDO_M, NOMBRES...]
-            if (count($tokens) >= 3) {
-                $apPat  = $tokens[0];
-                $apMat  = $tokens[1];
-                $nombres = implode(' ', array_slice($tokens, 2));
-            }
-            }
+                // Inyectar CURP si Textract la detectó
+                if (!empty($merged['CURP']) && $this->isCURP($merged['CURP'])) {
+                    $curpDetectada = strtoupper(trim($merged['CURP']));
+                    $j['curp'] = $curpDetectada;
+                    // Guardar en tabla inquilinos
+                    $this->model->actualizarCurp((int)$inquilino['id'], $curpDetectada);
+                }
 
+                // Resumen humano con CURP
+                $curpTxt = !empty($j['curp']) ? " · CURP: {$j['curp']}" : '';
+                $resumenHumano = "✔️ Identidad (nombres): coincide con BD ({$apPat} {$apMat} {$nombres}). "
+                                . "OCR: {$apPat} {$apMat} {$nombres}{$curpTxt}.";
+
+                $this->model->guardarValidacionIdentidad(
+                    (int)$inquilino['id'],
+                    json_encode($j, JSON_UNESCAPED_UNICODE),
+                    $resumenHumano
+                );
 
                 echo json_encode([
                     'ok' => true,
                     'mensaje' => 'AnalyzeDocument(FORMS) OK.',
-                    'resultado' => [
-                        'apellidop' => $apPat,
-                        'apellidom' => $apMat,
-                        'nombres'   => $nombres,
-                    ],
+                    'resultado' => $j,
                     'debug' => [
-                        'keys_detectadas' => array_slice(array_keys($merged), 0, 30), // primeras 30
+                        'pairs_detectados' => array_slice($merged, 0, 100, true),
                     ]
                 ]);
             } catch (\Aws\Exception\AwsException $e) {
@@ -723,6 +859,14 @@ function validar($slug)
             return;
         }
         // --- FIN DEBUG match ---
+
+        // Después de guardar la validación de identidad
+        $idInq = (int)$inquilino['id'];
+        if (isset($data['ocr']['curp']) && $this->isCURP($data['ocr']['curp'])) {
+            $curp = strtoupper(trim($data['ocr']['curp']));
+            $this->model->actualizarCurp($idInq, $curp);
+        }
+
 
         // --- LISTAR COMPROBANTES DE INGRESO (sin OCR) + GUARDAR RESUMEN ------------
         if (isset($_GET['check']) && $_GET['check'] === 'ingresos_list') {
@@ -979,10 +1123,6 @@ function validar($slug)
         return;
     }
 
-
-
-
-        
     /**
      * Extrae señales de un estado de cuenta (BBVA y similares) desde texto OCR.
      * Devuelve:
@@ -1602,6 +1742,13 @@ function parseComprobanteIngreso(string $text): array {
             $mapR = $this->textract_kv_map($adR['Blocks'] ?? []);
             $merged = $mapF + $mapR;
 
+            // Si Textract detecta CURP válida, la guardamos también en la tabla inquilinos
+            $curpDetectada = null;
+            if (!empty($merged['CURP']) && $this->isCURP($merged['CURP'])) {
+                $curpDetectada = strtoupper(trim($merged['CURP']));
+                $this->model->actualizarCurp((int)$inquilino['id'], $curpDetectada);
+            }
+
             // 3) Tomar campos (y fallback si todo viene en "NOMBRE")
             $synNombres = ['NOMBRE(S)','NOMBRES','NOMBRE'];
             $synApPat   = ['APELLIDO PATERNO','PRIMER APELLIDO','APELLIDO 1','APELLIDO1'];
@@ -1628,17 +1775,20 @@ function parseComprobanteIngreso(string $text): array {
                 'apellidop' => $this->_norm_txt($apPat),
                 'apellidom' => $this->_norm_txt($apMat),
                 'nombres'   => $this->_norm_txt($nombres),
+                'curp'      => $curpDetectada
             ];
             $bd  = [
                 'apellidop' => $this->_norm_txt($inquilino['apellidop_inquilino'] ?? ''),
                 'apellidom' => $this->_norm_txt($inquilino['apellidom_inquilino'] ?? ''),
                 'nombres'   => $this->_norm_txt($inquilino['nombre_inquilino'] ?? ''),
+                'curp'      => $this->_norm_txt($inquilino['curp'] ?? '')
             ];
 
             $match = [
                 'apellidop' => ($ocr['apellidop'] !== '' && $ocr['apellidop'] === $bd['apellidop']),
                 'apellidom' => ($ocr['apellidom'] !== '' && $ocr['apellidom'] === $bd['apellidom']),
                 'nombres'   => ($ocr['nombres']   !== '' && $ocr['nombres']   === $bd['nombres']),
+                'curp'      => ($ocr['curp'] && $bd['curp'] && $ocr['curp'] === $bd['curp'])
             ];
             $overall = ($match['apellidop'] && $match['apellidom'] && $match['nombres']);
 
@@ -1654,14 +1804,17 @@ function parseComprobanteIngreso(string $text): array {
             ];
 
             // 6) Proceso (0/1/2) y resumen humano
-            $proceso = $overall ? 1 : 0; // si quieres, agrega lógica para 2=PENDIENTE cuando no haya evidencia suficiente
-            $resumen = \App\Helpers\ValidacionResumenHelper::identidadNombres($proceso, $payload);
+            $proceso = $overall ? 1 : 0;
+            $curpTxt = $curpDetectada ? " · CURP: {$curpDetectada}" : '';
+            $resumen = "✔️ Identidad (nombres): " 
+                    . ($overall ? "coincide con BD" : "no coincide con BD")
+                    . " ({$apPat} {$apMat} {$nombres})"
+                    . $curpTxt . ".";
 
             // 7) Guardar proceso + resumen + JSON
             $ok = $this->model->guardarValidacionIdentidad(
                 (int)$inquilino['id'],
-                (int)$proceso,
-                $payload,
+                json_encode($payload, JSON_UNESCAPED_UNICODE),
                 $resumen
             );
 
@@ -1699,7 +1852,7 @@ function parseComprobanteIngreso(string $text): array {
         }
 
         try {
-            // 2) Descargar bytes desde S3 (MX) y correr OCR con Textract (us-east-1) vía BYTES
+            // 2) Descargar bytes desde S3 (MX) y correr OCR con Textract (us-east-1)
             $fr = $this->s3->getObject(['Bucket' => $this->s3Bucket, 'Key' => $frontalKey]);
             $rv = $this->s3->getObject(['Bucket' => $this->s3Bucket, 'Key' => $reversoKey]);
             $bytesF = (string)$fr['Body'];
@@ -1720,14 +1873,18 @@ function parseComprobanteIngreso(string $text): array {
 
             $texto = strtoupper(implode("\n", array_merge($linesF, $linesR)));
 
-            // 4) Parsear CURP / CIC / Vigencia con helper del propio controlador
+            // 4) Parsear CURP / CIC / Vigencia con helper
             $parsed = $this->ine_parse_curp_cic($texto);
             $tieneCurp = !empty($parsed['curp']);
             $tieneCic  = !empty($parsed['cic']);
             $tieneAlgo = $tieneCurp || $tieneCic || !empty($parsed['vigencia']);
 
+            // Si hay CURP válida → actualizar en tabla inquilinos
+            if ($tieneCurp && $this->isCURP($parsed['curp'])) {
+                $this->model->actualizarCurp((int)$inquilino['id'], strtoupper(trim($parsed['curp'])));
+            }
+
             // 5) Decidir proceso (0/1/2)
-            //    OK si hay CURP y CIC; PEND si hay alguno; NO_OK si nada.
             if ($tieneCurp && $tieneCic) {
                 $proceso = 1; // OK
             } elseif ($tieneAlgo) {
@@ -1736,7 +1893,7 @@ function parseComprobanteIngreso(string $text): array {
                 $proceso = 0; // NO_OK
             }
 
-            // 6) Armar payload y resumen humano
+            // 6) Armar payload
             $payload = [
                 'tipo'    => 'identidad_curp_cic',
                 'fuente'  => 'textract_detect',
@@ -1752,13 +1909,18 @@ function parseComprobanteIngreso(string $text): array {
                 'ts' => date('c'),
             ];
 
-            $resumen = \App\Helpers\ValidacionResumenHelper::identidadCurpCic($proceso, $parsed);
+            // 7) Resumen humano (incluye CURP si existe)
+            $curpTxt = $tieneCurp ? " · CURP: {$parsed['curp']}" : '';
+            $cicTxt  = $tieneCic ? " · CIC: {$parsed['cic']}" : '';
+            $vigTxt  = !empty($parsed['vigencia']) ? " · Vigencia: {$parsed['vigencia']}" : '';
+            $resumen = "✔️ Identidad (CURP/CIC): "
+                    . ($proceso === 1 ? "datos completos detectados" : ($proceso === 2 ? "datos parciales" : "no se detectó información"))
+                    . $curpTxt . $cicTxt . $vigTxt . ".";
 
-            // 7) Guardar en BD reutilizando guardarValidacionIdentidad (misma columna id_json/resumen)
+            // 8) Guardar en BD reutilizando guardarValidacionIdentidad
             $ok = $this->model->guardarValidacionIdentidad(
                 (int)$inquilino['id'],
-                (int)$proceso,
-                $payload,
+                json_encode($payload, JSON_UNESCAPED_UNICODE),
                 $resumen
             );
 
@@ -1783,70 +1945,78 @@ function parseComprobanteIngreso(string $text): array {
         return;
     }
 
+    // --- STATUS: resumen de validaciones guardadas ---
+    if (isset($_GET['check']) && $_GET['check'] === 'status') {
+        try {
+            $vals = $this->model->obtenerValidaciones((int)$inquilino['id']);
 
+            // Semáforos (0=NO_OK, 1=OK, 2=PEND.)
+            $semaforos = [
+                'documentos'   => (int)($vals['documentos']['proceso']   ?? 2),
+                'archivos'     => (int)($vals['archivos']['proceso']     ?? 2),
+                'rostro'       => (int)($vals['rostro']['proceso']       ?? 2),
+                'identidad'    => (int)($vals['identidad']['proceso']    ?? 2),
+                'ingresos'     => (int)($vals['ingresos']['proceso']     ?? 2),
+                'pago_inicial' => (int)($vals['pago_inicial']['proceso'] ?? 2),
+                'demandas'     => (int)($vals['demandas']['proceso']     ?? 2),
+            ];
 
+            // Resumen Humano global (ej. "✔️ Docs · ⏳ Arch · ✖️ Rostro · ...")
+            $resumenGlobal = \App\Helpers\ValidacionResumenHelper::statusGlobal($semaforos);
 
-        // --- STATUS: resumen de validaciones guardadas ---
-                // --- STATUS: resumen global de validaciones guardadas -----------------------
-        if (isset($_GET['check']) && $_GET['check'] === 'status') {
-            try {
-                $vals = $this->model->obtenerValidaciones((int)$inquilino['id']);
+            // Además, devolvemos cada resumen humano individual si existe
+            $resumenes = [
+                'archivos'     => $vals['archivos']['resumen']     ?? null,
+                'rostro'       => $vals['rostro']['resumen']       ?? null,
+                'identidad'    => $vals['identidad']['resumen']    ?? null,
+                'documentos'   => $vals['documentos']['resumen']   ?? null,
+                'ingresos'     => $vals['ingresos']['resumen']     ?? null,
+                'pago_inicial' => $vals['pago_inicial']['resumen'] ?? null,
+                'demandas'     => $vals['demandas']['resumen']     ?? null,
+            ];
 
-                // Semáforos (0=NO_OK, 1=OK, 2=PEND.)
-                $semaforos = [
-                    'documentos'   => (int)($vals['documentos']['proceso']   ?? 2),
-                    'archivos'     => (int)($vals['archivos']['proceso']     ?? 2),
-                    'rostro'       => (int)($vals['rostro']['proceso']       ?? 2),
-                    'identidad'    => (int)($vals['identidad']['proceso']    ?? 2),
-                    'ingresos'     => (int)($vals['ingresos']['proceso']     ?? 2),
-                    'pago_inicial' => (int)($vals['pago_inicial']['proceso'] ?? 2),
-                    'demandas'     => (int)($vals['demandas']['proceso']     ?? 2),
-                ];
+            // 🚀 Extra: detectar si en la validación identidad tenemos CURP
+            $curpDetectada = null;
+            if (!empty($vals['identidad']['json']) && is_array($vals['identidad']['json'])) {
+                $curpDetectada = $vals['identidad']['json']['curp'] ?? null;
+            }
+            // Si no está en json, usamos lo que tenga el inquilino
+            if (!$curpDetectada && !empty($inquilino['curp'])) {
+                $curpDetectada = $inquilino['curp'];
+            }
 
-                // Resumen Humano global (ej. "✔️ Docs · ⏳ Arch · ✖️ Rostro · ...")
-                $resumenGlobal = \App\Helpers\ValidacionResumenHelper::statusGlobal($semaforos);
-
-                // Además, devolvemos cada resumen humano individual si existe
-                $resumenes = [
-                    'archivos'     => $vals['archivos']['resumen']     ?? null,
-                    'rostro'       => $vals['rostro']['resumen']       ?? null,
-                    'identidad'    => $vals['identidad']['resumen']    ?? null,
-                    'documentos'   => $vals['documentos']['resumen']   ?? null,
-                    'ingresos'     => $vals['ingresos']['resumen']     ?? null,
-                    'pago_inicial' => $vals['pago_inicial']['resumen'] ?? null,
-                    'demandas'     => $vals['demandas']['resumen']     ?? null,
-                ];
-
-                // Si el cliente quiere texto plano combinado (?plain=1)
-                $plain = (isset($_GET['plain']) && $_GET['plain'] == '1');
-                if ($plain) {
-                    // Arma un párrafo multi-renglón listo para copiar/pegar
-                    $lines = [$resumenGlobal];
-                    foreach ($resumenes as $k => $txt) {
-                        if ($txt) $lines[] = "• " . $txt;
-                    }
-                    echo json_encode([
-                        'ok' => true,
-                        'slug' => $inquilino['slug'] ?? null,
-                        'plain' => implode("\n", $lines),
-                        'meta' => $vals['meta'] ?? null,
-                    ], JSON_UNESCAPED_UNICODE);
-                    return;
+            // Si el cliente quiere texto plano combinado (?plain=1)
+            $plain = (isset($_GET['plain']) && $_GET['plain'] == '1');
+            if ($plain) {
+                $lines = [$resumenGlobal];
+                foreach ($resumenes as $k => $txt) {
+                    if ($txt) $lines[] = "• " . $txt;
                 }
-
                 echo json_encode([
                     'ok' => true,
                     'slug' => $inquilino['slug'] ?? null,
-                    'resumen_global' => $resumenGlobal,
-                    'semaforos' => $semaforos,
-                    'resumenes' => $resumenes,
-                    'detalles'  => $vals,  // incluye los JSON completos por cada validación
+                    'plain' => implode("\n", $lines),
+                    'curp'  => $curpDetectada, // 👈 añadido
+                    'meta' => $vals['meta'] ?? null,
                 ], JSON_UNESCAPED_UNICODE);
-            } catch (\Throwable $e) {
-                echo json_encode(['ok'=>false,'mensaje'=>'Error al consultar estado: '.$e->getMessage()]);
+                return;
             }
-            return;
+
+            echo json_encode([
+                'ok' => true,
+                'slug' => $inquilino['slug'] ?? null,
+                'resumen_global' => $resumenGlobal,
+                'semaforos' => $semaforos,
+                'resumenes' => $resumenes,
+                'curp'      => $curpDetectada, // 👈 añadido
+                'detalles'  => $vals,          // incluye los JSON completos por cada validación
+            ], JSON_UNESCAPED_UNICODE);
+        } catch (\Throwable $e) {
+            echo json_encode(['ok'=>false,'mensaje'=>'Error al consultar estado: '.$e->getMessage()]);
         }
+        return;
+    }
+
 
         // --- REGENERAR RESÚMENES HUMANOS DESDE JSON GUARDADOS ----------------------
         if (isset($_GET['check']) && $_GET['check'] === 'resumen_full') {
@@ -1932,7 +2102,9 @@ function parseComprobanteIngreso(string $text): array {
                 if ($isAllowed('identidad')) {
                     $p = (int)($vals['identidad']['proceso'] ?? 2);
                     $j = $vals['identidad']['json'] ?? null;
+
                     if (is_array($j)) {
+                        // Determinar tipo y generar resumen humano
                         $tipo = strtolower((string)($j['tipo'] ?? ''));
                         if ($tipo === 'identidad_nombres') {
                             $resumen = \App\Helpers\ValidacionResumenHelper::identidadNombres($p, $j);
@@ -1942,13 +2114,29 @@ function parseComprobanteIngreso(string $text): array {
                             // Fallback si no trae tipo
                             $resumen = \App\Helpers\ValidacionResumenHelper::identidadNombres($p, $j);
                         }
-                        $doSave('identidad', function() use($idInq, $p, $j, $resumen) {
-                            return $this->model->guardarValidacionIdentidad($idInq, $p, $j, $resumen);
+
+                        // 👇 Inyectar CURP / CLAVE DE ELECTOR si existen en $j
+                        if (!empty($j['curp'])) {
+                            $j['curp'] = $j['curp'];
+                        }
+                        if (!empty($j['clave_elector'])) {
+                            $j['clave_elector'] = $j['clave_elector'];
+                        }
+
+                        // Guardar en BD
+                        $doSave('identidad', function() use ($idInq, $p, $j, $resumen) {
+                            $json = json_encode($j, JSON_UNESCAPED_UNICODE);
+                            $resumen = is_array($resumen)
+                                ? json_encode($resumen, JSON_UNESCAPED_UNICODE)
+                                : (string)$resumen;
+                            return $this->model->guardarValidacionIdentidad($idInq, $json, $resumen);
                         });
+
                     } else {
                         $skipped[] = 'identidad (sin JSON)';
                     }
                 }
+
 
                 // =========================
                 //  D) DOCUMENTOS (OCR INE líneas)
@@ -1957,7 +2145,7 @@ function parseComprobanteIngreso(string $text): array {
                     $p = (int)($vals['documentos']['proceso'] ?? 2);
                     $j = $vals['documentos']['json'] ?? null;
                     if (is_array($j)) {
-                        $resumen = \App\Helpers\ValidacionResumenHelper::ineOcr($p, $j);
+                        $resumen = \App\Helpers\ValidacionResumenHelper::docsOcr($p, $j);
                         $doSave('documentos', function() use($idInq, $p, $j, $resumen) {
                             return $this->model->guardarValidacionDocumentos($idInq, $p, $j, $resumen);
                         });
@@ -2333,4 +2521,6 @@ function parseComprobanteIngreso(string $text): array {
         $s = preg_replace('/\s+/', ' ', $s);
         return $s;
     }
+    
+    
 }
