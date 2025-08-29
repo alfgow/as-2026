@@ -2,5 +2,7 @@ vendor/
 *.zip
 .env
 config/
+config/*
 output/
 Core/
+assets/json.json
