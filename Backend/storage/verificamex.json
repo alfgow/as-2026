@@ -1,0 +1,794 @@
+{
+	"data": {
+		"object": "ine_validations",
+		"renapo": {
+			"codigo": "01",
+			"status": true,
+			"mensaje": "Búsqueda exitosa por curp",
+			"registros": [
+				{
+					"curp": "LOML990811MMCPLL01",
+					"sexo": "MUJER",
+					"entidad": "MEXICO",
+					"nombres": "LILIANA",
+					"parametro": "?curp=LOML990811MMCPLL01&pcurp=5E7C3AB6F7FCD699C574E05091449216&hash=45a73fe9914371dc5dc0884a524f937f8f997d50",
+					"statusCurp": "RCN",
+					"claveEntidad": "MC",
+					"nacionalidad": "MEXICO",
+					"docProbatorio": 1,
+					"primerApellido": "LOPEZ",
+					"fechaNacimiento": "11/08/1999",
+					"segundoApellido": "MALDONADO",
+					"datosDocProbatorio": {
+						"foja": "",
+						"tomo": "",
+						"libro": "",
+						"anioReg": "1999",
+						"numActa": "01773",
+						"entidadRegistro": "MÉXICO",
+						"municipioRegistro": "NEZAHUALCOYOTL",
+						"claveEntidadRegistro": "15",
+						"claveMunicipioRegistro": "058"
+					}
+				}
+			]
+		},
+		"status": true,
+		"dataOcr": {
+			"sex": "M",
+			"type": "I",
+			"spacing": "",
+			"subtype": "D",
+			"check_sum": "1",
+			"last_name": "LOPEZ",
+			"date_birth": "990811",
+			"doc_number": "262161063",
+			"first_name": "LILIANA",
+			"last_name2": "MALDONADO",
+			"birth_check": "0",
+			"check_digit": "1",
+			"first_name2": "",
+			"nacionality": "MEX",
+			"issue_country": "MEX",
+			"first_optional": "3178119977828",
+			"expiration_date": "271231",
+			"second_optional": "<00<<10764<"
+		},
+		"message": "La credencial es válida",
+		"reporte": "",
+		"faceComparison": {
+			"result": true,
+			"similarity": 99.86
+		},
+		"documentInformation": {
+			"documentData": [
+				{
+					"name": "Apellido/s",
+					"type": "Surname",
+					"value": "LOPEZ MALDONADO",
+					"source": "MRZ"
+				},
+				{
+					"name": "Nombre",
+					"type": "Name",
+					"value": "LILIANA",
+					"source": "MRZ"
+				},
+				{
+					"name": "Sexo",
+					"type": "Sex",
+					"value": "M",
+					"source": "MRZ"
+				},
+				{
+					"name": "Nacionalidad",
+					"type": "Nationality",
+					"value": "MEX",
+					"source": "MRZ"
+				},
+				{
+					"name": "País de Emisión",
+					"type": "IssuingState",
+					"value": "MEX",
+					"source": "MRZ"
+				},
+				{
+					"name": "Fecha de Expiración",
+					"type": "DateOfExpiry",
+					"value": "31/12/2027",
+					"source": "MRZ"
+				},
+				{
+					"name": "Fecha de Nacimiento",
+					"type": "DateOfBirth",
+					"value": "11/8/1999",
+					"source": "MRZ"
+				},
+				{
+					"name": "Número de Documento",
+					"type": "DocumentNumber",
+					"value": "262161063",
+					"source": "MRZ"
+				},
+				{
+					"name": "Número Personal",
+					"type": "PersonalNumber",
+					"value": "3178119977828",
+					"source": "MRZ"
+				},
+				{
+					"name": "Apellido/s",
+					"type": "Surname",
+					"value": "LOPEZ MALDONADO",
+					"source": "OCR"
+				},
+				{
+					"name": "Apellido Paterno",
+					"type": "FatherSurname",
+					"value": "LOPEZ",
+					"source": "OCR"
+				},
+				{
+					"name": "Apellido Materno",
+					"type": "MotherSurname",
+					"value": "MALDONADO",
+					"source": "OCR"
+				},
+				{
+					"name": "Nombre",
+					"type": "Name",
+					"value": "LILIANA",
+					"source": "OCR"
+				},
+				{
+					"name": "Nombre Completo",
+					"type": "FullName",
+					"value": "LOPEZ MALDONADO LILIANA",
+					"source": "OCR"
+				},
+				{
+					"name": "Número de Documento",
+					"type": "DocumentNumber",
+					"value": "262161063",
+					"source": "BARCODE"
+				},
+				{
+					"name": "Fecha de Expiración",
+					"type": "DateOfExpiry",
+					"value": "31/12/2027",
+					"source": "OCR"
+				},
+				{
+					"name": "Fecha de Nacimiento",
+					"type": "DateOfBirth",
+					"value": "11/8/1999",
+					"source": "OCR"
+				},
+				{
+					"name": "Fecha de Emisión",
+					"type": "FullDateOfIssue",
+					"value": "3/5/2024",
+					"source": "BARCODE"
+				},
+				{
+					"name": "Sexo",
+					"type": "Sex",
+					"value": "M",
+					"source": "OCR"
+				},
+				{
+					"name": "Número Personal",
+					"type": "PersonalNumber",
+					"value": "LOML990811MMCPLL01",
+					"source": "OCR"
+				},
+				{
+					"name": "Clave de Elector",
+					"type": "Voter_Key",
+					"value": "LPMLLL99081115M500",
+					"source": "OCR"
+				},
+				{
+					"name": "Sección",
+					"type": "Section",
+					"value": "3178",
+					"source": "OCR"
+				},
+				{
+					"name": "Dirección",
+					"type": "PermanentAddress",
+					"value": "C SALTILLO 74 COL VERGEL DE GUADALUPE 57150 NEZAHUALCOYOTL, MEX.",
+					"source": "OCR"
+				},
+				{
+					"name": "Número de duplicados",
+					"type": "NumberOfDuplicates",
+					"value": "00",
+					"source": "OCR"
+				},
+				{
+					"name": "Tipo Vía Dirección",
+					"type": "AddressStreetType",
+					"value": "Calle",
+					"source": "ExternalServices"
+				},
+				{
+					"name": "Calle Dirección",
+					"type": "AddressStreet",
+					"value": "Saltillo",
+					"source": "ExternalServices"
+				},
+				{
+					"name": "Número de Calle Dirección",
+					"type": "AddressStreetNumber",
+					"value": "74",
+					"source": "ExternalServices"
+				},
+				{
+					"name": "Area Dirección",
+					"type": "AddressArea",
+					"value": "Nezahualcóyotl",
+					"source": "ExternalServices"
+				},
+				{
+					"name": "Ciudad Dirección",
+					"type": "AddressCity",
+					"value": "Nezahualcóyotl",
+					"source": "ExternalServices"
+				},
+				{
+					"name": "Estado",
+					"type": "Address_State",
+					"value": "Estado de México",
+					"source": "ExternalServices"
+				},
+				{
+					"name": "Código Postal Dirección",
+					"type": "AddressPostalCode",
+					"value": "57150",
+					"source": "ExternalServices"
+				},
+				{
+					"name": "País Dirección",
+					"type": "AddressCountry",
+					"value": "México",
+					"source": "ExternalServices"
+				},
+				{
+					"name": "Código País Dirección",
+					"type": "AddressCountryCode",
+					"value": "MX",
+					"source": "ExternalServices"
+				}
+			],
+			"documentVerifications": [
+				{
+					"key": "TemplateSelected",
+					"name": "Identificación del Documento",
+					"output": "100",
+					"result": "Ok",
+					"category": "Identification",
+					"resultCode": 0,
+					"inputFields": [
+						{
+							"name": "Template",
+							"type": "Text",
+							"value": "México - Credencial para votar 2019",
+							"comments": null,
+							"typeCode": 0
+						}
+					],
+					"categoryCode": 0
+				},
+				{
+					"key": "MrzHasInvalidCharacters",
+					"name": "MRZ: Contiene caracteres inválidos",
+					"output": "",
+					"result": "Ok",
+					"category": "DataFormat",
+					"resultCode": 0,
+					"inputFields": [
+						{
+							"name": "0MrzLine0",
+							"type": "Text",
+							"value": "IDMEX2621610631<<3178119977828",
+							"comments": null,
+							"typeCode": 0
+						},
+						{
+							"name": "1MrzLine1",
+							"type": "Text",
+							"value": "9908110M2712310MEX<00<<10764<1",
+							"comments": null,
+							"typeCode": 0
+						},
+						{
+							"name": "2MrzLine2",
+							"type": "Text",
+							"value": "LOPEZ<MALDONADO<<LILIANA<<<<<<",
+							"comments": null,
+							"typeCode": 0
+						}
+					],
+					"categoryCode": 1
+				},
+				{
+					"key": "MrzIsCorrectlyPadded",
+					"name": "MRZ: Caracteres de relleno correctos",
+					"output": "",
+					"result": "Ok",
+					"category": "DataFormat",
+					"resultCode": 0,
+					"inputFields": [
+						{
+							"name": "0field",
+							"type": "Text",
+							"value": "LILIANA<<<<<<",
+							"comments": null,
+							"typeCode": 0
+						}
+					],
+					"categoryCode": 1
+				},
+				{
+					"key": "MrzIsDocumentNumberCheckDigitValid",
+					"name": "MRZ: Dígito de control del número de documento válido",
+					"output": "1",
+					"result": "Ok",
+					"category": "DataFormat",
+					"resultCode": 0,
+					"inputFields": [
+						{
+							"name": "0checkDigit",
+							"type": "Text",
+							"value": "1",
+							"comments": null,
+							"typeCode": 0
+						}
+					],
+					"categoryCode": 1
+				},
+				{
+					"key": "MrzIsDateOfExpiryCheckDigitValid",
+					"name": "MRZ: Dígito de control de la fecha de expiración válido",
+					"output": "0",
+					"result": "Ok",
+					"category": "DataFormat",
+					"resultCode": 0,
+					"inputFields": [
+						{
+							"name": "0checkDigit",
+							"type": "Text",
+							"value": "0",
+							"comments": null,
+							"typeCode": 0
+						}
+					],
+					"categoryCode": 1
+				},
+				{
+					"key": "MrzIsDateOfBirthCheckDigitValid",
+					"name": "MRZ: Dígito de control de la fecha de nacimiento válido",
+					"output": "0",
+					"result": "Ok",
+					"category": "DataFormat",
+					"resultCode": 0,
+					"inputFields": [
+						{
+							"name": "0checkDigit",
+							"type": "Text",
+							"value": "0",
+							"comments": null,
+							"typeCode": 0
+						}
+					],
+					"categoryCode": 1
+				},
+				{
+					"key": "MrzIsCompositeCheckDigitValid",
+					"name": "MRZ: Dígito de control compuesto válido",
+					"output": "1",
+					"result": "Ok",
+					"category": "DataFormat",
+					"resultCode": 0,
+					"inputFields": [
+						{
+							"name": "0checkDigit",
+							"type": "Text",
+							"value": "1",
+							"comments": null,
+							"typeCode": 0
+						}
+					],
+					"categoryCode": 1
+				},
+				{
+					"key": "MrzIsDateValid",
+					"name": "MRZ: Fecha de Expiración válida",
+					"output": "",
+					"result": "Ok",
+					"category": "DataFormat",
+					"resultCode": 0,
+					"inputFields": [
+						{
+							"name": "0MRZ Date",
+							"type": "Text",
+							"value": "271231 (31/12/2027)",
+							"comments": null,
+							"typeCode": 0
+						}
+					],
+					"categoryCode": 1
+				},
+				{
+					"key": "MrzIsDateValid",
+					"name": "MRZ: Fecha de Nacimiento válida",
+					"output": "",
+					"result": "Ok",
+					"category": "DataFormat",
+					"resultCode": 0,
+					"inputFields": [
+						{
+							"name": "0MRZ Date",
+							"type": "Text",
+							"value": "990811 (11/8/1999)",
+							"comments": null,
+							"typeCode": 0
+						}
+					],
+					"categoryCode": 1
+				},
+				{
+					"key": "MrzHasDateExpired",
+					"name": "MRZ: Documento Expirado",
+					"output": "",
+					"result": "Ok",
+					"category": "DataFormat",
+					"resultCode": 0,
+					"inputFields": [
+						{
+							"name": "0MRZ Date",
+							"type": "Text",
+							"value": "271231 (31/12/2027)",
+							"comments": null,
+							"typeCode": 0
+						}
+					],
+					"categoryCode": 1
+				},
+				{
+					"key": "MrzIsDateComplete",
+					"name": "MRZ: Fecha de Nacimiento completa",
+					"output": "",
+					"result": "Ok",
+					"category": "DataFormat",
+					"resultCode": 0,
+					"inputFields": [
+						{
+							"name": "0MRZ Date",
+							"type": "Text",
+							"value": "990811",
+							"comments": null,
+							"typeCode": 0
+						}
+					],
+					"categoryCode": 1
+				},
+				{
+					"key": "MrzIsDateComplete",
+					"name": "MRZ: Fecha de Expiración completa",
+					"output": "",
+					"result": "Ok",
+					"category": "DataFormat",
+					"resultCode": 0,
+					"inputFields": [
+						{
+							"name": "0MRZ Date",
+							"type": "Text",
+							"value": "271231",
+							"comments": null,
+							"typeCode": 0
+						}
+					],
+					"categoryCode": 1
+				},
+				{
+					"key": "MrzHasCorrectDimensions",
+					"name": "MRZ: Dimensiones correctas",
+					"output": "",
+					"result": "Ok",
+					"category": "DataFormat",
+					"resultCode": 0,
+					"inputFields": [
+						{
+							"name": "0Dimensiones",
+							"type": "Text",
+							"value": "3X30",
+							"comments": null,
+							"typeCode": 0
+						}
+					],
+					"categoryCode": 1
+				},
+				{
+					"key": "MrzIsSexValid",
+					"name": "MRZ: Sexo válido",
+					"output": "",
+					"result": "Ok",
+					"category": "DataFormat",
+					"resultCode": 0,
+					"inputFields": [
+						{
+							"name": "0field",
+							"type": "Text",
+							"value": "M",
+							"comments": null,
+							"typeCode": 0
+						}
+					],
+					"categoryCode": 1
+				},
+				{
+					"key": "MrzIsNationalityCodeValid",
+					"name": "MRZ: Código de Nacionalidad válido",
+					"output": "",
+					"result": "Ok",
+					"category": "DataFormat",
+					"resultCode": 0,
+					"inputFields": [
+						{
+							"name": "0field",
+							"type": "Text",
+							"value": "MEX",
+							"comments": null,
+							"typeCode": 0
+						}
+					],
+					"categoryCode": 1
+				},
+				{
+					"key": "MrzIsIssuingStateCodeValid",
+					"name": "MRZ: Código de País de Emisión válido",
+					"output": "",
+					"result": "Ok",
+					"category": "DataFormat",
+					"resultCode": 0,
+					"inputFields": [
+						{
+							"name": "0field",
+							"type": "Text",
+							"value": "MEX",
+							"comments": null,
+							"typeCode": 0
+						}
+					],
+					"categoryCode": 1
+				},
+				{
+					"key": "MrzIsDocumentTypeValid",
+					"name": "MRZ: Tipo de Documento válido",
+					"output": "",
+					"result": "Ok",
+					"category": "DataFormat",
+					"resultCode": 0,
+					"inputFields": [
+						{
+							"name": "0field",
+							"type": "Text",
+							"value": "ID",
+							"comments": null,
+							"typeCode": 0
+						}
+					],
+					"categoryCode": 1
+				},
+				{
+					"key": "DataIntegrity_ft_Document_Number",
+					"name": "Número de Documento",
+					"output": "100",
+					"result": "Ok",
+					"category": "DataIntegrity",
+					"resultCode": 0,
+					"inputFields": [
+						{
+							"name": "Texto MRZ",
+							"type": "Text",
+							"value": "Texto MRZ: 262161063",
+							"comments": null,
+							"typeCode": 0
+						},
+						{
+							"name": "Texto Código de Barras",
+							"type": "Text",
+							"value": "Texto Código de Barras: 262161063",
+							"comments": null,
+							"typeCode": 0
+						}
+					],
+					"categoryCode": 2
+				},
+				{
+					"key": "DataIntegrity_ft_OCR_Number",
+					"name": "Número Personal OCR",
+					"output": "100",
+					"result": "Ok",
+					"category": "DataIntegrity",
+					"resultCode": 0,
+					"inputFields": [
+						{
+							"name": "Texto MRZ",
+							"type": "Text",
+							"value": "Texto MRZ: 3178119977828",
+							"comments": null,
+							"typeCode": 0
+						},
+						{
+							"name": "Texto Código de Barras",
+							"type": "Text",
+							"value": "Texto Código de Barras: 3178119977828",
+							"comments": null,
+							"typeCode": 0
+						}
+					],
+					"categoryCode": 2
+				},
+				{
+					"key": "DataIntegrity_ft_Date_of_Birth",
+					"name": "Fecha de Nacimiento",
+					"output": "100",
+					"result": "Ok",
+					"category": "DataIntegrity",
+					"resultCode": 0,
+					"inputFields": [
+						{
+							"name": "Texto MRZ",
+							"type": "Text",
+							"value": "Texto MRZ: 11/8/1999",
+							"comments": null,
+							"typeCode": 0
+						},
+						{
+							"name": "Texto OCR",
+							"type": "Text",
+							"value": "Texto OCR: 11/8/1999",
+							"comments": null,
+							"typeCode": 0
+						}
+					],
+					"categoryCode": 2
+				},
+				{
+					"key": "DataIntegrity_ft_Sex",
+					"name": "Sexo",
+					"output": "100",
+					"result": "Ok",
+					"category": "DataIntegrity",
+					"resultCode": 0,
+					"inputFields": [
+						{
+							"name": "Texto MRZ",
+							"type": "Text",
+							"value": "Texto MRZ: M",
+							"comments": null,
+							"typeCode": 0
+						},
+						{
+							"name": "Texto OCR",
+							"type": "Text",
+							"value": "Texto OCR: M",
+							"comments": null,
+							"typeCode": 0
+						}
+					],
+					"categoryCode": 2
+				},
+				{
+					"key": "DataIntegrity_ft_Date_of_Expiry",
+					"name": "Fecha de Expiración",
+					"output": "100",
+					"result": "Ok",
+					"category": "DataIntegrity",
+					"resultCode": 0,
+					"inputFields": [
+						{
+							"name": "Texto MRZ",
+							"type": "Text",
+							"value": "Texto MRZ: 31/12/2027",
+							"comments": null,
+							"typeCode": 0
+						},
+						{
+							"name": "Texto OCR",
+							"type": "Text",
+							"value": "Texto OCR: 31/12/2027",
+							"comments": null,
+							"typeCode": 0
+						}
+					],
+					"categoryCode": 2
+				},
+				{
+					"key": "DataIntegrity_ft_Surname_And_Given_Names",
+					"name": "Nombre Completo",
+					"output": "100",
+					"result": "Ok",
+					"category": "DataIntegrity",
+					"resultCode": 0,
+					"inputFields": [
+						{
+							"name": "Texto MRZ",
+							"type": "Text",
+							"value": "Texto MRZ: LOPEZ MALDONADO LILIANA",
+							"comments": null,
+							"typeCode": 0
+						},
+						{
+							"name": "Texto OCR",
+							"type": "Text",
+							"value": "Texto OCR: LOPEZ MALDONADO LILIANA",
+							"comments": null,
+							"typeCode": 0
+						}
+					],
+					"categoryCode": 2
+				},
+				{
+					"key": "DataIntegrity_ft_Number_of_Duplicates",
+					"name": "Número de duplicados",
+					"output": "100",
+					"result": "Ok",
+					"category": "DataIntegrity",
+					"resultCode": 0,
+					"inputFields": [
+						{
+							"name": "Texto OCR",
+							"type": "Text",
+							"value": "Texto OCR: 00",
+							"comments": null,
+							"typeCode": 0
+						},
+						{
+							"name": "Texto Código de Barras",
+							"type": "Text",
+							"value": "Texto Código de Barras: 00",
+							"comments": null,
+							"typeCode": 0
+						}
+					],
+					"categoryCode": 2
+				},
+				{
+					"key": "MEX_VotingCard_Custom_Curp",
+					"name": "Número Personal CURP",
+					"output": "100",
+					"result": "Ok",
+					"category": "DataIntegrity",
+					"resultCode": 0,
+					"inputFields": [
+						{
+							"name": "Número Personal",
+							"type": "Text",
+							"value": "LOML990811MMCPLL01",
+							"comments": null,
+							"typeCode": 0
+						}
+					],
+					"categoryCode": 2
+				},
+				{
+					"key": "Biometrics_FaceMatching",
+					"name": "Comprobación Facial",
+					"output": "99.86",
+					"result": "Ok",
+					"category": "Biometrics",
+					"resultCode": 0,
+					"categoryCode": 4
+				}
+			]
+		}
+	},
+	"meta": {
+		"custom": [],
+		"include": []
+	}
+}

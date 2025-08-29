@@ -204,6 +204,42 @@ class S3Helper
         return (string)$req->getUri();
     }
 
+        /**
+     * Descarga un archivo desde S3 y lo devuelve como base64.
+     * Útil para enviar imágenes a APIs externas (ej. VerificaMex).
+     *
+     * @param string $s3Key Key exacto del objeto en el bucket.
+     * @return string|null Cadena base64 o null si falla.
+     */
+    public function getFileBase64(string $s3Key): ?string
+    {
+        if (!$s3Key) {
+            return null;
+        }
+
+        try {
+            $result  = $this->s3->getObject([
+                'Bucket' => $this->bucket,
+                'Key'    => $s3Key,
+            ]);
+            $content = (string) $result['Body'];
+            $mime    = $result['ContentType'] ?? null;
+
+            // Verificamex espera imágenes (jpeg/png) con prefijo dataURL
+            if (!in_array($mime, ['image/jpeg', 'image/png'])) {
+                error_log("Archivo no válido para Verificamex: {$s3Key} ({$mime})");
+                return null;
+            }
+
+            return "data:{$mime};base64," . base64_encode($content);
+        } catch (\Throwable $e) {
+            error_log('Error al obtener archivo de S3 como base64: ' . $e->getMessage());
+            return null;
+        }
+    }
+
+
+
 
 
 }

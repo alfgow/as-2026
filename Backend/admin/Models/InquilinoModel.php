@@ -125,6 +125,30 @@ public function getLastError(): ?string { return $this->lastError; }
         }
         return $out;
     }
+    public function actualizarStatus(int $idInquilino, int $status): bool
+{
+    $sql = "UPDATE inquilinos 
+            SET status = :status, updated_at = NOW()
+            WHERE id = :id";
+
+    $stmt = $this->db->prepare($sql);
+    return $stmt->execute([
+        ':status' => $status,
+        ':id'     => $idInquilino
+    ]);
+}
+
+    public function obtenerPorId(int $id): ?array
+{
+    $sql = "SELECT * FROM inquilinos WHERE id = :id LIMIT 1";
+    $stmt = $this->db->prepare($sql);
+    $stmt->bindValue(':id', $id, PDO::PARAM_INT);
+    $stmt->execute();
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    return $row ?: null;
+}
+
 
     // aws validation
     public function archivosPorInquilinoId($idInquilino)
@@ -188,6 +212,46 @@ public function getLastError(): ?string { return $this->lastError; }
         ]);
     }
 
+    public function getValidacionesByInquilinoId($idInquilino) {
+        $stmt = $this->db->prepare("SELECT * FROM inquilinos_validaciones WHERE id_inquilino = ?");
+        $stmt->execute([$idInquilino]);
+        return $stmt->fetch(PDO::FETCH_ASSOC);
+    }
+
+    public function getArchivosByTipos(int $idInquilino, array $tipos): array
+    {
+        if (empty($tipos)) return [];
+        $in  = str_repeat('?,', count($tipos) - 1) . '?';
+        $sql = "SELECT tipo, s3_key 
+                FROM inquilinos_archivos 
+                WHERE id_inquilino = ? AND tipo IN ($in)";
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute(array_merge([$idInquilino], $tipos));
+        return $stmt->fetchAll(\PDO::FETCH_KEY_PAIR); // tipo => s3_key
+    }
+
+    /**
+     * Guardar resultado de validación VerificaMex
+     */
+    public function guardarValidacionVerificaMex(int $idInquilino, int $proceso, array $payload, string $resumen): bool
+    {
+        $sql = "UPDATE inquilinos_validaciones
+                SET proceso_validacion_verificamex = :proceso,
+                    verificamex_json = :json,
+                    verificamex_resumen = :resumen,
+                    updated_at = NOW()
+                WHERE id_inquilino = :id";
+
+        $stmt = $this->db->prepare($sql);
+        return $stmt->execute([
+            ':proceso' => $proceso,
+            ':json'    => json_encode($payload, JSON_UNESCAPED_UNICODE),
+            ':resumen' => $resumen,
+            ':id'      => $idInquilino,
+        ]);
+    }
+
+
 
     /**
      * Lee el estado de todas las validaciones para un inquilino y devuelve
@@ -208,6 +272,10 @@ public function getLastError(): ?string { return $this->lastError; }
                     proceso_validacion_id,
                     validacion_id_resumen,
                     validacion_id_json,
+                    -- VerificaMex
+                    proceso_validacion_verificamex,
+                    verificamex_resumen,
+                    verificamex_json,
                     -- Documentos (OCR INE líneas)
                     proceso_validacion_documentos,
                     validacion_documentos_resumen,
@@ -244,6 +312,7 @@ public function getLastError(): ?string { return $this->lastError; }
                 'archivos'     => $def(),
                 'rostro'       => $def(),
                 'identidad'    => $def(),
+                'verificamex'  => $def(),
                 'documentos'   => $def(),
                 'ingresos'     => $def(),
                 'pago_inicial' => $def(),
@@ -275,6 +344,11 @@ public function getLastError(): ?string { return $this->lastError; }
                 'resumen' => $row['validacion_id_resumen'] ?? null,
                 'json'    => $j($row['validacion_id_json'] ?? null),
             ],
+            'verificamex' => [
+                'proceso' => (int)($row['proceso_validacion_verificamex'] ?? 2),
+                'resumen' => $row['verificamex_resumen'] ?? null,
+                'json'    => $j($row['verificamex_json'] ?? null),
+            ],
             'documentos' => [
                 'proceso' => (int)($row['proceso_validacion_documentos'] ?? 2),
                 'resumen' => $row['validacion_documentos_resumen'] ?? null,
@@ -300,6 +374,42 @@ public function getLastError(): ?string { return $this->lastError; }
                 'updated_at' => $row['updated_at'] ?? null,
             ],
         ];
+    }
+
+     /**
+     * Guarda en la tabla inquilinos_validaciones los resultados de VerificaMex
+     *
+     * @param int   $idInquilino
+     * @param array $campos Campos mapeados devueltos por VerificaMexMapper
+     * @return bool
+     */
+    public function guardarValidacionesVerificaMex(int $idInquilino, array $campos): bool
+    {
+        if (empty($campos)) {
+            return false;
+        }
+
+        $sets   = [];
+        $params = [':id' => $idInquilino];
+
+        foreach ($campos as $campo => $valor) {
+            $sets[] = "$campo = :$campo";
+
+            if (str_ends_with($campo, '_json')) {
+                // Guardamos en formato JSON
+                $params[":$campo"] = json_encode($valor, JSON_UNESCAPED_UNICODE);
+            } else {
+                $params[":$campo"] = $valor;
+            }
+        }
+
+        $sql = "UPDATE inquilinos_validaciones 
+                   SET " . implode(', ', $sets) . ",
+                       updated_at = NOW()
+                 WHERE id_inquilino = :id";
+
+        $stmt = $this->db->prepare($sql);
+        return $stmt->execute($params);
     }
 
 

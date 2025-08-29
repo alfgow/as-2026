@@ -1,218 +1,128 @@
 // =====================
-// Validaciones: Demandas & Jurídico (con ID_INQ)
+// Validaciones: Demandas & Jurídico (Google API)
 // =====================
 //
 // Este módulo maneja toda la lógica de:
-// 1. Cargar chips de portales.
-// 2. Ver el último reporte detallado (evidencias S3).
-// 3. Ejecutar validación manual.
-// 4. Mostrar resumen jurídico.
-// 5. Auto-refresh tras ejecutar validación.
+// 1. Ejecutar validación manual (Google).
+// 2. Ver el último reporte guardado en la BD.
+// 3. Mostrar resumen jurídico y resultados filtrados.
+// 4. Renderizar historial en la vista.
 //
-// Expuesto globalmente como window.VH_DEMANDAS
 // =====================
 
 (function () {
-	const { baseUrl, idInq, slug } = window.VH_CTX; // 👈 usamos idInq para endpoints de Demandas
-
-	// ----------------------
-	// Helpers de UI
-	// ----------------------
-	function setChipsLoading(isLoading) {
-		const $chips = document.getElementById("chipsPortales");
-		if (!isLoading) {
-			return;
-		}
-		$chips.innerHTML = `
-      <div class="flex flex-wrap gap-2">
-        <div class="skel h-7 w-28 rounded-full"></div>
-        <div class="skel h-7 w-24 rounded-full"></div>
-        <div class="skel h-7 w-36 rounded-full"></div>
-        <div class="skel h-7 w-20 rounded-full"></div>
-      </div>
-    `;
-	}
+	const { baseUrl, idInq, slug } = window.VH_CTX;
 
 	const badge = (txt, tone = "slate") =>
 		`<span class="inline-block px-2 py-0.5 rounded-full text-xs bg-${tone}-600/30 text-${tone}-200 border border-${tone}-600/30">${txt}</span>`;
 
 	// ----------------------
-	// Cargar chips (resumen)
-	// ----------------------
-	async function cargarChips() {
-		const $chips = document.getElementById("chipsPortales");
-		setChipsLoading(true);
-
-		try {
-			const res = await fetch(
-				`${baseUrl}/validaciones/demandas/resumen/${idInq}`
-			);
-			const data = await res.json();
-			const items = Array.isArray(data.items) ? data.items : [];
-
-			if (!items.length) {
-				$chips.innerHTML = `<span class="text-gray-400 text-sm">Sin datos aún.</span>`;
-				return;
-			}
-
-			const html = items
-				.map((it) => {
-					const portal = (it.portal || "").toUpperCase();
-					const status = it.status || "no_data";
-					const clasif = it.clasificacion || "sin_evidencia";
-					const score = parseInt(it.score_max || 0, 10);
-
-					const clsStatus = (s) =>
-						s === "ok"
-							? "bg-emerald-700 text-white"
-							: s === "manual_required"
-							? "bg-amber-600 text-black"
-							: s === "error"
-							? "bg-red-700 text-white"
-							: "bg-slate-600 text-white";
-					const clsClasif = (c) =>
-						c === "match_alto"
-							? "bg-red-600 text-white"
-							: c === "posible_match"
-							? "bg-yellow-400 text-black"
-							: "bg-emerald-600 text-white";
-
-					return `
-          <div class="flex items-center gap-2 bg-white/5 border border-white/10 px-3 py-1.5 rounded-full">
-            <span class="text-xs text-indigo-300 font-medium">${portal}</span>
-            <span class="px-2 py-0.5 rounded-full text-xs ${clsStatus(
-				status
-			)}">${status}</span>
-            <span class="px-2 py-0.5 rounded-full text-xs ${clsClasif(
-				clasif
-			)}">${clasif}</span>
-            <span class="px-2 py-0.5 rounded-full text-xs bg-indigo-700 text-white">score: ${score}</span>
-          </div>`;
-				})
-				.join("");
-
-			$chips.innerHTML = html;
-		} catch (e) {
-			console.error(e);
-			$chips.innerHTML = `<span class="text-red-400 text-sm">Error al cargar chips</span>`;
-		}
-	}
-
-	// ----------------------
 	// Ver último reporte
 	// ----------------------
 	async function verUltimo() {
-		const reporteEl = document.getElementById("reporteContainer");
-		if (!reporteEl) return;
-
-		reporteEl.classList.remove("hidden");
-		reporteEl.innerHTML = '<div class="text-gray-400">Cargando…</div>';
-
 		try {
+			// Loader inicial
+			Swal.fire({
+				title: "Cargando último reporte...",
+				text: "Por favor espera unos segundos.",
+				allowOutsideClick: false,
+				didOpen: () => {
+					Swal.showLoading();
+				},
+			});
+
 			const r = await fetch(
 				`${baseUrl}/validaciones/demandas/ultimo/${idInq}`
 			);
 			const data = await r.json();
 
+			Swal.close(); // 🔴 siempre cerramos el loader
+
+			const reporteEl = document.getElementById("reporteContainer");
+			if (!reporteEl) return;
+
+			reporteEl.classList.remove("hidden");
+
 			if (!data.ok || !data.reporte) {
-				reporteEl.innerHTML =
-					'<div class="text-gray-400">Sin reporte reciente.</div>';
+				reporteEl.innerHTML = `<div class="text-gray-400">Sin reporte reciente.</div>`;
 				return;
 			}
 
 			const rep = data.reporte;
-			const resultado = rep.resultado ? JSON.parse(rep.resultado) : null;
-			const query = rep.query_usada ? JSON.parse(rep.query_usada) : null;
+			const resultados = Array.isArray(rep.resultado)
+				? rep.resultado
+				: [];
 
-			const evidenciaLink = rep.evidencia_s3_key
-				? `<a href="${linkS3(
-						rep.evidencia_s3_key
-				  )}" target="_blank" class="text-indigo-300 underline">Ver evidencia</a>`
-				: "-";
-			const rawJsonLink = rep.raw_json_s3_key
-				? `<a href="${linkS3(
-						rep.raw_json_s3_key
-				  )}" target="_blank" class="text-indigo-300 underline">Ver JSON</a>`
-				: "-";
+			// 🟢 Resumen jurídico
+			const resumenEl = document.getElementById("juridicoResumen");
+			const statusEl = document.getElementById("juridicoStatus");
+			const evidEl = document.getElementById("juridicoEvidencias");
 
-			reporteEl.innerHTML = `
-        <div class="grid md:grid-cols-2 gap-4">
-          <div>
-            <p><span class="text-indigo-300">Portal:</span> ${rep.portal}</p>
-            <p><span class="text-indigo-300">Status:</span> ${rep.status}</p>
-            <p><span class="text-indigo-300">Clasificación:</span> ${
-				rep.clasificacion ?? "-"
-			}</p>
-            <p><span class="text-indigo-300">Score máx:</span> ${
-				rep.score_max ?? 0
-			}</p>
-            <p><span class="text-indigo-300">Consulta:</span> ${
-				query?.variante ?? "-"
-			} (${query?.fecha ?? "-"})</p>
-            <p><span class="text-indigo-300">Fecha búsqueda:</span> ${
-				rep.searched_at
-			}</p>
-          </div>
-          <div>
-            <p><span class="text-indigo-300">Evidencia S3:</span> ${evidenciaLink}</p>
-            <p><span class="text-indigo-300">RAW JSON S3:</span> ${rawJsonLink}</p>
-            ${
-				rep.error_message
-					? `<p class="text-red-300"><span class="text-indigo-300">Error:</span> ${rep.error_message}</p>`
-					: ""
-			}
-          </div>
-        </div>
-        <div class="mt-4">
-          <h3 class="text-white font-semibold mb-2">Resultados</h3>
-          ${
-				Array.isArray(resultado) && resultado.length
-					? `
-            <div class="space-y-2">
-              ${resultado
-					.map(
-						(it) => `
-                <div class="bg-black/20 rounded-lg p-3">
-                  <p class="text-sm"><span class="text-indigo-300">Expediente:</span> ${
-						it.expediente ?? "-"
-					}</p>
-                  <p class="text-sm"><span class="text-indigo-300">Juzgado:</span> ${
-						it.juzgado ?? "-"
-					}</p>
-                  <p class="text-sm"><span class="text-indigo-300">Tipo juicio:</span> ${
-						it.tipo_juicio ?? "-"
-					}</p>
-                  <p class="text-sm"><span class="text-indigo-300">Actor:</span> ${
-						it.actor ?? "-"
-					}</p>
-                  <p class="text-sm"><span class="text-indigo-300">Demandado:</span> ${
-						it.demandado ?? "-"
-					}</p>
-                  <p class="text-sm"><span class="text-indigo-300">Fecha:</span> ${
-						it.fecha ?? "-"
-					}</p>
-                  ${
-						it.url
-							? `<a class="text-indigo-300 underline text-xs" href="${it.url}" target="_blank" rel="noopener">Ver enlace</a>`
-							: ""
-					}
+			if (statusEl) statusEl.textContent = rep.status || "sin_datos";
+			if (resumenEl) {
+				resumenEl.innerHTML = `
+                <div class="flex flex-wrap gap-2 items-center">
+                    ${badge(
+						"clasificación: " + (rep.clasificacion || "-"),
+						rep.clasificacion === "match_alto"
+							? "red"
+							: rep.clasificacion === "posible_match"
+							? "amber"
+							: "slate"
+					)}
+                    ${badge("score: " + (rep.score_max ?? 0), "indigo")}
+                    ${badge("resultados: " + resultados.length, "cyan")}
                 </div>
-              `
-					)
-					.join("")}
-            </div>
-          `
-					: `<p class="text-gray-400 text-sm">Sin resultados.</p>`
+            `;
 			}
-        </div>
-      `;
+
+			// 🟣 Resultados listados
+			if (evidEl) {
+				if (resultados.length) {
+					evidEl.innerHTML = resultados
+						.map(
+							(r) =>
+								`<div class="bg-white/5 rounded-lg p-3">
+                                <a href="${r.link}" target="_blank" rel="noopener" class="text-indigo-300 underline font-medium">${r.titulo}</a>
+                                <p class="text-sm text-gray-300 mt-1">${r.snippet}</p>
+                            </div>`
+						)
+						.join("");
+				} else {
+					evidEl.innerHTML = `<p class="text-gray-400 text-sm">No se encontraron resultados relevantes.</p>`;
+				}
+			}
+
+			// 📦 Mostrar siempre algo en el contenedor
+			reporteEl.innerHTML =
+				resultados.length > 0
+					? `<div class="space-y-3">
+                    ${resultados
+						.map(
+							(r) =>
+								`<div class="bg-black/20 rounded-lg p-3">
+                                    <a href="${r.link}" target="_blank" rel="noopener" class="text-indigo-300 underline font-medium">${r.titulo}</a>
+                                    <p class="text-sm text-gray-300 mt-1">${r.snippet}</p>
+                                </div>`
+						)
+						.join("")}
+                   </div>`
+					: `<p class="text-gray-400 text-sm">⚖️ No se encontraron coincidencias jurídicas para este inquilino.</p>`;
 		} catch (e) {
-			reporteEl.innerHTML = `<div class="text-red-300">Error: ${e.message}</div>`;
+			Swal.close(); // 🔴 cerramos también en caso de error
+			const reporteEl = document.getElementById("reporteContainer");
+			if (reporteEl)
+				reporteEl.innerHTML = `<div class="text-red-300">Error: ${e.message}</div>`;
+			Swal.fire({
+				icon: "error",
+				title: "Error",
+				text: "No se pudo cargar el reporte.",
+			});
 		}
 	}
 
 	// ----------------------
-	// Ejecutar validación manual
+	// Ejecutar validación
 	// ----------------------
 	async function ejecutarValidacion() {
 		const btn = document.getElementById("btnRunValidacion");
@@ -222,8 +132,8 @@
 		const datos = metaEl
 			? {
 					nombre: metaEl.dataset.nombre || "",
-					apellido_p: metaEl.dataset.apellidop || "",
-					apellido_m: metaEl.dataset.apellidom || "",
+					apellido_p: metaEl.dataset.apellido_p || "",
+					apellido_m: metaEl.dataset.apellido_m || "",
 					curp: metaEl.dataset.curp || "",
 					rfc: metaEl.dataset.rfc || "",
 					slug: metaEl.dataset.slug || "",
@@ -231,7 +141,7 @@
 			: { nombre: "", apellido_p: "" };
 
 		if (!datos.nombre || !datos.apellido_p) {
-			Swal?.fire({
+			Swal.fire({
 				icon: "warning",
 				title: "Faltan datos",
 				text: "Nombre y Apellido paterno son obligatorios.",
@@ -239,11 +149,16 @@
 			return;
 		}
 
-		btn.disabled = true;
-		const prevTxt = btn.textContent;
-		btn.textContent = "Ejecutando…";
-
 		try {
+			Swal.fire({
+				title: "Ejecutando validación...",
+				text: "Esto puede tardar unos segundos.",
+				allowOutsideClick: false,
+				didOpen: () => {
+					Swal.showLoading();
+				},
+			});
+
 			const body = new FormData();
 			body.append("nombre", datos.nombre);
 			body.append("apellido_p", datos.apellido_p);
@@ -258,142 +173,126 @@
 			);
 			const data = await res.json();
 
+			Swal.close();
+
 			if (data.ok) {
-				Swal?.fire({
+				Swal.fire({
 					icon: "success",
-					title: "🔎 Intentos registrados",
-					text: "Se inició la validación.",
+					title: "🔎 Validación completada",
+					text: `Se encontraron ${data.total} resultados.`,
 				});
-				await cargarChips();
-				postRunAutoRefresh();
+				// 🔄 Refrescamos chips/resumen desde el backend
+				if (window.VH_DEMANDAS?.cargarChips) {
+					await window.VH_DEMANDAS.cargarChips();
+				}
+				if (window.VH_DEMANDAS?.cargarHistorial) {
+					await window.VH_DEMANDAS.cargarHistorial();
+				}
+				// Y volvemos a mostrar el último reporte
+				await window.VH_DEMANDAS.verUltimo();
 			} else {
-				Swal?.fire({
+				Swal.fire({
 					icon: "error",
 					title: "No se pudo iniciar",
 					text: data.mensaje || "Intenta de nuevo.",
 				});
 			}
 		} catch (e) {
-			Swal?.fire({
+			Swal.fire({
 				icon: "error",
 				title: "Error de red",
 				text: "No pudimos conectar con el servidor.",
 			});
-		} finally {
-			btn.disabled = false;
-			btn.textContent = prevTxt;
 		}
 	}
 
-	// ----------------------
-	// Resumen Jurídico (este sí usa slug)
-	// ----------------------
-	async function cargarResumenJuridico() {
-		const endpoint = `${baseUrl}/inquilino/${slug}/validaciones/juridico`;
-		const statusEl = document.getElementById("juridicoStatus");
-		const resumenEl = document.getElementById("juridicoResumen");
-		const evidEl = document.getElementById("juridicoEvidencias");
+	// =====================
+	// Nueva función: cargarHistorial()
+	// =====================
+	async function cargarHistorial() {
+		const cont = document.getElementById("historialContainer");
+		if (!cont) return;
 
 		try {
-			const r = await fetch(endpoint, {
-				headers: { Accept: "application/json" },
-			});
+			const r = await fetch(
+				`${baseUrl}/validaciones/demandas/historial/${idInq}`,
+				{
+					headers: { Accept: "application/json" },
+				}
+			);
 			const data = await r.json();
-			if (!data.ok) {
-				statusEl && (statusEl.textContent = "error");
-				resumenEl &&
-					(resumenEl.innerHTML = `<span class="text-red-300">${
-						data.mensaje || "No se pudo obtener la validación"
-					}</span>`);
+
+			if (!data.ok || !Array.isArray(data.historial)) {
+				cont.innerHTML =
+					'<div class="text-center text-gray-400">⚠️ No hay registros de validaciones legales para este inquilino.</div>';
 				return;
 			}
 
-			const rep = data.reporte || {};
-			const evidencias = Array.isArray(rep.evidencias)
-				? rep.evidencias
-				: [];
-			const statusTone =
-				rep.status === "ok"
-					? "green"
-					: rep.status === "error"
-					? "red"
-					: "amber";
-			statusEl &&
-				(statusEl.innerHTML = badge(
-					rep.status || "sin_datos",
-					statusTone
-				));
+			const filas = data.historial
+				.map(
+					(item) => `
+				<tr>
+					<td class="px-4 py-2">${item.searched_at}</td>
+					<td class="px-4 py-2">
+						<span class="px-2 py-1 rounded-full text-xs 
+							${
+								item.clasificacion === "match_alto"
+									? "bg-red-600 text-white"
+									: item.clasificacion === "posible_match"
+									? "bg-yellow-400 text-black"
+									: "bg-green-600 text-white"
+							}">
+							${item.clasificacion ?? "sin_evidencia"}
+						</span>
+					</td>
+					<td class="px-4 py-2">
+						<span class="px-2 py-1 rounded-full text-xs
+							${
+								item.status === "ok"
+									? "bg-emerald-600 text-white"
+									: item.status === "error"
+									? "bg-red-600 text-white"
+									: item.status === "manual_required"
+									? "bg-amber-500 text-black"
+									: "bg-slate-600 text-white"
+							}">
+							${item.status}
+						</span>
+					</td>
+					<td class="px-4 py-2 text-gray-400">
+						${
+							item.resultado &&
+							JSON.parse(item.resultado).length > 0
+								? JSON.parse(item.resultado).length +
+								  " coincidencia(s)"
+								: "⚠️ Sin resultados"
+						}
+					</td>
+				</tr>`
+				)
+				.join("");
 
-			const clasTone =
-				rep.clasificacion === "alto"
-					? "red"
-					: rep.clasificacion === "medio"
-					? "amber"
-					: "slate";
-			const score = rep.scoring ?? rep.score ?? rep.score_max ?? "-";
-			resumenEl &&
-				(resumenEl.innerHTML = `
-        <div class="flex flex-wrap gap-2 items-center">
-          ${badge("clasificación: " + (rep.clasificacion || "-"), clasTone)}
-          ${badge("score: " + score, "indigo")}
-          ${badge("evidencias: " + evidencias.length, "cyan")}
-        </div>
-      `);
-
-			if (!evidencias.length) {
-				evidEl &&
-					(evidEl.innerHTML = `<p class="text-gray-400 text-sm">Sin evidencias.</p>`);
-				return;
-			}
-
-			evidEl &&
-				(evidEl.innerHTML = evidencias
-					.map((ev) => {
-						const fecha = ev.fecha || "-";
-						const tribunal = ev.tribunal || "-";
-						const expediente = ev.expediente || "-";
-						const link = ev.link
-							? `<a href="${ev.link}" target="_blank" rel="noopener" class="text-indigo-300 underline text-xs">ver enlace</a>`
-							: "";
-						const archivo = ev.archivo
-							? `<div class="text-xs text-gray-400 break-all">archivo: ${ev.archivo}</div>`
-							: "";
-						return `
-          <div class="bg-white/5 rounded-lg p-3">
-            <div class="flex flex-wrap gap-2 mb-2">
-              ${badge(tribunal, "purple")}
-              ${badge("Exp.: " + expediente, "slate")}
-              ${badge(fecha, "teal")}
-            </div>
-            <div class="flex items-center gap-3">
-              ${link}
-            </div>
-            ${archivo}
-          </div>
-        `;
-					})
-					.join(""));
+			cont.innerHTML = `
+			<div class="overflow-x-auto rounded-xl border border-gray-700">
+				<table class="min-w-full text-sm text-left text-gray-300">
+					<thead class="bg-gray-800 text-gray-400 uppercase text-xs">
+						<tr>
+							<th class="px-4 py-2">Fecha</th>
+							<th class="px-4 py-2">Clasificación</th>
+							<th class="px-4 py-2">Estatus</th>
+							<th class="px-4 py-2">Resultados</th>
+						</tr>
+					</thead>
+					<tbody class="divide-y divide-gray-700 bg-gray-900">
+						${filas}
+					</tbody>
+				</table>
+			</div>
+		`;
 		} catch (e) {
-			statusEl && (statusEl.textContent = "error");
-			resumenEl &&
-				(resumenEl.innerHTML = `<span class="text-red-300">${e.message}</span>`);
+			cont.innerHTML = `<div class="text-red-300">Error: ${e.message}</div>`;
 		}
 	}
-
-	// ----------------------
-	// Auto-refresh tras run
-	// ----------------------
-	let autoTimer;
-	function postRunAutoRefresh() {
-		const start = Date.now();
-		clearInterval(autoTimer);
-		autoTimer = setInterval(() => {
-			cargarChips();
-			verUltimo();
-			if (Date.now() - start > 90_000) clearInterval(autoTimer);
-		}, 6_000);
-	}
-
 	// ----------------------
 	// Binds
 	// ----------------------
@@ -407,18 +306,20 @@
 	// ----------------------
 	// Init
 	// ----------------------
-	(async () => {
-		await cargarChips();
-		await cargarResumenJuridico();
-	})();
 
 	// ----------------------
 	// Expose
 	// ----------------------
-	window.VH_DEMANDAS = {
-		cargarChips,
-		verUltimo,
-		ejecutarValidacion,
-		cargarResumenJuridico,
-	};
+	window.VH_DEMANDAS = { verUltimo, ejecutarValidacion, cargarHistorial };
 })();
+document.addEventListener("DOMContentLoaded", async () => {
+	await window.VH_DEMANDAS.cargarHistorial();
+	await window.VH_DEMANDAS.verUltimo();
+});
+document.addEventListener("DOMContentLoaded", () => {
+	const chk = document.getElementById("toggle-demandas");
+	if (!chk) return;
+	chk.addEventListener("change", () => {
+		saveSwitch("demandas");
+	});
+});

@@ -54,6 +54,14 @@ switch (true) {
         (new \App\Controllers\AuthController())->login();
         exit;
 
+        // Validaciones - Status (para progress bar)
+case preg_match('#^/validaciones/status$#', $uri) && $_SERVER['REQUEST_METHOD'] === 'GET':
+    require __DIR__ . '/Controllers/ValidacionLegalController.php';
+    (new \App\Controllers\ValidacionLegalController())->status($_GET['id'] ?? 0);
+    exit;
+    break;
+
+
 // GET /prospectos/code  -> muestra la vista con tu layout
 case preg_match('#^/prospectos/code$#', $uri) && $_SERVER['REQUEST_METHOD'] === 'GET':
     require __DIR__ . '/Controllers/ProspectAccessController.php';
@@ -471,7 +479,8 @@ case $uri === '/financieros/registro':
         (new \App\Controllers\InquilinoController())->reemplazarArchivo();
         exit;
         break;
-    
+
+
     // Validación manual con AWS (inicial, sin llamadas a AWS aún)
     case preg_match('#^/inquilino/([a-z0-9\-]+)/validar$#', $uri, $matches) && $_SERVER['REQUEST_METHOD'] === 'POST':
         require __DIR__ . '/Controllers/ValidacionAwsController.php';
@@ -484,7 +493,7 @@ case $uri === '/financieros/registro':
 case preg_match('#^/inquilino/([a-z0-9\-]+)/validar$#i', $uri, $m)
      && (
           $_SERVER['REQUEST_METHOD'] === 'POST' ||
-          ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['check']) && in_array($_GET['check'], ['archivos','faces', 'ocr', 'parse', 'nombres', 'kv', 'match', 'save_match', 'save_face','status','ingresos_list', 'ingresos_ocr','status','resumen_full']))
+          ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['check']) && in_array($_GET['check'], ['archivos','faces', 'ocr', 'parse', 'nombres', 'kv', 'match', 'save_match', 'save_face','status','ingresos_list', 'ingresos_ocr','status','resumen_full','verificamex']))
         ):
     require_once __DIR__ . '/Controllers/InquilinoValidacionAWSController.php';
     (new \App\Controllers\InquilinoValidacionAWSController())->validar($m[1]);
@@ -510,6 +519,14 @@ case preg_match('#^/inquilino/([^/]+)/validaciones$#', $uri, $m) && $_SERVER['RE
     (new \App\Controllers\InquilinoController())->validaciones($m[1]); // $m[1] = slug
     exit;
     break;
+
+// Actualizar estatus de inquilino
+case preg_match('#^/inquilino/editar-status$#', $uri) && $_SERVER['REQUEST_METHOD'] === 'POST':
+    require __DIR__ . '/Controllers/InquilinoController.php';
+    (new \App\Controllers\InquilinoController())->editarStatus();
+    exit;
+    break;
+
 
     // Media presign 1
 case preg_match('#^/media/presign$#', $uri) && $_SERVER['REQUEST_METHOD'] === 'GET':
@@ -568,40 +585,21 @@ case preg_match('#^/validaciones/demandas/ultimo/(\d+)$#', $uri, $m) && $_SERVER
     exit;
     break;
 
-// Resumen de chips por portal
-case preg_match('#^/validaciones/demandas/resumen/(\d+)$#', $uri, $m) && $_SERVER['REQUEST_METHOD'] === 'GET':
+// Toggle Demandas
+case preg_match('#^/inquilino/(\d+)/toggle-demandas$#', $uri, $m) && $_SERVER['REQUEST_METHOD'] === 'POST':
     require __DIR__ . '/Controllers/ValidacionLegalController.php';
-    (new \App\Controllers\ValidacionLegalController())->resumen($m[1]);
+    (new \App\Controllers\ValidacionLegalController())->toggleDemandas((int)$m[1]);
     exit;
     break;
 
-// Callback desde Lambdas/Step Functions para actualizar resultados
-case preg_match('#^/validaciones/demandas/callback$#', $uri) && $_SERVER['REQUEST_METHOD'] === 'POST':
+
+// Historial de validaciones jurídicas
+case preg_match('#^/validaciones/demandas/historial/(\d+)$#', $uri, $m) && $_SERVER['REQUEST_METHOD'] === 'GET':
     require __DIR__ . '/Controllers/ValidacionLegalController.php';
-    (new \App\Controllers\ValidacionLegalController())->callback();
+    (new \App\Controllers\ValidacionLegalController())->historialJson((int)$m[1]);
     exit;
     break;
 
-// Validaciones jurídicas de un inquilino
-case preg_match('#^/inquilino/([^/]+)/validaciones/juridico$#', $uri, $matches):
-    require __DIR__ . '/Controllers/ValidacionLegalController.php';
-    (new \App\Controllers\ValidacionLegalController())->mostrarReporte($matches[1]);
-    exit;
-    break;
-
-// Callback desde Lambdas/Step Functions para actualizar resultados
-case preg_match('#^/validaciones/demandas/callback$#', $uri) && $_SERVER['REQUEST_METHOD'] === 'POST':
-    require __DIR__ . '/Controllers/ValidacionLegalController.php';
-    (new \App\Controllers\ValidacionLegalController())->callback();
-    exit;
-    break;
-
-// Historial de validaciones jurídicas (por id de inquilino)
-case preg_match('#^/validaciones/demandas/historial/(\d+)$#', $uri, $matches):
-    require __DIR__ . '/Controllers/ValidacionLegalController.php';
-    (new \App\Controllers\ValidacionLegalController())->historial((int)$matches[1]);
-    exit;
-    break;
 
 // Historial jurídico por slug
 case preg_match('#^/inquilino/([^/]+)/validaciones/demandas$#', $uri, $matches):

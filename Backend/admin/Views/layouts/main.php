@@ -42,7 +42,7 @@ if ($__envBase) {
   <link rel="stylesheet" href="<?php echo $baseUrl ?>/assets/style.css">
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-transparent text-gray-200 min-h-screen font-sans">
+<body class=" bg-transparent text-gray-200 min-h-screen font-sans">
     <div class="fixed top-[10%] left-[10%] w-[300px] h-[300px] rounded-full bg-gradient-to-br from-primary to-purple-600 blur-[40px] opacity-50 animate-float z-0"></div>
     <div class="fixed bottom-[10%] right-[15%] w-[200px] h-[200px] rounded-full bg-gradient-to-br from-secondary to-blue-500 blur-[40px] opacity-50 animate-float animation-delay-1000 z-0"></div>
     <div class="fixed top-1/2 right-[20%] w-[150px] h-[150px] rounded-full bg-gradient-to-br from-purple-500 to-pink-500 blur-[40px] opacity-50 animate-float animation-delay-2000 z-0"></div>

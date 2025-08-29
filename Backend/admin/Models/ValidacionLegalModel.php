@@ -14,207 +14,174 @@ class ValidacionLegalModel extends Database
     }
 
     /**
-     * Registra un intento vacío (antes de llamar AWS), útil para bitácora.
+     * Ejecuta la búsqueda en Google Custom Search y guarda resultados.
      */
-    public function registrarIntento(array $data): int
-    {
-        $sql = "INSERT INTO validaciones_legal
-                (id_inquilino, nombre, apellido_p, apellido_m, curp, rfc, portal, query_usada, status, searched_at)
-                VALUES (:id_inquilino, :nombre, :apellido_p, :apellido_m, :curp, :rfc, :portal, :query_usada, :status, NOW())";
-        $stmt = $this->db->prepare($sql);
-        $stmt->execute([
-            ':id_inquilino' => (int)$data['id_inquilino'],
-            ':nombre'       => trim($data['nombre'] ?? ''),
-            ':apellido_p'   => trim($data['apellido_p'] ?? ''),
-            ':apellido_m'   => $data['apellido_m'] !== null ? trim($data['apellido_m']) : null,
-            ':curp'         => $data['curp'] ?? null,
-            ':rfc'          => $data['rfc'] ?? null,
-            ':portal'       => trim($data['portal']),
-            ':query_usada'  => json_encode($data['query_usada'], JSON_UNESCAPED_UNICODE),
-            ':status'       => $data['status'] ?? 'no_data',
-        ]);
-        return (int)$this->db->lastInsertId();
+    public function buscarEnGoogle(
+    int $idInquilino,
+    string $nombreCompleto,
+    string $nombreSolo,
+    string $apellido_p,
+    string $apellido_m,
+    ?string $curp = null,
+    ?string $rfc = null
+): array {
+    // 🔑 Config desde archivo config/google.php
+    $cfg = require __DIR__ . '/../config/google.php';
+    $API_KEY = $cfg['google']['api_key'] ?? null;
+    $CX      = $cfg['google']['cx'] ?? null;
+
+    if (!$API_KEY || !$CX) {
+        return ['ok' => false, 'error' => 'Faltan credenciales Google API'];
     }
 
-    /**
-     * Guarda el resultado de un intento (tras scraping/consulta).
-     */
-    public function guardarResultado(int $id, array $resultado = null, int $scoreMax = 0, string $clasificacion = 'sin_evidencia',
-                                     ?string $evidenciaKey = null, ?string $rawKey = null,
-                                     string $status = 'ok', ?string $errorMessage = null): bool
-    {
-        $sql = "UPDATE validaciones_legal SET
-                    resultado = :resultado,
-                    score_max = :score_max,
-                    clasificacion = :clasificacion,
-                    evidencia_s3_key = :evidencia_s3_key,
-                    raw_json_s3_key = :raw_json_s3_key,
-                    status = :status,
-                    error_message = :error_message,
-                    updated_at = NOW()
-                WHERE id = :id";
-        $stmt = $this->db->prepare($sql);
-        return $stmt->execute([
-            ':resultado'        => $resultado ? json_encode($resultado, JSON_UNESCAPED_UNICODE) : null,
-            ':score_max'        => $scoreMax,
-            ':clasificacion'    => $clasificacion,
-            ':evidencia_s3_key' => $evidenciaKey,
-            ':raw_json_s3_key'  => $rawKey,
-            ':status'           => $status,
-            ':error_message'    => $errorMessage,
-            ':id'               => $id,
-        ]);
+    $q = urlencode($nombreCompleto);
+    $url = "https://www.googleapis.com/customsearch/v1?key={$API_KEY}&cx={$CX}&q={$q}";
+
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_URL, $url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    $resp = curl_exec($ch);
+    curl_close($ch);
+
+    if (!$resp) {
+        return ['ok' => false, 'error' => 'Error al llamar Google API'];
     }
 
-    /**
-     * Obtiene el último reporte por inquilino, opcionalmente filtrado por portal.
-     */
-    public function obtenerUltimoReportePorInquilino(int $idInquilino, ?string $portal = null): ?array
-    {
-        if ($portal) {
-            $sql = "SELECT * FROM validaciones_legal
-                    WHERE id_inquilino = ? AND portal = ?
-                    ORDER BY searched_at DESC, id DESC
-                    LIMIT 1";
-            $stmt = $this->db->prepare($sql);
-            $stmt->execute([$idInquilino, $portal]);
-        } else {
-            $sql = "SELECT * FROM validaciones_legal
-                    WHERE id_inquilino = ?
-                    ORDER BY searched_at DESC, id DESC
-                    LIMIT 1";
-            $stmt = $this->db->prepare($sql);
-            $stmt->execute([$idInquilino]);
+    $data = json_decode($resp, true);
+    if (!isset($data['items'])) {
+        $data['items'] = [];
+    }
+
+    // normalización (quita acentos y hace lowercase)
+    $normalize = fn($s) => preg_replace(
+        '/\p{Mn}/u', '',
+        \Normalizer::normalize(mb_strtolower($s, 'UTF-8'), \Normalizer::FORM_D)
+    );
+
+    // variantes válidas
+    $var1 = trim("$nombreSolo $apellido_p $apellido_m");     // Nombre + apellidos
+    $var2 = trim("$apellido_p $apellido_m $nombreSolo");     // Apellidos + nombre
+    $variantes = [$normalize($var1), $normalize($var2)];
+
+    // filtrar resultados
+    $resultados = [];
+    foreach ($data['items'] as $item) {
+        $texto = $normalize(($item['title'] ?? '') . ' ' . ($item['snippet'] ?? ''));
+        foreach ($variantes as $v) {
+            if (strpos($texto, $v) !== false) {
+                $resultados[] = [
+                    'titulo'  => $item['title'] ?? '',
+                    'link'    => $item['link'] ?? '',
+                    'snippet' => $item['snippet'] ?? '',
+                ];
+                break;
+            }
         }
+    }
+
+    // clasificación básica
+    $clasificacion = count($resultados) > 0 ? 'match_alto' : 'sin_evidencia';
+    $status        = count($resultados) > 0 ? 'ok' : 'no_data';
+
+    // Guardar en BD
+    $sql = "INSERT INTO validaciones_legal
+            (id_inquilino, nombre, apellido_p, apellido_m, curp, rfc,
+             query_usada, resultado, clasificacion, status, searched_at)
+            VALUES (:id_inq, :nombre, :ap_p, :ap_m, :curp, :rfc,
+             :query, :resultado, :clasif, :status, NOW())";
+    $stmt = $this->db->prepare($sql);
+    $stmt->execute([
+        ':id_inq'    => $idInquilino,
+        ':nombre'    => $nombreSolo,
+        ':ap_p'      => $apellido_p,
+        ':ap_m'      => $apellido_m,
+        ':curp'      => $curp,
+        ':rfc'       => $rfc,
+        ':query'     => json_encode(['variante1'=>$var1,'variante2'=>$var2], JSON_UNESCAPED_UNICODE),
+        ':resultado' => json_encode($resultados, JSON_UNESCAPED_UNICODE),
+        ':clasif'    => $clasificacion,
+        ':status'    => $status,
+    ]);
+
+    // 🔧 Si no hubo resultados, actualizar snapshot en inquilinos_validaciones
+    if (count($resultados) === 0) {
+        $sqlUpd = "UPDATE inquilinos_validaciones
+                   SET proceso_inv_demandas = 1,
+                       inv_demandas_resumen = 'Sin evidencias encontradas',
+                       updated_at = NOW()
+                   WHERE id_inquilino = :id LIMIT 1";
+        $stmtUpd = $this->db->prepare($sqlUpd);
+        $stmtUpd->execute([':id' => $idInquilino]);
+    }
+
+    return [
+        'ok'           => true,
+        'query'        => $nombreCompleto,
+        'variantes'    => [$var1, $var2],
+        'total'        => count($resultados),
+        'resultados'   => $resultados,
+        'clasificacion'=> $clasificacion,
+        'status'       => $status
+    ];
+}
+
+public function actualizarProcesoDemandas(int $idInquilino, int $estado): bool
+{
+    $sql = "UPDATE inquilinos_validaciones 
+            SET proceso_inv_demandas = :estado, updated_at = NOW()
+            WHERE id_inquilino = :id";
+    $stmt = $this->db->prepare($sql);
+    return $stmt->execute([
+        ':estado' => $estado,
+        ':id' => $idInquilino
+    ]);
+}
+
+public function getProcesoDemandas(int $idInquilino): int {
+    $sql = "SELECT proceso_inv_demandas 
+            FROM inquilinos_validaciones 
+            WHERE id_inquilino = :id LIMIT 1";
+    $stmt = $this->db->prepare($sql);
+    $stmt->execute([':id' => $idInquilino]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    return $row ? (int)$row['proceso_inv_demandas'] : 1; // 1 = No iniciado
+}
+
+public function obtenerValidaciones(int $idInquilino): array
+{
+    $sql = "SELECT * FROM inquilinos_validaciones WHERE id_inquilino = :id LIMIT 1";
+    $stmt = $this->db->prepare($sql);
+    $stmt->execute([':id' => $idInquilino]);
+    return $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+}
+
+
+
+    /**
+     * Trae el historial de búsquedas previas.
+     */
+    public function obtenerHistorialPorInquilino(int $idInquilino): array
+    {
+        $sql = "SELECT * FROM validaciones_legal
+                WHERE id_inquilino = ?
+                ORDER BY searched_at DESC";
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute([$idInquilino]);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    /**
+     * Trae el último reporte de un inquilino.
+     */
+    public function obtenerUltimoReportePorInquilino(int $idInquilino): ?array
+    {
+        $sql = "SELECT * FROM validaciones_legal
+                WHERE id_inquilino = ?
+                ORDER BY searched_at DESC, id DESC
+                LIMIT 1";
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute([$idInquilino]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
         return $row ?: null;
     }
-
-    /**
- * Resumen por portal para los chips.
- * 1) Intenta desde validaciones_legal (real).
- * 2) Si no hay filas, sintetiza un item desde inquilinos_validaciones.inv_demandas_json (placeholder).
- */
-public function obtenerResumenPorPortal(int $idInquilino): array
-{
-    // 1) Intento normal: tomar el último por portal desde validaciones_legal
-    $sql = "SELECT t.*
-            FROM validaciones_legal t
-            JOIN (
-                SELECT portal, MAX(searched_at) AS max_ts
-                FROM validaciones_legal
-                WHERE id_inquilino = :id1
-                GROUP BY portal
-            ) x ON x.portal = t.portal AND x.max_ts = t.searched_at
-            WHERE t.id_inquilino = :id2
-            ORDER BY t.portal ASC";
-
-    $stmt = $this->db->prepare($sql);
-    $stmt->execute([':id1' => $idInquilino, ':id2' => $idInquilino]);
-    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-    if ($rows && count($rows) > 0) {
-        return $rows;
-    }
-
-    // 2) Fallback: usar el agregado guardado en inquilinos_validaciones.inv_demandas_json
-    $stmt2 = $this->db->prepare("
-        SELECT proceso_inv_demandas AS proceso, inv_demandas_json
-        FROM inquilinos_validaciones
-        WHERE id_inquilino = ?
-        LIMIT 1
-    ");
-    $stmt2->execute([$idInquilino]);
-    $row = $stmt2->fetch(PDO::FETCH_ASSOC);
-
-    if (!$row) {
-        return []; // sin nada que mostrar
-    }
-
-    $json = $row['inv_demandas_json'] ?? null;
-    $agg  = $json ? json_decode($json, true) : null;
-
-    // Mapeo mínimo para un chip sintético
-    $proceso = isset($row['proceso']) ? (int)$row['proceso'] : null;
-    $status  = $agg['status'] ?? (($proceso === 1) ? 'ok' : 'no_data');
-
-    $item = [
-        'portal'           => 'juridico_agg',
-        'status'           => $status,
-        'clasificacion'    => $agg['clasificacion'] ?? 'sin_evidencia',
-        'score_max'        => (int)($agg['scoring'] ?? $agg['score'] ?? $agg['score_max'] ?? 0),
-        'resultado'        => json_encode($agg['evidencias'] ?? [], JSON_UNESCAPED_UNICODE),
-        'query_usada'      => json_encode(['fuente' => 'inquilinos_validaciones.inv_demandas_json', 'fecha' => date('Y-m-d')]),
-        'searched_at'      => date('Y-m-d H:i:s'),
-        'evidencia_s3_key' => null,
-        'raw_json_s3_key'  => null,
-        'error_message'    => null,
-    ];
-
-    return [$item];
-}
-
-
-
-    public function obtenerValidacionDemandas(int $idInquilino): ?array
-    {
-        $stmt = $this->db->prepare("
-            SELECT inv_demandas_json
-            FROM inquilinos_validaciones
-            WHERE id_inquilino = ?
-            LIMIT 1
-        ");
-        $stmt->execute([$idInquilino]);
-        $row = $stmt->fetch(PDO::FETCH_ASSOC);
-
-        if (!$row || empty($row['inv_demandas_json'])) {
-            return null;
-        }
-
-        return json_decode($row['inv_demandas_json'], true);
-    }
-
-    public function actualizarSnapshotInquilino(
-        int $idInquilino,
-        array $payload,
-        string $status,
-        ?string $resumen = null
-    ): bool {
-        // Map a un estado entero (ajústalo si ya tienes tu convenio)
-        $map = [
-            'ok'              => 1,
-            'no_data'         => 2,
-            'error'           => 3,
-            'manual_required' => 4,
-        ];
-        $proceso = $map[$status] ?? 1;
-
-        $sql = "UPDATE inquilinos_validaciones
-                SET proceso_inv_demandas = :proceso,
-                    inv_demandas_resumen = :resumen,
-                    inv_demandas_json    = :json,
-                    updated_at           = NOW()
-                WHERE id_inquilino = :id
-                LIMIT 1";
-        $stmt = $this->db->prepare($sql);
-        return $stmt->execute([
-            ':proceso' => $proceso,
-            ':resumen' => $resumen ?? '',
-            ':json'    => json_encode($payload, JSON_UNESCAPED_UNICODE),
-            ':id'      => $idInquilino,
-        ]);
-    }
-
-public function obtenerHistorialPorInquilino(int $idInquilino): array
-{
-    $sql = "SELECT *
-            FROM validaciones_legal
-            WHERE id_inquilino = ?
-            ORDER BY searched_at DESC";
-    $stmt = $this->db->prepare($sql);
-    $stmt->execute([$idInquilino]);
-    return $stmt->fetchAll(PDO::FETCH_ASSOC);
-}
-
-
 }

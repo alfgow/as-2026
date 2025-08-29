@@ -5,10 +5,12 @@ namespace App\Controllers;
 
 require_once __DIR__ . '/../Middleware/AuthMiddleware.php';
 require_once __DIR__ . '/../Models/InquilinoModel.php';
+require_once __DIR__ . '/../Models/ValidacionLegalModel.php';
 require_once __DIR__ . '/../Helpers/S3Helper.php';
 use App\Helpers\S3Helper;
 use App\Middleware\AuthMiddleware;
 use App\Models\InquilinoModel;
+use App\Models\ValidacionLegalModel;
 
 /**
  * Controlador de Inquilinos
@@ -100,10 +102,7 @@ class InquilinoController
         $contentView = __DIR__ . '/../Views/inquilino/detalle.php';
         include __DIR__ . '/../Views/layouts/main.php';
     }
-
-
     
-
     /**
      * Actualiza datos personales de un inquilino (AJAX).
      *
@@ -559,6 +558,39 @@ class InquilinoController
     }
 }
 
+public function editarStatus(): void
+{
+    header('Content-Type: application/json; charset=utf-8');
+
+    try {
+        $idInquilino = (int)($_POST['id_inquilino'] ?? 0);
+        $status      = (int)($_POST['status'] ?? 0);
+
+        if ($idInquilino <= 0 || $status <= 0) {
+            echo json_encode([
+                'ok'      => false,
+                'mensaje' => 'Datos inválidos'
+            ]);
+            return;
+        }
+        $model = new InquilinoModel();
+        $ok = $model->actualizarStatus($idInquilino, $status);
+
+        echo json_encode([
+            'ok'      => $ok,
+            'mensaje' => $ok
+                ? 'Estatus actualizado correctamente'
+                : 'No se pudo actualizar el estatus'
+        ]);
+    } catch (\Throwable $e) {
+        echo json_encode([
+            'ok'      => false,
+            'mensaje' => $e->getMessage()
+        ]);
+    }
+}
+
+
 
 
     /**
@@ -595,6 +627,8 @@ class InquilinoController
         exit;
     }
 
+    
+
     /**
  * Vista de Validaciones del inquilino.
  * GET /inquilino/{slug}/validaciones
@@ -602,7 +636,10 @@ class InquilinoController
 public function validaciones(string $slug): void
 {
     $model     = new InquilinoModel();
+    $modelVal  = new ValidacionLegalModel();
     $inquilino = $model->obtenerPorSlug($slug);
+    $idInquilino = $inquilino['id'] ?? 0;
+    $procesoDemandas = $modelVal->getProcesoDemandas($idInquilino);
 
     if (!$inquilino) {
         http_response_code(404);
@@ -633,6 +670,8 @@ public function validaciones(string $slug): void
             $admin_base_url = $scriptDir;
         }
     }
+
+    $validaciones = $model->getValidacionesByInquilinoId($idInquilino);
 
     // Layout + vista
     $title       = 'Validaciones - AS';

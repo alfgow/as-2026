@@ -9,8 +9,14 @@ declare(strict_types=1);
 namespace App\Controllers;
 require_once __DIR__ . '/../Models/InquilinoModel.php';
 require_once __DIR__ . '/../Helpers/ValidacionResumenHelper.php';
+require_once __DIR__ . '/../Helpers/VerificaMexCleaner.php';
+require_once __DIR__ . '/../Helpers/VerificaMexMapper.php';  
+require_once __DIR__ . '/../Helpers/S3Helper.php';
+
 use App\Models\InquilinoModel;
 use App\Helpers\S3Helper;
+use App\Helpers\VerificaMexCleaner;
+use App\Helpers\VerificaMexMapper; 
 use Aws\Rekognition\RekognitionClient;
 use Aws\Textract\TextractClient;
 use Aws\S3\S3Client;
@@ -47,7 +53,7 @@ class InquilinoValidacionAWSController
  * - S3 en región configurada.
  * - Textract/Rekognition en us-east-1 por disponibilidad.
  */
-public function __construct()
+    public function __construct()
     {
         $this->model = new InquilinoModel();
         $this->aws = require __DIR__ . '/../config/s3config.php'; // ajusta ruta si difiere
@@ -103,6 +109,92 @@ private function ensureCopyToUsBucket(string $srcKey): string
 
     return $dstKey;
 }
+
+private function validarVerificaMex(int $idInquilino): array
+{
+    try {
+        $model = new InquilinoModel();
+        $inquilino = $model->obtenerPorId($idInquilino);
+
+        // 🔑 Configuración
+        $config = require __DIR__ . '/../config/verificamex.php';
+        $token  = $config['token'] ?? '';
+
+        // 📂 Archivos requeridos
+        $archivos = $model->getArchivosByTipos($idInquilino, ['ine_frontal','ine_reverso','selfie']);
+        $s3 = new \App\Helpers\S3Helper('inquilinos');
+
+        $payload = [
+            "ine_front" => !empty($archivos['ine_frontal']) ? $s3->getFileBase64($archivos['ine_frontal']) : null,
+            "ine_back"  => !empty($archivos['ine_reverso']) ? $s3->getFileBase64($archivos['ine_reverso']) : null,
+            "selfie"    => !empty($archivos['selfie'])      ? $s3->getFileBase64($archivos['selfie'])      : null,
+            "model"     => "D"
+        ];
+
+        if (!$payload['ine_front'] || !$payload['ine_back']) {
+            throw new \Exception("Faltan archivos necesarios (INE frontal y/o reverso).");
+        }
+
+        // 🌐 Llamada HTTP → VerificaMex
+        $ch = curl_init("https://api.verificamex.com/identity/v1/validations/basic");
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_HTTPHEADER => [
+                "Content-Type: application/json",
+                "Accept: application/json",
+                "Authorization: Bearer {$token}",
+            ],
+            CURLOPT_POST => true,
+            CURLOPT_POSTFIELDS => json_encode($payload, JSON_UNESCAPED_SLASHES),
+        ]);
+        $res = curl_exec($ch);
+
+        if ($res === false) {
+            throw new \Exception("Error cURL: " . curl_error($ch));
+        }
+        curl_close($ch);
+
+        $json = json_decode($res, true);
+        if (!$json) {
+            throw new \Exception("Respuesta inválida de VerificaMex");
+        }
+
+        // ✅ Limpiamos imágenes base64
+        $jsonLimpio = \App\Helpers\VerificaMexCleaner::limpiar($json);
+
+        // 🚀 Mapear con nuestro helper
+        $campos = \App\Helpers\VerificaMexMapper::map($jsonLimpio, $inquilino);
+
+        // 💾 Guardamos en BD
+        $model->guardarValidacionesVerificaMex($idInquilino, $campos);
+
+        // 📌 Status/resumen general
+        $status  = !empty($json['data']['status']) ? 1 : 0;
+        $resumen = $status === 1
+            ? "✔️ INE válida (VerificaMex)"
+            : ("❌ " . ($json['message'] ?? "Error en validación"));
+
+        // Guardar también el JSON limpio completo
+        $ok = $model->guardarValidacionVerificaMex($idInquilino, $status, $jsonLimpio, $resumen);
+
+        // 🔄 Devolver todo, igual que en mock
+        return [
+            'ok'              => (bool)$ok,
+            'status'          => $status,
+            'resumen'         => $resumen,
+            'campos_mapeados' => $campos,
+            'json_original'   => $json,
+            'json_limpio'     => $jsonLimpio
+        ];
+
+    } catch (\Throwable $e) {
+        return [
+            'ok'    => false,
+            'error' => $e->getMessage()
+        ];
+    }
+}
+
     
     /**
      * Valida comprobantes de ingreso por conteo simple de PDFs.
@@ -203,22 +295,28 @@ private function isCURP(string $s): bool
     ) === 1;
 }
 
+public function normalizeS3Key($key) {
+    // Convertir a ASCII, eliminando acentos
+    $key = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $key);
+
+    // Sustituir espacios por guiones bajos
+    $key = preg_replace('/\s+/', '_', $key);
+
+    // Quitar caracteres no permitidos (solo letras, números, guiones, underscores, slash, punto)
+    $key = preg_replace('/[^A-Za-z0-9_\-\.\/]/', '', $key);
+
+    return strtolower($key);
+}
 
 
-    public 
-/**
- * Orquestador de validaciones para un inquilino por slug.
- * Debugs opcionales vía ?check=archivos|faces|ocr|parse|kv|match
- * Devuelve JSON para pruebas rápidas.
- */
-function validar($slug)
+
+    public function validar($slug)
     {
         // 1. Obtener datos del inquilino
         $inquilino = $this->model->obtenerPorSlug($slug);  
         $idInq = (int)$inquilino['id'];          
 
         // --- VALIDACIÓN / RESUMEN DE ARCHIVOS ---------------------------------------
-                // --- VALIDACIÓN / RESUMEN DE ARCHIVOS ---------------------------------------
         if (isset($_GET['check']) && $_GET['check'] === 'archivos') {
             // 1) Leer archivos desde BD
             $rows = $this->model->archivosPorInquilinoId((int)$inquilino['id']);
@@ -335,6 +433,33 @@ function validar($slug)
             return;
         }
 
+        // --- NUEVO: Validación con VerificaMex (solo INE) -------------------
+    if (isset($_GET['check']) && $_GET['check'] === 'verificamex') {
+        try {
+            $resultado = $this->validarVerificaMex($idInq);
+
+            if (!empty($resultado['ok'])) {
+                echo json_encode([
+                    'ok'       => $resultado['ok'] ?? false,
+                    'mensaje'  => $resultado['ok']
+                        ? 'Validación VerificaMex ejecutada.'
+                        : 'Error en validación',
+                    'resultado'=> $resultado
+                ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+            } else {
+                echo json_encode([
+                    'ok'      => false,
+                    'mensaje' => $resultado['error'] ?? 'Error en validación VerificaMex'
+                ], JSON_UNESCAPED_UNICODE);
+            }
+        } catch (\Throwable $e) {
+            echo json_encode([
+                'ok'      => false,
+                'mensaje' => 'Excepción en VerificaMex: ' . $e->getMessage()
+            ], JSON_UNESCAPED_UNICODE);
+        }
+        return;
+    }
 
         // --- DEBUG: comparar Selfie vs INE frontal ---
         if (isset($_GET['check']) && $_GET['check'] === 'faces') {
@@ -400,88 +525,12 @@ function validar($slug)
             }
             return;
         }
-        // --- FIN DEBUG faces ---
 
-        /* ============================================================================
-        * Cambios: Resumen Humano + Persistencia extendida (ingresos_simple y OCR INE)
-        * Fecha: 2025-08-13
-        * Autor: alfgow
-        * ----------------------------------------------------------------------------
-        * 1) ACTUALIZADO: validarIngresosPDFSimple(array $inquilino)
-        *
-        *    - Antes: guardaba JSON en `validacion_ingresos` con 2 params al modelo.
-        *      Tras la migración de esquema, la firma del modelo cambió (4 params),
-        *      lo que provocó el error "Expected 4 arguments. Found 2".
-        *
-        *    - Ahora: el controlador:
-        *        (a) arma $payload con conteo de PDFs,
-        *        (b) decide $status ('OK'|'REVIEW'|'FAIL') y mapea a $proceso (1/2/0),
-        *        (c) genera $resumen con ValidacionResumenHelper::ingresosSimple(...),
-        *        (d) llama al modelo con 4 parámetros:
-        *            guardarValidacionIngresosSimple($id, $proceso, $payload, $resumen)
-        *
-        *    - Resultado:
-        *        - proceso_validacion_ingresos ← 1/2/0
-        *        - validacion_ingresos_resumen ← TEXTO legible
-        *        - validacion_ingresos_json    ← JSON completo
-        *
-        *    - Ejemplo de respuesta JSON del endpoint:
-        *        {
-        *          "ok": true,
-        *          "mensaje": "Validación de comprobantes (simple) guardada.",
-        *          "resultado": {
-        *            "status": "REVIEW",
-        *            "proceso": 2,
-        *            "resumen": "⏳ Ingresos (simple): 1 PDF(s) → REVIEW.",
-        *            "conteo": 1
-        *          }
-        *        }
-        *
-        * ----------------------------------------------------------------------------
-        * 2) ACTUALIZADO: ?check=ocr (OCR de INE con Textract y guardado como Documentos)
-        *
-        *    - Antes: solo hacía OCR y devolvía las líneas por pantalla (uso debug).
-        *    - Ahora: además de hacer OCR (DetectDocumentText) y contar líneas:
-        *        (a) decide $proceso: OK si ambos lados tienen líneas; PEND si uno;
-        *            NO_OK si ninguno,
-        *        (b) arma $payload con conteos, claves S3 y extractos,
-        *        (c) genera $resumen con ValidacionResumenHelper::ineOcr(...),
-        *        (d) guarda en BD con guardarValidacionDocumentos($id, $proceso, $payload, $resumen).
-        *
-        *    - Columnas afectadas:
-        *        - proceso_validacion_documentos
-        *        - validacion_documentos_resumen
-        *        - validacion_documentos_json
-        *
-        *    - Ejemplo de $resumen:
-        *        "✔️ INE OCR: 14 líneas frente, 9 reverso."
-        *
-        * ----------------------------------------------------------------------------
-        * Dependencias y convenciones:
-        *  - Se importa el helper:
-        *      require_once __DIR__ . '/../Helpers/ValidacionResumenHelper.php';
-        *      use App\Helpers\ValidacionResumenHelper as VRH;
-        *  - Semáforo (proceso): 0 = NO_OK ✖️, 1 = OK ✔️, 2 = PENDIENTE ⏳.
-        *  - Los payloads incluyen siempre 'tipo' y 'ts' (ISO 8601).
-        *
-        * Pruebas rápidas (GET):
-        *  - /inquilino/{slug}/validar?check=ingresos_simple
-        *  - /inquilino/{slug}/validar?check=ocr
-        *
-        * Consideraciones:
-        *  - Si no se encuentran archivos requeridos (INE frente/reverso), se retorna
-        *    error JSON y NO se intenta guardar.
-        *  - Controlador no atrapa errores de BD (se recomienda tener try/catch en el
-        *    modelo o un middleware general).
-        * ========================================================================== */
-
-                // --- VALIDACIÓN OCR DE DOCUMENTOS ---------------------------------------
-        // --- VALIDACIÓN OCR DE DOCUMENTOS ---------------------------------------
+        // --- DEBUG: OCR de documentos (INE, FM, Pasaporte) ---
         if (isset($_GET['check']) && $_GET['check'] === 'ocr') {
             // 1) Localizar las s3_key
             $rows = $this->model->archivosPorInquilinoId((int)$inquilino['id']);
             $frontalKey = $reversoKey = $pasaporteKey = $fmFrontalKey = $fmReversoKey = null;
-
             foreach ($rows as $r) {
                 $tipo = strtolower(trim($r['tipo']));
                 if ($tipo === 'ine_frontal') $frontalKey = $r['s3_key'];
@@ -873,6 +922,8 @@ function validar($slug)
             // 1) Obtener archivos del inquilino
             $rows = $this->model->archivosPorInquilinoId((int)$inquilino['id']);
 
+         
+
             $items = [];
             foreach ($rows as $r) {
                 if (strtolower(trim($r['tipo'])) !== 'comprobante_ingreso') continue;
@@ -920,683 +971,681 @@ function validar($slug)
 
 
         // --- VALIDAR COMPROBANTES (PDF) - SIMPLE POR CONTEO ----------------------
-    if (isset($_GET['check']) && $_GET['check'] === 'ingresos_simple') {
-        // 1) Traer archivos del inquilino
-        $rows = $this->model->archivosPorInquilinoId((int)$inquilino['id']);
+        if (isset($_GET['check']) && $_GET['check'] === 'ingresos_simple') {
+            // 1) Traer archivos del inquilino
+            $rows = $this->model->archivosPorInquilinoId((int)$inquilino['id']);
+        
+            $pdfs = [];
+            foreach ($rows as $r) {
+                if (strtolower(trim($r['tipo'])) !== 'comprobante_ingreso') continue;
+                $key = $r['s3_key'] ?? '';
+                $ext = strtolower(pathinfo($key, PATHINFO_EXTENSION));
+                if ($ext === 'pdf') {
+                    $pdfs[] = [
+                        's3_key' => $key,
+                        'ext'    => $ext,
+                        'size'   => $r['size'] ?? null,
+                        'mime'   => $r['mime_type'] ?? null,
+                    ];
+                }
+            }
 
-        $pdfs = [];
-        foreach ($rows as $r) {
-            if (strtolower(trim($r['tipo'])) !== 'comprobante_ingreso') continue;
-            $key = $r['s3_key'] ?? '';
-            $ext = strtolower(pathinfo($key, PATHINFO_EXTENSION));
-            if ($ext === 'pdf') {
-                $pdfs[] = [
+            $n = count($pdfs);
+
+            // Reglas simples:
+            //  - OK      : 3 o más PDFs (recomendado: 3 meses)
+            //  - REVIEW  : 1 o 2 PDFs (pedir más)
+            //  - FAIL    : 0 PDFs
+            $status = ($n >= 3) ? 'OK' : (($n >= 1) ? 'REVIEW' : 'FAIL');
+
+            // 2) Payload con reglas y resultados
+            $payload = [
+                'tipo'      => 'ingresos_pdf_simple',
+                'conteo'    => $n,
+                'archivos'  => $pdfs,
+                'reglas'    => [
+                    'min_recomendado' => 3,
+                    'criterio'        => 'OK si hay >= 3 PDFs; REVIEW si 1-2; FAIL si 0.',
+                ],
+                'status'    => $status,
+                'ts'        => date('c'),
+            ];
+
+            // 3) Mapear a proceso (0/1/2)
+            $proceso = ($status === 'OK') ? 1 : (($status === 'FAIL') ? 0 : 2); // REVIEW => 2
+
+            // 4) Resumen humano
+            $resumen = \App\Helpers\ValidacionResumenHelper::ingresosSimple($proceso, $payload);
+
+            // 5) Guardar en la tabla inquilinos_validaciones (columnas *_resumen/*_json)
+            //    Nota: requiere método del modelo guardarValidacionIngresosSimple($id, $proceso, $payload, $resumen)
+            $ok = $this->model->guardarValidacionIngresosSimple((int)$inquilino['id'], (int)$proceso, $payload, $resumen);
+
+            // 6) Respuesta
+            echo json_encode([
+                'ok'       => (bool)$ok,
+                'mensaje'  => 'Validación de comprobantes (simple) guardada.',
+                'resultado'=> [
+                    'status'  => $status,
+                    'proceso' => $proceso,
+                    'resumen' => $resumen,
+                    'conteo'  => $n
+                ],
+            ]);
+            return;
+        }
+
+        // --- GUARDAR PAGO INICIAL ---------------------------------------------------
+        if (isset($_GET['check']) && $_GET['check'] === 'pago_inicial') {
+            // 1) Leer parámetros (pueden venir por GET) y normalizar
+            $montoRaw = $_GET['monto']      ?? null;   // acepta "12500", "12,500.00", "$12,500.00"
+            $fechaRaw = $_GET['fecha']      ?? null;   // preferente YYYY-MM-DD
+            $ref      = trim((string)($_GET['referencia'] ?? ''));
+
+            // Normalizar monto
+            $monto = null;
+            if ($montoRaw !== null && $montoRaw !== '') {
+                $s = str_replace(['$', ',', ' '], '', (string)$montoRaw);
+                if (is_numeric($s)) $monto = (float)$s;
+            }
+
+            // Validar/normalizar fecha
+            $fecha = null;
+            if ($fechaRaw) {
+                // aceptar YYYY-MM-DD o intentar convertir d/m/Y
+                if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $fechaRaw)) {
+                    $fecha = $fechaRaw;
+                } elseif (preg_match('/^\d{1,2}\/\d{1,2}\/\d{4}$/', $fechaRaw)) {
+                    [$d,$m,$y] = explode('/', $fechaRaw);
+                    $fecha = sprintf('%04d-%02d-%02d', (int)$y, (int)$m, (int)$d);
+                }
+            }
+
+            // 2) Decidir proceso
+            $hasMonto = ($monto !== null && $monto > 0);
+            $hasFecha = ($fecha !== null);
+            $hasRef   = ($ref !== '');
+
+            $proceso = 0; // NO_OK
+            if ($hasMonto && $hasFecha) {
+                $proceso = 1; // OK
+            } elseif ($hasMonto || $hasFecha || $hasRef) {
+                $proceso = 2; // PENDIENTE
+            }
+
+            // 3) Payload y Resumen humano
+            $payload = [
+                'tipo'   => 'pago_inicial',
+                'monto'  => $monto,
+                'fecha'  => $fecha,
+                'referencia' => $ref,
+                'ts'     => date('c'),
+                'origen' => 'manual_params', // o 'banco_webhook' si luego viene de webhook
+            ];
+
+            $resumen = \App\Helpers\ValidacionResumenHelper::pagoInicial($proceso, $payload);
+
+            // 4) Guardar en BD
+            $ok = $this->model->guardarPagoInicial(
+                (int)$inquilino['id'],
+                (int)$proceso,
+                $payload,
+                $resumen
+            );
+
+            // 5) Respuesta
+            echo json_encode([
+                'ok' => (bool)$ok,
+                'mensaje' => $ok ? 'Pago inicial guardado.' : 'No se pudo guardar el pago inicial.',
+                'resultado' => [
+                    'proceso' => $proceso,
+                    'resumen' => $resumen,
+                    'payload' => $payload,
+                ]
+            ], JSON_UNESCAPED_UNICODE);
+            return;
+        }
+
+        // --- INVESTIGACIÓN DE DEMANDAS ---------------------------------------------
+        if (isset($_GET['check']) && $_GET['check'] === 'demandas') {
+            // 1) Leer params: hit (bool), fuentes (csv o arreglo), folio (string)
+            $hitRaw = strtolower(trim((string)($_GET['hit'] ?? '')));
+            $hit = in_array($hitRaw, ['1','true','sí','si','yes'], true) ? true
+                : (in_array($hitRaw, ['0','false','no'], true) ? false : null);
+
+            // fuentes: aceptar ?fuentes=TSJCDMX,RENADE o múltiples ?fuentes[]=...
+            $fuentes = [];
+            if (isset($_GET['fuentes'])) {
+                if (is_array($_GET['fuentes'])) {
+                    foreach ($_GET['fuentes'] as $f) {
+                        $f = trim((string)$f);
+                        if ($f !== '') $fuentes[] = $f;
+                    }
+                } else {
+                    foreach (explode(',', (string)$_GET['fuentes']) as $f) {
+                        $f = trim($f);
+                        if ($f !== '') $fuentes[] = $f;
+                    }
+                }
+            }
+            $folio = trim((string)($_GET['folio'] ?? ''));
+
+            // 2) Decidir proceso
+            //    - hit === true   → 0 (NO_OK)
+            //    - hit === false  → 1 (OK)
+            //    - hit === null   → 2 (PEND), salvo que haya señales claras
+            if ($hit === true) {
+                $proceso = 0;
+            } elseif ($hit === false) {
+                $proceso = 1;
+            } else {
+                $proceso = (!empty($fuentes) || $folio !== '') ? 2 : 2;
+            }
+
+            // 3) Payload y resumen humano
+            $payload = [
+                'tipo'    => 'inv_demandas',
+                'hit'     => $hit,
+                'fuentes' => $fuentes,
+                'folio'   => $folio,
+                'ts'      => date('c'),
+                'nota'    => 'Resultado cargado manualmente vía querystring',
+            ];
+            $resumen = \App\Helpers\ValidacionResumenHelper::invDemandas($proceso, $payload);
+
+            // 4) Guardar
+            $ok = $this->model->guardarInvestigacionDemandas(
+                (int)$inquilino['id'],
+                (int)$proceso,
+                $payload,
+                $resumen
+            );
+
+            // 5) Respuesta
+            echo json_encode([
+                'ok'      => (bool)$ok,
+                'mensaje' => $ok ? 'Investigación de demandas guardada.' : 'No se pudo guardar.',
+                'resultado' => [
+                    'proceso' => $proceso,
+                    'resumen' => $resumen,
+                    'payload' => $payload,
+                ],
+            ], JSON_UNESCAPED_UNICODE);
+            return;
+        }
+
+        /**
+         * Extrae señales de un estado de cuenta (BBVA y similares) desde texto OCR.
+         * Devuelve:
+         *   - monto    : número (float) — usa "Total Abonos" / "Depósitos / Abonos" si existe; si no, el monto más grande con $ o MXN
+         *   - mes_anno : string "MM-YYYY" — intenta múltiples formatos: "11/JUL", "08/2025", "agosto 2025", "14/08/2025", "2025-08-14"
+         *   - origen   : palabra clave detectada (bbva, abonos, depósitos, nómina, etc.)
+         */
+        function parseComprobanteIngresoBBVA(string $text): array
+        {
+            $out = ['monto' => null, 'mes_anno' => null, 'origen' => null];
+
+            // Normalizar: una línea y espacios simples
+            $t = preg_replace('/[ \t]+/u', ' ', str_replace(["\r", "\n"], ' ', $text));
+
+            // =========================
+            // 1) MONTO (ABONOS BBVA)
+            // =========================
+            $monto = null;
+
+            // Patrones típicos en estados BBVA (pueden variar por plantilla):
+            //   "Abonos", "Total Abonos", "Depósitos / Abonos", "Depósitos y abonos"
+            if (preg_match_all(
+                '/(?:Total\s+Abonos|Abonos(?:\s+del\s+Per[ií]odo)?|Dep[óo]sitos(?:\s*(?:\/|y)\s*Abonos)?)\D{0,20}\$?\s*([0-9]{1,3}(?:[.,\s][0-9]{3})*(?:[.,][0-9]{2})?)/iu',
+                $t,
+                $mm
+            )) {
+                foreach ($mm[1] as $raw) {
+                    // Normalizar separadores: quitar miles (coma/espacio) y usar punto para decimales
+                    $num = (float) str_replace([',', ' '], ['', ''], str_replace(',', '.', $raw));
+                    if ($num > 0) $monto = max($monto ?? 0, $num);
+                }
+            }
+
+            // Fallback: mayor cantidad que aparezca con $ o MXN
+            if ($monto === null && preg_match_all('/(?:\$|\bMXN\b)\s*([0-9]{1,3}(?:[.,\s][0-9]{3})*(?:[.,][0-9]{2})?)/iu', $t, $mm2)) {
+                foreach ($mm2[1] as $raw) {
+                    $num = (float) str_replace([',', ' '], ['', ''], str_replace(',', '.', $raw));
+                    if ($num > 0) $monto = max($monto ?? 0, $num);
+                }
+            }
+            $out['monto'] = $monto;
+
+            // =========================
+            // 2) FECHAS → "MM-YYYY"
+            // =========================
+            $candidatos = [];
+
+            // a) Texto "agosto 2025" o "ago 2025"
+            $mesesMap = [
+                'enero'=>1,'febrero'=>2,'marzo'=>3,'abril'=>4,'mayo'=>5,'junio'=>6,
+                'julio'=>7,'agosto'=>8,'septiembre'=>9,'setiembre'=>9,'octubre'=>10,'noviembre'=>11,'diciembre'=>12
+            ];
+            $abrMap = ['ene'=>'enero','feb'=>'febrero','mar'=>'marzo','abr'=>'abril','may'=>'mayo','jun'=>'junio','jul'=>'julio','ago'=>'agosto','sep'=>'septiembre','set'=>'septiembre','oct'=>'octubre','nov'=>'noviembre','dic'=>'diciembre'];
+
+            if (preg_match_all('/\b(ene|feb|mar|abr|may|jun|jul|ago|sep|set|oct|nov|dic|enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre)\b[^\d]{0,6}(\d{4})/iu', $t, $m, PREG_SET_ORDER)) {
+                foreach ($m as $hit) {
+                    $mesTxt = mb_strtolower($hit[1], 'UTF-8');
+                    $year   = (int) $hit[2];
+                    $mesFull = $abrMap[$mesTxt] ?? $mesTxt;
+                    $mes = $mesesMap[$mesFull] ?? null;
+                    if ($mes) $candidatos[] = sprintf('%02d-%04d', $mes, $year);
+                }
+            }
+
+            // b) "11/JUL" (sin año) → estimar año (si hay 20xx en texto, usamos ese; si no, año actual)
+            $mapAbr = ['ENE'=>1,'FEB'=>2,'MAR'=>3,'ABR'=>4,'MAY'=>5,'JUN'=>6,'JUL'=>7,'AGO'=>8,'SEP'=>9,'SET'=>9,'OCT'=>10,'NOV'=>11,'DIC'=>12];
+            if (preg_match_all('/\b([0-3]?\d)[\/\-](ENE|FEB|MAR|ABR|MAY|JUN|JUL|AGO|SEP|SET|OCT|NOV|DIC)\b/u', strtoupper($t), $m, PREG_SET_ORDER)) {
+                $year = null;
+                if (preg_match('/\b(20\d{2})\b/u', $t, $y)) $year = (int) $y[1];
+                if ($year === null) $year = (int) date('Y');
+                foreach ($m as $hit) {
+                    $mes = $mapAbr[$hit[2]] ?? null;
+                    if ($mes) $candidatos[] = sprintf('%02d-%04d', $mes, $year);
+                }
+            }
+
+            // c) "08/2025" o "08-2025"
+            if (preg_match_all('/\b(0?[1-9]|1[0-2])[\/\-](\d{4})\b/u', $t, $m, PREG_SET_ORDER)) {
+                foreach ($m as $hit) $candidatos[] = sprintf('%02d-%04d', (int) $hit[1], (int) $hit[2]);
+            }
+
+            // d) "14/08/2025" o "14-08-2025" → usar MES/AÑO
+            if (preg_match_all('/\b(0?[1-9]|[12][0-9]|3[01])[\/\-](0?[1-9]|1[0-2])[\/\-](\d{4})\b/u', $t, $m, PREG_SET_ORDER)) {
+                foreach ($m as $hit) $candidatos[] = sprintf('%02d-%04d', (int) $hit[2], (int) $hit[3]);
+            }
+
+            // e) "2025-08-14" → usar 08/2025
+            if (preg_match_all('/\b(\d{4})-(0?[1-9]|1[0-2])-(0?[1-9]|[12][0-9]|3[01])\b/u', $t, $m, PREG_SET_ORDER)) {
+                foreach ($m as $hit) $candidatos[] = sprintf('%02d-%04d', (int) $hit[2], (int) $hit[1]);
+            }
+
+            // Elegir el más reciente (YYYYMM descendente)
+            if (!empty($candidatos)) {
+                usort($candidatos, function ($a, $b) {
+                    [$ma, $ya] = explode('-', $a);
+                    [$mb, $yb] = explode('-', $b);
+                    return (int)($yb . $mb) <=> (int)($ya . $ma);
+                });
+                $out['mes_anno'] = $candidatos[0];
+            }
+
+            // =========================
+            // 3) ORIGEN (heurístico)
+            // =========================
+            if (preg_match('/(bbva|abonos|dep[óo]sitos|n[óo]mina|recibo|estado\s+de\s+cuenta|saldo|movimientos)/iu', $t, $m)) {
+                $out['origen'] = $m[1];
+            }
+
+            return $out;
+        }
+
+        // --- VALIDAR COMPROBANTES (OCR con Textract, copia a us-east-1) --------------
+        if (isset($_GET['check']) && $_GET['check'] === 'ingresos_ocr') {
+            if (empty($this->s3Bucket)) {
+                echo json_encode(['ok'=>false,'mensaje'=>'No hay bucket (MX) en $this->s3Bucket.']);
+                return;
+            }
+
+            // Bucket destino (us-east-1) para Textract
+            $usBucket = $this->s3BucketUs ?: 'copia-inquilinos-us';
+
+            // Id del inquilino (GET o del contexto)
+            $idInq = isset($_GET['id_inquilino']) ? (int)$_GET['id_inquilino'] : (int)($inquilino['id'] ?? 0);
+            if (!$idInq) {
+                echo json_encode(['ok'=>false,'mensaje'=>'Falta id_inquilino para validar ingresos.']);
+                return;
+            }
+
+            // 1) Traer archivos del inquilino
+            $rows = $this->model->archivosPorInquilinoId($idInq);
+
+            // 2) Filtrar comprobantes (pdf/jpg/png/jpeg)
+            $docs = [];
+            foreach ($rows as $r) {
+                if (strtolower(trim($r['tipo'])) !== 'comprobante_ingreso') continue;
+                $key = $r['s3_key'] ?? '';
+        
+                if (!$key) continue;
+                $ext = strtolower(pathinfo($key, PATHINFO_EXTENSION));
+                if (!in_array($ext, ['pdf','jpg','jpeg','png'])) continue;
+                $docs[] = [
                     's3_key' => $key,
                     'ext'    => $ext,
                     'size'   => $r['size'] ?? null,
                     'mime'   => $r['mime_type'] ?? null,
                 ];
             }
-        }
 
-        $n = count($pdfs);
+            // Si no hay documentos, guardar FAIL y salir
+            if (empty($docs)) {
+                $payload = [
+                    'tipo'     => 'ingresos_ocr',
+                    'status'   => 'FAIL',
+                    'motivo'   => 'No hay comprobantes de ingreso (pdf/jpg/png) para analizar.',
+                    'archivos' => [],
+                    'ts'       => date('c'),
+                    'metricas' => [
+                        'docs_total'        => 0,
+                        'docs_analizados'   => 0,
+                        'meses_unicos'      => [],
+                        'meses_en_rango6'   => 0,
+                        'montos_detectados' => [],
+                        'sueldo_declarado'  => null,
+                        'consistencia_monto'=> null,
+                        'texto_ocr_total'   => 0,
+                    ],
+                    'detalles' => [],
+                    'reglas'   => [
+                        'min_meses'  => 1,
+                        'ventana'    => '6 meses',
+                        'consistencia_monto' => '±20% contra sueldo declarado (si existe)',
+                    ],
+                ];
 
-        // Reglas simples:
-        //  - OK      : 3 o más PDFs (recomendado: 3 meses)
-        //  - REVIEW  : 1 o 2 PDFs (pedir más)
-        //  - FAIL    : 0 PDFs
-        $status = ($n >= 3) ? 'OK' : (($n >= 1) ? 'REVIEW' : 'FAIL');
+                $proceso = 0; // FAIL
+                $resumen = \App\Helpers\ValidacionResumenHelper::ingresosOcr($proceso, $payload);
+                $ok = $this->model->guardarValidacionIngresosOCR($idInq, $proceso, $payload, $resumen);
 
-        // 2) Payload con reglas y resultados
-        $payload = [
-            'tipo'      => 'ingresos_pdf_simple',
-            'conteo'    => $n,
-            'archivos'  => $pdfs,
-            'reglas'    => [
-                'min_recomendado' => 3,
-                'criterio'        => 'OK si hay >= 3 PDFs; REVIEW si 1-2; FAIL si 0.',
-            ],
-            'status'    => $status,
-            'ts'        => date('c'),
-        ];
-
-        // 3) Mapear a proceso (0/1/2)
-        $proceso = ($status === 'OK') ? 1 : (($status === 'FAIL') ? 0 : 2); // REVIEW => 2
-
-        // 4) Resumen humano
-        $resumen = \App\Helpers\ValidacionResumenHelper::ingresosSimple($proceso, $payload);
-
-        // 5) Guardar en la tabla inquilinos_validaciones (columnas *_resumen/*_json)
-        //    Nota: requiere método del modelo guardarValidacionIngresosSimple($id, $proceso, $payload, $resumen)
-        $ok = $this->model->guardarValidacionIngresosSimple((int)$inquilino['id'], (int)$proceso, $payload, $resumen);
-
-        // 6) Respuesta
-        echo json_encode([
-            'ok'       => (bool)$ok,
-            'mensaje'  => 'Validación de comprobantes (simple) guardada.',
-            'resultado'=> [
-                'status'  => $status,
-                'proceso' => $proceso,
-                'resumen' => $resumen,
-                'conteo'  => $n
-            ],
-        ]);
-        return;
-    }
-
-        // --- GUARDAR PAGO INICIAL ---------------------------------------------------
-    if (isset($_GET['check']) && $_GET['check'] === 'pago_inicial') {
-        // 1) Leer parámetros (pueden venir por GET) y normalizar
-        $montoRaw = $_GET['monto']      ?? null;   // acepta "12500", "12,500.00", "$12,500.00"
-        $fechaRaw = $_GET['fecha']      ?? null;   // preferente YYYY-MM-DD
-        $ref      = trim((string)($_GET['referencia'] ?? ''));
-
-        // Normalizar monto
-        $monto = null;
-        if ($montoRaw !== null && $montoRaw !== '') {
-            $s = str_replace(['$', ',', ' '], '', (string)$montoRaw);
-            if (is_numeric($s)) $monto = (float)$s;
-        }
-
-        // Validar/normalizar fecha
-        $fecha = null;
-        if ($fechaRaw) {
-            // aceptar YYYY-MM-DD o intentar convertir d/m/Y
-            if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $fechaRaw)) {
-                $fecha = $fechaRaw;
-            } elseif (preg_match('/^\d{1,2}\/\d{1,2}\/\d{4}$/', $fechaRaw)) {
-                [$d,$m,$y] = explode('/', $fechaRaw);
-                $fecha = sprintf('%04d-%02d-%02d', (int)$y, (int)$m, (int)$d);
+                echo json_encode([
+                    'ok'=> (bool)$ok,
+                    'mensaje'=>'Sin comprobantes',
+                    'resultado'=>[
+                        'status'=>'FAIL',
+                        'proceso'=>$proceso,
+                        'resumen'=>$resumen,
+                        'meses_en_rango6'=>0,
+                        'docs'=>0,
+                        'motivo'=>$payload['motivo']
+                    ]
+                ]);
+                return;
             }
-        }
 
-        // 2) Decidir proceso
-        $hasMonto = ($monto !== null && $monto > 0);
-        $hasFecha = ($fecha !== null);
-        $hasRef   = ($ref !== '');
+            // 3) Analizar cada documento con Textract (copiando a us-east-1)
+            $analizados = [];
+            foreach ($docs as $doc) {
+                $textContent = '';
+                $perDocMotivo = [];
+                $debug = ['pipeline' => []];
+                $dstKey = null;
 
-        $proceso = 0; // NO_OK
-        if ($hasMonto && $hasFecha) {
-            $proceso = 1; // OK
-        } elseif ($hasMonto || $hasFecha || $hasRef) {
-            $proceso = 2; // PENDIENTE
-        }
+                try {
+                    // Copiar SIEMPRE el objeto al bucket de us-east-1 (Textract exige misma región)
+                    $dstKey = 'textract-cache/' . ltrim($doc['s3_key'], '/');
+                    $this->s3Us->copyObject([
+                        'Bucket'     => $usBucket,
+                        'Key'        => $dstKey,
+                        'CopySource' => $this->s3Bucket . '/' . $doc['s3_key'],
+                        'ACL'        => 'private',
+                    ]);
+                    $debug['pipeline'][] = 'S3CopyToUSE1:OK';
 
-        // 3) Payload y Resumen humano
-        $payload = [
-            'tipo'   => 'pago_inicial',
-            'monto'  => $monto,
-            'fecha'  => $fecha,
-            'referencia' => $ref,
-            'ts'     => date('c'),
-            'origen' => 'manual_params', // o 'banco_webhook' si luego viene de webhook
-        ];
+                    if ($doc['ext'] === 'pdf') {
+                        // ====== PDF: Start + polling con timeout largo ======
+                        $start = $this->textract->startDocumentTextDetection([
+                            'DocumentLocation' => [
+                                'S3Object' => ['Bucket' => $usBucket, 'Name' => $dstKey]
+                            ]
+                        ]);
 
-        $resumen = \App\Helpers\ValidacionResumenHelper::pagoInicial($proceso, $payload);
+                        $jobId = $start->get('JobId');
+                        $maxWait = 120; // segundos
+                        $elapsed = 0;
+                        $sleep  = 3;
 
-        // 4) Guardar en BD
-        $ok = $this->model->guardarPagoInicial(
-            (int)$inquilino['id'],
-            (int)$proceso,
-            $payload,
-            $resumen
-        );
+                        $blocksAll = [];
+                        while (true) {
+                            $res = $this->textract->getDocumentTextDetection(['JobId' => $jobId]);
+                            $statusJob = $res->get('JobStatus');
+                            if ($statusJob === 'SUCCEEDED') {
+                                $blocksAll = array_merge($blocksAll, $res->get('Blocks') ?? []);
+                                $nextToken = $res->get('NextToken') ?? null;
+                                while ($nextToken) {
+                                    $res = $this->textract->getDocumentTextDetection(['JobId'=>$jobId,'NextToken'=>$nextToken]);
+                                    $blocksAll = array_merge($blocksAll, $res->get('Blocks') ?? []);
+                                    $nextToken = $res->get('NextToken') ?? null;
+                                }
+                                $debug['pipeline'][] = 'TextDetection:SUCCEEDED';
+                                break;
+                            } elseif ($statusJob === 'FAILED') {
+                                $perDocMotivo[] = 'TextDetection FAILED';
+                                $debug['pipeline'][] = 'TextDetection:FAILED';
+                                break;
+                            }
+                            if ($elapsed >= $maxWait) {
+                                $perDocMotivo[] = 'Timeout TextDetection';
+                                $debug['pipeline'][] = 'TextDetection:TIMEOUT';
+                                break;
+                            }
+                            sleep($sleep);
+                            $elapsed += $sleep;
+                        }
 
-        // 5) Respuesta
-        echo json_encode([
-            'ok' => (bool)$ok,
-            'mensaje' => $ok ? 'Pago inicial guardado.' : 'No se pudo guardar el pago inicial.',
-            'resultado' => [
-                'proceso' => $proceso,
-                'resumen' => $resumen,
-                'payload' => $payload,
-            ]
-        ], JSON_UNESCAPED_UNICODE);
-        return;
-    }
+                        // 1) Intento con LINE
+                        if ($textContent === '' && !empty($blocksAll)) {
+                            $buf = [];
+                            foreach ($blocksAll as $b) {
+                                if (($b['BlockType'] ?? '') === 'LINE' && isset($b['Text'])) $buf[] = $b['Text'];
+                            }
+                            if (!empty($buf)) {
+                                $textContent = implode("\n", $buf);
+                                $debug['pipeline'][] = 'LinesOK';
+                            }
+                        }
 
-    // --- INVESTIGACIÓN DE DEMANDAS ---------------------------------------------
-    if (isset($_GET['check']) && $_GET['check'] === 'demandas') {
-        // 1) Leer params: hit (bool), fuentes (csv o arreglo), folio (string)
-        $hitRaw = strtolower(trim((string)($_GET['hit'] ?? '')));
-        $hit = in_array($hitRaw, ['1','true','sí','si','yes'], true) ? true
-            : (in_array($hitRaw, ['0','false','no'], true) ? false : null);
+                        // 2) Fallback con WORD
+                        if ($textContent === '' && !empty($blocksAll)) {
+                            $buf = [];
+                            foreach ($blocksAll as $b) {
+                                if (($b['BlockType'] ?? '') === 'WORD' && isset($b['Text'])) $buf[] = $b['Text'];
+                            }
+                            if (!empty($buf)) {
+                                $textContent = trim(implode(' ', $buf));
+                                $perDocMotivo[] = 'Texto vía WORD';
+                                $debug['pipeline'][] = 'WordsFallbackOK';
+                            }
+                        }
 
-        // fuentes: aceptar ?fuentes=TSJCDMX,RENADE o múltiples ?fuentes[]=...
-        $fuentes = [];
-        if (isset($_GET['fuentes'])) {
-            if (is_array($_GET['fuentes'])) {
-                foreach ($_GET['fuentes'] as $f) {
-                    $f = trim((string)$f);
-                    if ($f !== '') $fuentes[] = $f;
+                        // 3) Segundo intento con AnalyzeDocument si sigue vacío
+                        if ($textContent === '') {
+                            $startA = $this->textract->startDocumentAnalysis([
+                                'DocumentLocation' => [
+                                    'S3Object' => ['Bucket' =>  $usBucket, 'Name' => $dstKey]
+                                ],
+                                'FeatureTypes' => ['TABLES','FORMS'],
+                            ]);
+                            $jobA = $startA->get('JobId');
+                            $elapsed = 0; $blocksAll = [];
+                            while (true) {
+                                $resA = $this->textract->getDocumentAnalysis(['JobId' => $jobA]);
+                                $statusA = $resA->get('JobStatus');
+                                if ($statusA === 'SUCCEEDED') {
+                                    $blocksAll = array_merge($blocksAll, $resA->get('Blocks') ?? []);
+                                    $nextToken = $resA->get('NextToken') ?? null;
+                                    while ($nextToken) {
+                                        $resA = $this->textract->getDocumentAnalysis(['JobId'=>$jobA,'NextToken'=>$nextToken]);
+                                        $blocksAll = array_merge($blocksAll, $resA->get('Blocks') ?? []);
+                                        $nextToken = $resA->get('NextToken') ?? null;
+                                    }
+                                    $debug['pipeline'][] = 'AnalyzeDocument:SUCCEEDED';
+                                    break;
+                                } elseif ($statusA === 'FAILED') {
+                                    $perDocMotivo[] = 'AnalyzeDocument FAILED';
+                                    $debug['pipeline'][] = 'AnalyzeDocument:FAILED';
+                                    break;
+                                }
+                                if ($elapsed >= $maxWait) { $perDocMotivo[]='Timeout AnalyzeDocument'; $debug['pipeline'][]='AnalyzeDocument:TIMEOUT'; break; }
+                                sleep($sleep);
+                                $elapsed += $sleep;
+                            }
+                            if ($textContent === '' && !empty($blocksAll)) {
+                                $buf = [];
+                                foreach ($blocksAll as $b) if (isset($b['Text'])) $buf[] = $b['Text'];
+                                if (!empty($buf)) {
+                                    $textContent = trim(implode("\n", $buf));
+                                    $perDocMotivo[] = 'Texto desde AnalyzeDocument';
+                                    $debug['pipeline'][] = 'AnalyzeExtractOK';
+                                }
+                            }
+                        }
+
+                    } else {
+                        // ====== Imagen: DetectDocumentText (sobre el objeto copiado en us-east-1) ======
+                        $res = $this->textract->detectDocumentText([
+                            'Document' => ['S3Object' => ['Bucket' => $usBucket, 'Name' => $dstKey]]
+                        ]);
+                        $lines = [];
+                        foreach (($res->get('Blocks') ?? []) as $b) {
+                            if (($b['BlockType'] ?? '') === 'LINE' && isset($b['Text'])) $lines[] = $b['Text'];
+                        }
+                        if (empty($lines)) {
+                            foreach (($res->get('Blocks') ?? []) as $b) {
+                                if (($b['BlockType'] ?? '') === 'WORD' && isset($b['Text'])) $lines[] = $b['Text'];
+                            }
+                        }
+                        $textContent = implode("\n", $lines);
+                        $debug['pipeline'][] = 'ImageDetectText';
+                    }
+                } catch (\Throwable $e) {
+                    $analizados[] = [
+                        's3_key' => $doc['s3_key'],
+                        'ext'    => $doc['ext'],
+                        'ok'     => false,
+                        'error'  => $e->getMessage(),
+                        'bucket_in' => $this->s3Bucket,
+                        'bucket_textract' => $usBucket,
+                        'dst_key' => $dstKey,
+                    ];
+                    continue;
                 }
+
+                // Parse (monto / mes-año / origen) — helper BBVA
+                $parsed = parseComprobanteIngresoBBVA($textContent);
+
+                $analizados[] = [
+                    's3_key'     => $doc['s3_key'],
+                    'ext'        => $doc['ext'],
+                    'ok'         => true,
+                    'texto_len'  => strlen($textContent),
+                    'extracto'   => mb_substr($textContent, 0, 500),
+                    'parsed'     => $parsed,
+                    'motivo_doc' => implode(' | ', $perDocMotivo),
+                    'ocr_debug'  => $debug,
+                    'bucket_in'  => $this->s3Bucket,
+                    'bucket_textract' => $usBucket,
+                    'dst_key'    => $dstKey,
+                ];
+            }
+
+            // 4) Reglas de negocio (>=1 mes dentro de 6 meses y consistencia de monto)
+            $mesesUnicos = [];
+            $montos      = [];
+            $textoTotal  = 0;
+            foreach ($analizados as $a) {
+                if (!empty($a['ok'])) $textoTotal += (int)($a['texto_len'] ?? 0);
+                if (!($a['ok'] ?? false)) continue;
+                $p = $a['parsed'] ?? [];
+                if (!empty($p['mes_anno'])) $mesesUnicos[$p['mes_anno']] = true;
+                if (!empty($p['monto']))    $montos[] = (float)$p['monto'];
+            }
+
+            $hoy = new \DateTime('now');
+            $hace6 = (clone $hoy)->modify('-6 months');
+
+            $mesesEnRango = 0;
+            foreach (array_keys($mesesUnicos) as $mmYYYY) {
+                [$mm,$yyyy] = explode('-', $mmYYYY);
+                $d = \DateTime::createFromFormat('!m-Y', $mm.'-'.$yyyy);
+                if ($d && $d >= $hace6 && $d <= $hoy) $mesesEnRango++;
+            }
+
+            $sueldoDeclarado = $this->model->obtenerSueldoDeclarado($idInq); // float|null
+            $consistenciaMonto = null;
+            if ($sueldoDeclarado !== null && !empty($montos)) {
+                $prom = array_sum($montos) / max(count($montos),1);
+                $delta = abs($prom - $sueldoDeclarado);
+                $consistenciaMonto = ($delta <= ($sueldoDeclarado * 0.20)); // ±20%
+            }
+
+            // === REGLAS Y MOTIVOS ====================================================
+            $status = 'FAIL';
+            $motivo = '';
+
+            if ($mesesEnRango >= 1 && ($sueldoDeclarado === null || $consistenciaMonto !== false)) {
+                $status = 'OK';
+                $motivo = "Se detectó al menos 1 mes válido en los últimos 6 meses"
+                        . ($sueldoDeclarado !== null ? " y el monto es consistente con el sueldo declarado." : " (sin sueldo declarado para comparar).");
+            } elseif ($mesesEnRango >= 1) {
+                $status = 'REVIEW';
+                $motivo = "Se detectó(n) {$mesesEnRango} mes(es) válido(s), pero el monto no coincide con el sueldo declarado (±20%).";
             } else {
-                foreach (explode(',', (string)$_GET['fuentes']) as $f) {
-                    $f = trim($f);
-                    if ($f !== '') $fuentes[] = $f;
+                if ($textoTotal > 0) {
+                    $status = 'REVIEW';
+                    $motivo = "Se leyó texto OCR ({$textoTotal} caracteres), pero no se detectaron fechas de mes/año válidas.";
+                } else {
+                    $status = 'FAIL';
+                    $motivo = "No se pudo leer texto con OCR en ninguno de los comprobantes.";
                 }
             }
-        }
-        $folio = trim((string)($_GET['folio'] ?? ''));
 
-        // 2) Decidir proceso
-        //    - hit === true   → 0 (NO_OK)
-        //    - hit === false  → 1 (OK)
-        //    - hit === null   → 2 (PEND), salvo que haya señales claras
-        if ($hit === true) {
-            $proceso = 0;
-        } elseif ($hit === false) {
-            $proceso = 1;
-        } else {
-            $proceso = (!empty($fuentes) || $folio !== '') ? 2 : 2;
-        }
-
-        // 3) Payload y resumen humano
-        $payload = [
-            'tipo'    => 'inv_demandas',
-            'hit'     => $hit,
-            'fuentes' => $fuentes,
-            'folio'   => $folio,
-            'ts'      => date('c'),
-            'nota'    => 'Resultado cargado manualmente vía querystring',
-        ];
-        $resumen = \App\Helpers\ValidacionResumenHelper::invDemandas($proceso, $payload);
-
-        // 4) Guardar
-        $ok = $this->model->guardarInvestigacionDemandas(
-            (int)$inquilino['id'],
-            (int)$proceso,
-            $payload,
-            $resumen
-        );
-
-        // 5) Respuesta
-        echo json_encode([
-            'ok'      => (bool)$ok,
-            'mensaje' => $ok ? 'Investigación de demandas guardada.' : 'No se pudo guardar.',
-            'resultado' => [
-                'proceso' => $proceso,
-                'resumen' => $resumen,
-                'payload' => $payload,
-            ],
-        ], JSON_UNESCAPED_UNICODE);
-        return;
-    }
-
-    /**
-     * Extrae señales de un estado de cuenta (BBVA y similares) desde texto OCR.
-     * Devuelve:
-     *   - monto    : número (float) — usa "Total Abonos" / "Depósitos / Abonos" si existe; si no, el monto más grande con $ o MXN
-     *   - mes_anno : string "MM-YYYY" — intenta múltiples formatos: "11/JUL", "08/2025", "agosto 2025", "14/08/2025", "2025-08-14"
-     *   - origen   : palabra clave detectada (bbva, abonos, depósitos, nómina, etc.)
-     */
-    function parseComprobanteIngresoBBVA(string $text): array
-    {
-        $out = ['monto' => null, 'mes_anno' => null, 'origen' => null];
-
-        // Normalizar: una línea y espacios simples
-        $t = preg_replace('/[ \t]+/u', ' ', str_replace(["\r", "\n"], ' ', $text));
-
-        // =========================
-        // 1) MONTO (ABONOS BBVA)
-        // =========================
-        $monto = null;
-
-        // Patrones típicos en estados BBVA (pueden variar por plantilla):
-        //   "Abonos", "Total Abonos", "Depósitos / Abonos", "Depósitos y abonos"
-        if (preg_match_all(
-            '/(?:Total\s+Abonos|Abonos(?:\s+del\s+Per[ií]odo)?|Dep[óo]sitos(?:\s*(?:\/|y)\s*Abonos)?)\D{0,20}\$?\s*([0-9]{1,3}(?:[.,\s][0-9]{3})*(?:[.,][0-9]{2})?)/iu',
-            $t,
-            $mm
-        )) {
-            foreach ($mm[1] as $raw) {
-                // Normalizar separadores: quitar miles (coma/espacio) y usar punto para decimales
-                $num = (float) str_replace([',', ' '], ['', ''], str_replace(',', '.', $raw));
-                if ($num > 0) $monto = max($monto ?? 0, $num);
-            }
-        }
-
-        // Fallback: mayor cantidad que aparezca con $ o MXN
-        if ($monto === null && preg_match_all('/(?:\$|\bMXN\b)\s*([0-9]{1,3}(?:[.,\s][0-9]{3})*(?:[.,][0-9]{2})?)/iu', $t, $mm2)) {
-            foreach ($mm2[1] as $raw) {
-                $num = (float) str_replace([',', ' '], ['', ''], str_replace(',', '.', $raw));
-                if ($num > 0) $monto = max($monto ?? 0, $num);
-            }
-        }
-        $out['monto'] = $monto;
-
-        // =========================
-        // 2) FECHAS → "MM-YYYY"
-        // =========================
-        $candidatos = [];
-
-        // a) Texto "agosto 2025" o "ago 2025"
-        $mesesMap = [
-            'enero'=>1,'febrero'=>2,'marzo'=>3,'abril'=>4,'mayo'=>5,'junio'=>6,
-            'julio'=>7,'agosto'=>8,'septiembre'=>9,'setiembre'=>9,'octubre'=>10,'noviembre'=>11,'diciembre'=>12
-        ];
-        $abrMap = ['ene'=>'enero','feb'=>'febrero','mar'=>'marzo','abr'=>'abril','may'=>'mayo','jun'=>'junio','jul'=>'julio','ago'=>'agosto','sep'=>'septiembre','set'=>'septiembre','oct'=>'octubre','nov'=>'noviembre','dic'=>'diciembre'];
-
-        if (preg_match_all('/\b(ene|feb|mar|abr|may|jun|jul|ago|sep|set|oct|nov|dic|enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre)\b[^\d]{0,6}(\d{4})/iu', $t, $m, PREG_SET_ORDER)) {
-            foreach ($m as $hit) {
-                $mesTxt = mb_strtolower($hit[1], 'UTF-8');
-                $year   = (int) $hit[2];
-                $mesFull = $abrMap[$mesTxt] ?? $mesTxt;
-                $mes = $mesesMap[$mesFull] ?? null;
-                if ($mes) $candidatos[] = sprintf('%02d-%04d', $mes, $year);
-            }
-        }
-
-        // b) "11/JUL" (sin año) → estimar año (si hay 20xx en texto, usamos ese; si no, año actual)
-        $mapAbr = ['ENE'=>1,'FEB'=>2,'MAR'=>3,'ABR'=>4,'MAY'=>5,'JUN'=>6,'JUL'=>7,'AGO'=>8,'SEP'=>9,'SET'=>9,'OCT'=>10,'NOV'=>11,'DIC'=>12];
-        if (preg_match_all('/\b([0-3]?\d)[\/\-](ENE|FEB|MAR|ABR|MAY|JUN|JUL|AGO|SEP|SET|OCT|NOV|DIC)\b/u', strtoupper($t), $m, PREG_SET_ORDER)) {
-            $year = null;
-            if (preg_match('/\b(20\d{2})\b/u', $t, $y)) $year = (int) $y[1];
-            if ($year === null) $year = (int) date('Y');
-            foreach ($m as $hit) {
-                $mes = $mapAbr[$hit[2]] ?? null;
-                if ($mes) $candidatos[] = sprintf('%02d-%04d', $mes, $year);
-            }
-        }
-
-        // c) "08/2025" o "08-2025"
-        if (preg_match_all('/\b(0?[1-9]|1[0-2])[\/\-](\d{4})\b/u', $t, $m, PREG_SET_ORDER)) {
-            foreach ($m as $hit) $candidatos[] = sprintf('%02d-%04d', (int) $hit[1], (int) $hit[2]);
-        }
-
-        // d) "14/08/2025" o "14-08-2025" → usar MES/AÑO
-        if (preg_match_all('/\b(0?[1-9]|[12][0-9]|3[01])[\/\-](0?[1-9]|1[0-2])[\/\-](\d{4})\b/u', $t, $m, PREG_SET_ORDER)) {
-            foreach ($m as $hit) $candidatos[] = sprintf('%02d-%04d', (int) $hit[2], (int) $hit[3]);
-        }
-
-        // e) "2025-08-14" → usar 08/2025
-        if (preg_match_all('/\b(\d{4})-(0?[1-9]|1[0-2])-(0?[1-9]|[12][0-9]|3[01])\b/u', $t, $m, PREG_SET_ORDER)) {
-            foreach ($m as $hit) $candidatos[] = sprintf('%02d-%04d', (int) $hit[2], (int) $hit[1]);
-        }
-
-        // Elegir el más reciente (YYYYMM descendente)
-        if (!empty($candidatos)) {
-            usort($candidatos, function ($a, $b) {
-                [$ma, $ya] = explode('-', $a);
-                [$mb, $yb] = explode('-', $b);
-                return (int)($yb . $mb) <=> (int)($ya . $ma);
-            });
-            $out['mes_anno'] = $candidatos[0];
-        }
-
-        // =========================
-        // 3) ORIGEN (heurístico)
-        // =========================
-        if (preg_match('/(bbva|abonos|dep[óo]sitos|n[óo]mina|recibo|estado\s+de\s+cuenta|saldo|movimientos)/iu', $t, $m)) {
-            $out['origen'] = $m[1];
-        }
-
-        return $out;
-    }
-
-    // --- VALIDAR COMPROBANTES (OCR con Textract, copia a us-east-1) --------------
-    if (isset($_GET['check']) && $_GET['check'] === 'ingresos_ocr') {
-        if (empty($this->s3Bucket)) {
-            echo json_encode(['ok'=>false,'mensaje'=>'No hay bucket (MX) en $this->s3Bucket.']);
-            return;
-        }
-
-        // Bucket destino (us-east-1) para Textract
-        $usBucket = $this->s3BucketUs ?: 'copia-inquilinos-us';
-
-        // Id del inquilino (GET o del contexto)
-        $idInq = isset($_GET['id_inquilino']) ? (int)$_GET['id_inquilino'] : (int)($inquilino['id'] ?? 0);
-        if (!$idInq) {
-            echo json_encode(['ok'=>false,'mensaje'=>'Falta id_inquilino para validar ingresos.']);
-            return;
-        }
-
-        // 1) Traer archivos del inquilino
-        $rows = $this->model->archivosPorInquilinoId($idInq);
-
-        // 2) Filtrar comprobantes (pdf/jpg/png/jpeg)
-        $docs = [];
-        foreach ($rows as $r) {
-            if (strtolower(trim($r['tipo'])) !== 'comprobante_ingreso') continue;
-            $key = $r['s3_key'] ?? '';
-            if (!$key) continue;
-            $ext = strtolower(pathinfo($key, PATHINFO_EXTENSION));
-            if (!in_array($ext, ['pdf','jpg','jpeg','png'])) continue;
-            $docs[] = [
-                's3_key' => $key,
-                'ext'    => $ext,
-                'size'   => $r['size'] ?? null,
-                'mime'   => $r['mime_type'] ?? null,
-            ];
-        }
-
-        // Si no hay documentos, guardar FAIL y salir
-        if (empty($docs)) {
             $payload = [
-                'tipo'     => 'ingresos_ocr',
-                'status'   => 'FAIL',
-                'motivo'   => 'No hay comprobantes de ingreso (pdf/jpg/png) para analizar.',
-                'archivos' => [],
-                'ts'       => date('c'),
+                'tipo'   => 'ingresos_ocr',
+                'status' => $status,
+                'motivo' => $motivo,
                 'metricas' => [
-                    'docs_total'        => 0,
-                    'docs_analizados'   => 0,
-                    'meses_unicos'      => [],
-                    'meses_en_rango6'   => 0,
-                    'montos_detectados' => [],
-                    'sueldo_declarado'  => null,
-                    'consistencia_monto'=> null,
-                    'texto_ocr_total'   => 0,
+                    'docs_total'        => count($docs),
+                    'docs_analizados'   => count($analizados),
+                    'meses_unicos'      => array_keys($mesesUnicos),
+                    'meses_en_rango6'   => $mesesEnRango,
+                    'montos_detectados' => $montos,
+                    'sueldo_declarado'  => $sueldoDeclarado,
+                    'consistencia_monto'=> $consistenciaMonto,
+                    'texto_ocr_total'   => $textoTotal,
                 ],
-                'detalles' => [],
-                'reglas'   => [
+                'detalles' => $analizados,
+                'reglas' => [
                     'min_meses'  => 1,
                     'ventana'    => '6 meses',
                     'consistencia_monto' => '±20% contra sueldo declarado (si existe)',
                 ],
+                'ts' => date('c'),
             ];
 
-            $proceso = 0; // FAIL
+            // Mapear status textual a proceso (0/1/2)
+            $proceso = ($status === 'OK') ? 1 : (($status === 'FAIL') ? 0 : 2); // REVIEW => 2
+
+            // Resumen humano
             $resumen = \App\Helpers\ValidacionResumenHelper::ingresosOcr($proceso, $payload);
-            $ok = $this->model->guardarValidacionIngresosOCR($idInq, $proceso, $payload, $resumen);
+
+            // Guardar proceso + resumen + JSON
+            $ok = $this->model->guardarValidacionIngresosOCR(
+                (int)$idInq,
+                (int)$proceso,
+                $payload,
+                $resumen
+            );
 
             echo json_encode([
-                'ok'=> (bool)$ok,
-                'mensaje'=>'Sin comprobantes',
-                'resultado'=>[
-                    'status'=>'FAIL',
-                    'proceso'=>$proceso,
-                    'resumen'=>$resumen,
-                    'meses_en_rango6'=>0,
-                    'docs'=>0,
-                    'motivo'=>$payload['motivo']
-                ]
+                'ok'      => (bool)$ok,
+                'mensaje' => 'Validación de comprobantes (OCR) guardada.',
+                'resultado' => [
+                    'status'          => $status,
+                    'proceso'         => $proceso,
+                    'resumen'         => $resumen,
+                    'meses_en_rango6' => $mesesEnRango,
+                    'docs'            => count($docs),
+                    'motivo'          => $motivo,
+                    'detalles'        => $analizados,
+                ],
             ]);
             return;
-        }
-
-        // 3) Analizar cada documento con Textract (copiando a us-east-1)
-        $analizados = [];
-        foreach ($docs as $doc) {
-            $textContent = '';
-            $perDocMotivo = [];
-            $debug = ['pipeline' => []];
-            $dstKey = null;
-
-            try {
-                // Copiar SIEMPRE el objeto al bucket de us-east-1 (Textract exige misma región)
-                $dstKey = 'textract-cache/' . ltrim($doc['s3_key'], '/');
-                $this->s3Us->copyObject([
-                    'Bucket'     => $usBucket,
-                    'Key'        => $dstKey,
-                    'CopySource' => $this->s3Bucket . '/' . $doc['s3_key'],
-                    'ACL'        => 'private',
-                ]);
-                $debug['pipeline'][] = 'S3CopyToUSE1:OK';
-
-                if ($doc['ext'] === 'pdf') {
-                    // ====== PDF: Start + polling con timeout largo ======
-                    $start = $this->textract->startDocumentTextDetection([
-                        'DocumentLocation' => [
-                            'S3Object' => ['Bucket' => $usBucket, 'Name' => $dstKey]
-                        ]
-                    ]);
-
-                    $jobId = $start->get('JobId');
-                    $maxWait = 120; // segundos
-                    $elapsed = 0;
-                    $sleep  = 3;
-
-                    $blocksAll = [];
-                    while (true) {
-                        $res = $this->textract->getDocumentTextDetection(['JobId' => $jobId]);
-                        $statusJob = $res->get('JobStatus');
-                        if ($statusJob === 'SUCCEEDED') {
-                            $blocksAll = array_merge($blocksAll, $res->get('Blocks') ?? []);
-                            $nextToken = $res->get('NextToken') ?? null;
-                            while ($nextToken) {
-                                $res = $this->textract->getDocumentTextDetection(['JobId'=>$jobId,'NextToken'=>$nextToken]);
-                                $blocksAll = array_merge($blocksAll, $res->get('Blocks') ?? []);
-                                $nextToken = $res->get('NextToken') ?? null;
-                            }
-                            $debug['pipeline'][] = 'TextDetection:SUCCEEDED';
-                            break;
-                        } elseif ($statusJob === 'FAILED') {
-                            $perDocMotivo[] = 'TextDetection FAILED';
-                            $debug['pipeline'][] = 'TextDetection:FAILED';
-                            break;
-                        }
-                        if ($elapsed >= $maxWait) {
-                            $perDocMotivo[] = 'Timeout TextDetection';
-                            $debug['pipeline'][] = 'TextDetection:TIMEOUT';
-                            break;
-                        }
-                        sleep($sleep);
-                        $elapsed += $sleep;
-                    }
-
-                    // 1) Intento con LINE
-                    if ($textContent === '' && !empty($blocksAll)) {
-                        $buf = [];
-                        foreach ($blocksAll as $b) {
-                            if (($b['BlockType'] ?? '') === 'LINE' && isset($b['Text'])) $buf[] = $b['Text'];
-                        }
-                        if (!empty($buf)) {
-                            $textContent = implode("\n", $buf);
-                            $debug['pipeline'][] = 'LinesOK';
-                        }
-                    }
-
-                    // 2) Fallback con WORD
-                    if ($textContent === '' && !empty($blocksAll)) {
-                        $buf = [];
-                        foreach ($blocksAll as $b) {
-                            if (($b['BlockType'] ?? '') === 'WORD' && isset($b['Text'])) $buf[] = $b['Text'];
-                        }
-                        if (!empty($buf)) {
-                            $textContent = trim(implode(' ', $buf));
-                            $perDocMotivo[] = 'Texto vía WORD';
-                            $debug['pipeline'][] = 'WordsFallbackOK';
-                        }
-                    }
-
-                    // 3) Segundo intento con AnalyzeDocument si sigue vacío
-                    if ($textContent === '') {
-                        $startA = $this->textract->startDocumentAnalysis([
-                            'DocumentLocation' => [
-                                'S3Object' => ['Bucket' =>  $usBucket, 'Name' => $dstKey]
-                            ],
-                            'FeatureTypes' => ['TABLES','FORMS'],
-                        ]);
-                        $jobA = $startA->get('JobId');
-                        $elapsed = 0; $blocksAll = [];
-                        while (true) {
-                            $resA = $this->textract->getDocumentAnalysis(['JobId' => $jobA]);
-                            $statusA = $resA->get('JobStatus');
-                            if ($statusA === 'SUCCEEDED') {
-                                $blocksAll = array_merge($blocksAll, $resA->get('Blocks') ?? []);
-                                $nextToken = $resA->get('NextToken') ?? null;
-                                while ($nextToken) {
-                                    $resA = $this->textract->getDocumentAnalysis(['JobId'=>$jobA,'NextToken'=>$nextToken]);
-                                    $blocksAll = array_merge($blocksAll, $resA->get('Blocks') ?? []);
-                                    $nextToken = $resA->get('NextToken') ?? null;
-                                }
-                                $debug['pipeline'][] = 'AnalyzeDocument:SUCCEEDED';
-                                break;
-                            } elseif ($statusA === 'FAILED') {
-                                $perDocMotivo[] = 'AnalyzeDocument FAILED';
-                                $debug['pipeline'][] = 'AnalyzeDocument:FAILED';
-                                break;
-                            }
-                            if ($elapsed >= $maxWait) { $perDocMotivo[]='Timeout AnalyzeDocument'; $debug['pipeline'][]='AnalyzeDocument:TIMEOUT'; break; }
-                            sleep($sleep);
-                            $elapsed += $sleep;
-                        }
-                        if ($textContent === '' && !empty($blocksAll)) {
-                            $buf = [];
-                            foreach ($blocksAll as $b) if (isset($b['Text'])) $buf[] = $b['Text'];
-                            if (!empty($buf)) {
-                                $textContent = trim(implode("\n", $buf));
-                                $perDocMotivo[] = 'Texto desde AnalyzeDocument';
-                                $debug['pipeline'][] = 'AnalyzeExtractOK';
-                            }
-                        }
-                    }
-
-                } else {
-                    // ====== Imagen: DetectDocumentText (sobre el objeto copiado en us-east-1) ======
-                    $res = $this->textract->detectDocumentText([
-                        'Document' => ['S3Object' => ['Bucket' => $usBucket, 'Name' => $dstKey]]
-                    ]);
-                    $lines = [];
-                    foreach (($res->get('Blocks') ?? []) as $b) {
-                        if (($b['BlockType'] ?? '') === 'LINE' && isset($b['Text'])) $lines[] = $b['Text'];
-                    }
-                    if (empty($lines)) {
-                        foreach (($res->get('Blocks') ?? []) as $b) {
-                            if (($b['BlockType'] ?? '') === 'WORD' && isset($b['Text'])) $lines[] = $b['Text'];
-                        }
-                    }
-                    $textContent = implode("\n", $lines);
-                    $debug['pipeline'][] = 'ImageDetectText';
-                }
-            } catch (\Throwable $e) {
-                $analizados[] = [
-                    's3_key' => $doc['s3_key'],
-                    'ext'    => $doc['ext'],
-                    'ok'     => false,
-                    'error'  => $e->getMessage(),
-                    'bucket_in' => $this->s3Bucket,
-                    'bucket_textract' => $usBucket,
-                    'dst_key' => $dstKey,
-                ];
-                continue;
-            }
-
-            // Parse (monto / mes-año / origen) — helper BBVA
-            $parsed = parseComprobanteIngresoBBVA($textContent);
-
-            $analizados[] = [
-                's3_key'     => $doc['s3_key'],
-                'ext'        => $doc['ext'],
-                'ok'         => true,
-                'texto_len'  => strlen($textContent),
-                'extracto'   => mb_substr($textContent, 0, 500),
-                'parsed'     => $parsed,
-                'motivo_doc' => implode(' | ', $perDocMotivo),
-                'ocr_debug'  => $debug,
-                'bucket_in'  => $this->s3Bucket,
-                'bucket_textract' => $usBucket,
-                'dst_key'    => $dstKey,
-            ];
-        }
-
-        // 4) Reglas de negocio (>=1 mes dentro de 6 meses y consistencia de monto)
-        $mesesUnicos = [];
-        $montos      = [];
-        $textoTotal  = 0;
-        foreach ($analizados as $a) {
-            if (!empty($a['ok'])) $textoTotal += (int)($a['texto_len'] ?? 0);
-            if (!($a['ok'] ?? false)) continue;
-            $p = $a['parsed'] ?? [];
-            if (!empty($p['mes_anno'])) $mesesUnicos[$p['mes_anno']] = true;
-            if (!empty($p['monto']))    $montos[] = (float)$p['monto'];
-        }
-
-        $hoy = new \DateTime('now');
-        $hace6 = (clone $hoy)->modify('-6 months');
-
-        $mesesEnRango = 0;
-        foreach (array_keys($mesesUnicos) as $mmYYYY) {
-            [$mm,$yyyy] = explode('-', $mmYYYY);
-            $d = \DateTime::createFromFormat('!m-Y', $mm.'-'.$yyyy);
-            if ($d && $d >= $hace6 && $d <= $hoy) $mesesEnRango++;
-        }
-
-        $sueldoDeclarado = $this->model->obtenerSueldoDeclarado($idInq); // float|null
-        $consistenciaMonto = null;
-        if ($sueldoDeclarado !== null && !empty($montos)) {
-            $prom = array_sum($montos) / max(count($montos),1);
-            $delta = abs($prom - $sueldoDeclarado);
-            $consistenciaMonto = ($delta <= ($sueldoDeclarado * 0.20)); // ±20%
-        }
-
-        // === REGLAS Y MOTIVOS ====================================================
-        $status = 'FAIL';
-        $motivo = '';
-
-        if ($mesesEnRango >= 1 && ($sueldoDeclarado === null || $consistenciaMonto !== false)) {
-            $status = 'OK';
-            $motivo = "Se detectó al menos 1 mes válido en los últimos 6 meses"
-                    . ($sueldoDeclarado !== null ? " y el monto es consistente con el sueldo declarado." : " (sin sueldo declarado para comparar).");
-        } elseif ($mesesEnRango >= 1) {
-            $status = 'REVIEW';
-            $motivo = "Se detectó(n) {$mesesEnRango} mes(es) válido(s), pero el monto no coincide con el sueldo declarado (±20%).";
-        } else {
-            if ($textoTotal > 0) {
-                $status = 'REVIEW';
-                $motivo = "Se leyó texto OCR ({$textoTotal} caracteres), pero no se detectaron fechas de mes/año válidas.";
-            } else {
-                $status = 'FAIL';
-                $motivo = "No se pudo leer texto con OCR en ninguno de los comprobantes.";
-            }
-        }
-
-        $payload = [
-            'tipo'   => 'ingresos_ocr',
-            'status' => $status,
-            'motivo' => $motivo,
-            'metricas' => [
-                'docs_total'        => count($docs),
-                'docs_analizados'   => count($analizados),
-                'meses_unicos'      => array_keys($mesesUnicos),
-                'meses_en_rango6'   => $mesesEnRango,
-                'montos_detectados' => $montos,
-                'sueldo_declarado'  => $sueldoDeclarado,
-                'consistencia_monto'=> $consistenciaMonto,
-                'texto_ocr_total'   => $textoTotal,
-            ],
-            'detalles' => $analizados,
-            'reglas' => [
-                'min_meses'  => 1,
-                'ventana'    => '6 meses',
-                'consistencia_monto' => '±20% contra sueldo declarado (si existe)',
-            ],
-            'ts' => date('c'),
-        ];
-
-        // Mapear status textual a proceso (0/1/2)
-        $proceso = ($status === 'OK') ? 1 : (($status === 'FAIL') ? 0 : 2); // REVIEW => 2
-
-        // Resumen humano
-        $resumen = \App\Helpers\ValidacionResumenHelper::ingresosOcr($proceso, $payload);
-
-        // Guardar proceso + resumen + JSON
-        $ok = $this->model->guardarValidacionIngresosOCR(
-            (int)$idInq,
-            (int)$proceso,
-            $payload,
-            $resumen
-        );
-
-        echo json_encode([
-            'ok'      => (bool)$ok,
-            'mensaje' => 'Validación de comprobantes (OCR) guardada.',
-            'resultado' => [
-                'status'          => $status,
-                'proceso'         => $proceso,
-                'resumen'         => $resumen,
-                'meses_en_rango6' => $mesesEnRango,
-                'docs'            => count($docs),
-                'motivo'          => $motivo,
-                'detalles'        => $analizados,
-            ],
-        ]);
-        return;
     }
-
-
-    
 
 /**
  * Helper: parsea el texto OCR y saca señales útiles.
@@ -1946,76 +1995,119 @@ function parseComprobanteIngreso(string $text): array {
     }
 
     // --- STATUS: resumen de validaciones guardadas ---
-    if (isset($_GET['check']) && $_GET['check'] === 'status') {
-        try {
-            $vals = $this->model->obtenerValidaciones((int)$inquilino['id']);
+   if (isset($_GET['check']) && $_GET['check'] === 'status') {
+    try {
+        // 🔎 Aseguramos obtener el inquilino
+        if (empty($inquilino) || !is_array($inquilino)) {
+            $inquilino = $this->model->obtenerPorId((int)($_GET['id'] ?? 0));
+        }
 
-            // Semáforos (0=NO_OK, 1=OK, 2=PEND.)
-            $semaforos = [
-                'documentos'   => (int)($vals['documentos']['proceso']   ?? 2),
-                'archivos'     => (int)($vals['archivos']['proceso']     ?? 2),
-                'rostro'       => (int)($vals['rostro']['proceso']       ?? 2),
-                'identidad'    => (int)($vals['identidad']['proceso']    ?? 2),
-                'ingresos'     => (int)($vals['ingresos']['proceso']     ?? 2),
-                'pago_inicial' => (int)($vals['pago_inicial']['proceso'] ?? 2),
-                'demandas'     => (int)($vals['demandas']['proceso']     ?? 2),
-            ];
+        if (!$inquilino) {
+            echo json_encode([
+                'ok' => false,
+                'mensaje' => 'Inquilino no encontrado'
+            ]);
+            return;
+        }
 
-            // Resumen Humano global (ej. "✔️ Docs · ⏳ Arch · ✖️ Rostro · ...")
-            $resumenGlobal = \App\Helpers\ValidacionResumenHelper::statusGlobal($semaforos);
+        $vals = $this->model->obtenerValidaciones((int)$inquilino['id']);
 
-            // Además, devolvemos cada resumen humano individual si existe
-            $resumenes = [
-                'archivos'     => $vals['archivos']['resumen']     ?? null,
-                'rostro'       => $vals['rostro']['resumen']       ?? null,
-                'identidad'    => $vals['identidad']['resumen']    ?? null,
-                'documentos'   => $vals['documentos']['resumen']   ?? null,
-                'ingresos'     => $vals['ingresos']['resumen']     ?? null,
-                'pago_inicial' => $vals['pago_inicial']['resumen'] ?? null,
-                'demandas'     => $vals['demandas']['resumen']     ?? null,
-            ];
+        // Normalizar tipo_id (puede venir "INE", "ine", "IFE", "INE/IFE")
+        $tipoId = strtolower(trim($inquilino['tipo_id'] ?? ''));
 
-            // 🚀 Extra: detectar si en la validación identidad tenemos CURP
-            $curpDetectada = null;
-            if (!empty($vals['identidad']['json']) && is_array($vals['identidad']['json'])) {
-                $curpDetectada = $vals['identidad']['json']['curp'] ?? null;
+        // Semáforos (0=NO_OK, 1=OK, 2=PEND.)
+        $semaforos = [
+            'documentos'   => (int)($vals['documentos']['proceso']   ?? 2),
+            'archivos'     => (int)($vals['archivos']['proceso']     ?? 2),
+            'rostro'       => (int)($vals['rostro']['proceso']       ?? 2),
+            'identidad'    => (int)($vals['identidad']['proceso']    ?? 2),
+            'ingresos'     => (int)($vals['ingresos']['proceso']     ?? 2),
+            'pago_inicial' => (int)($vals['pago_inicial']['proceso'] ?? 2),
+            'demandas'     => (int)($vals['demandas']['proceso']     ?? 2),
+        ];
+
+        // 👇 Solo añadimos VerificaMex si es INE/IFE
+        if (in_array($tipoId, ['ine', 'ife', 'ine/ife'])) {
+            $semaforos['verificamex'] = (int)($vals['verificamex']['proceso'] ?? 2);
+        }
+
+        // Resumen Humano global (ej. "✔️ Docs · ⏳ Arch · ✖️ Rostro · ...")
+        $resumenGlobal = \App\Helpers\ValidacionResumenHelper::statusGlobal($semaforos);
+
+        // Además, devolvemos cada resumen humano individual si existe
+        $resumenes = [
+            'archivos'     => $vals['archivos']['resumen']     ?? null,
+            'rostro'       => $vals['rostro']['resumen']       ?? null,
+            'identidad'    => $vals['identidad']['resumen']    ?? null,
+            'documentos'   => $vals['documentos']['resumen']   ?? null,
+            'ingresos'     => $vals['ingresos']['resumen']     ?? null,
+            'pago_inicial' => $vals['pago_inicial']['resumen'] ?? null,
+            'demandas'     => $vals['demandas']['resumen']     ?? null,
+            'verificamex'  => $vals['verificamex']['resumen']  ?? null,
+        ];
+
+        // 👇 Igual, agregamos resumen VerificaMex solo si aplica
+        if (isset($semaforos['verificamex'])) {
+            $resumenes['verificamex'] = $vals['verificamex']['resumen'] ?? null;
+        }
+
+        // 🚀 Extra: detectar si en la validación identidad tenemos CURP
+        $curpDetectada = null;
+        if (!empty($vals['identidad']['json']) && is_array($vals['identidad']['json'])) {
+            $curpDetectada = $vals['identidad']['json']['curp'] ?? null;
+        }
+        if (!$curpDetectada && !empty($inquilino['curp'])) {
+            $curpDetectada = $inquilino['curp'];
+        }
+
+        // 👇 Asegurar slug válido
+        $slug = $inquilino['slug'] ?? null;
+        if (!$slug) {
+            $nombreCompleto = trim(
+                ($inquilino['nombre_inquilino'] ?? '') . ' ' .
+                ($inquilino['apellidop_inquilino'] ?? '') . ' ' .
+                ($inquilino['apellidom_inquilino'] ?? '')
+            );
+            $slug = \App\Helpers\SlugHelper::fromName($nombreCompleto);
+        }
+
+        // Si el cliente quiere texto plano combinado (?plain=1)
+        $plain = (isset($_GET['plain']) && $_GET['plain'] == '1');
+        if ($plain) {
+            $lines = [$resumenGlobal];
+            foreach ($resumenes as $k => $txt) {
+                if ($txt) $lines[] = "• " . $txt;
             }
-            // Si no está en json, usamos lo que tenga el inquilino
-            if (!$curpDetectada && !empty($inquilino['curp'])) {
-                $curpDetectada = $inquilino['curp'];
-            }
-
-            // Si el cliente quiere texto plano combinado (?plain=1)
-            $plain = (isset($_GET['plain']) && $_GET['plain'] == '1');
-            if ($plain) {
-                $lines = [$resumenGlobal];
-                foreach ($resumenes as $k => $txt) {
-                    if ($txt) $lines[] = "• " . $txt;
-                }
-                echo json_encode([
-                    'ok' => true,
-                    'slug' => $inquilino['slug'] ?? null,
-                    'plain' => implode("\n", $lines),
-                    'curp'  => $curpDetectada, // 👈 añadido
-                    'meta' => $vals['meta'] ?? null,
-                ], JSON_UNESCAPED_UNICODE);
-                return;
-            }
-
             echo json_encode([
                 'ok' => true,
-                'slug' => $inquilino['slug'] ?? null,
-                'resumen_global' => $resumenGlobal,
-                'semaforos' => $semaforos,
-                'resumenes' => $resumenes,
-                'curp'      => $curpDetectada, // 👈 añadido
-                'detalles'  => $vals,          // incluye los JSON completos por cada validación
+                'slug' => $slug,
+                'plain' => implode("\n", $lines),
+                'curp'  => $curpDetectada,
+                'meta'  => $vals['meta'] ?? null,
             ], JSON_UNESCAPED_UNICODE);
-        } catch (\Throwable $e) {
-            echo json_encode(['ok'=>false,'mensaje'=>'Error al consultar estado: '.$e->getMessage()]);
+            return;
         }
-        return;
+
+        echo json_encode([
+            'ok'            => true,
+            'slug'          => $slug,
+            'resumen_global'=> $resumenGlobal,
+            'semaforos'     => $semaforos,
+            'resumenes'     => $resumenes,
+            'curp'          => $curpDetectada,
+            'detalles'      => $vals,
+        ], JSON_UNESCAPED_UNICODE);
+
+    } catch (\Throwable $e) {
+        echo json_encode([
+            'ok'=>false,
+            'mensaje'=>'Error al consultar estado: '.$e->getMessage()
+        ]);
     }
+    return;
+}
+
+
 
 
         // --- REGENERAR RESÚMENES HUMANOS DESDE JSON GUARDADOS ----------------------

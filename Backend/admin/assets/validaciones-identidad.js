@@ -16,15 +16,10 @@ window.updateChipsIdentidad = function (info, R) {
 
 	if (det.apellidop && det.apellidom && det.nombres) {
 		vhSetChipState(chipNombres, "ok");
-		chipNombres.innerText = `Validación exitosa`;
 	} else if (det.apellidop || det.apellidom || det.nombres) {
 		vhSetChipState(chipNombres, "warn");
-		chipNombres.innerText = `${det.apellidop || ""} ${
-			det.apellidom || ""
-		} ${det.nombres || ""}`.trim();
 	} else {
 		vhSetChipState(chipNombres, "fail");
-		chipNombres.innerText = "Nombres/Apellidos";
 	}
 
 	// --- CURP ---
