@@ -745,159 +745,150 @@ $REQUIRED_TYPES = ['selfie','ine_frontal','ine_reverso','pasaporte','forma_migra
         }
     }
 ?>
-    <div class="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
+    <div class="grid gap-6 sm:grid-cols-2 md:grid-cols-3">
 
-        <?php if (!empty($archivos)): ?>
-            <?php foreach ($archivos as $archivo): ?>
-                <?php
-                    $url         = $inquilino['s3_base_url'] . $archivo['s3_key'];
-                    $tipoArchivo = strtolower(pathinfo($archivo['s3_key'], PATHINFO_EXTENSION));
-                    $esImagen    = in_array($tipoArchivo, ['jpg','jpeg','png','webp']);
-                    $tipo        = $archivo['tipo'] ?? '';
-                    $dzId        = 'dz-replace-' . (int)$archivo['id'];
-                    $acceptAttr  = acceptFor($tipo);
-                ?>
-                <div class="bg-white/10 border border-pink-400/20 p-4 rounded-xl shadow-md flex flex-col items-center text-center transition-transform duration-200 relative group">
-                    <!-- Eliminar -->
-                    <button type="button"
-                        class="absolute top-2 left-2 opacity-70 hover:opacity-100 bg-gray-700/90 hover:bg-red-600 text-white rounded-full p-2 transition"
-                        onclick="eliminarArchivo('<?php echo $archivo['id']; ?>')" title="Eliminar archivo">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
-                    </button>
-                    <!-- Toggle editar (dropzone casero) -->
-                    <button type="button"
-                        class="absolute top-2 right-2 opacity-90 hover:opacity-100 bg-indigo-700/90 hover:bg-pink-600 text-white rounded-full p-2 transition"
-                        onclick="toggleInlineDZ('<?php echo $dzId; ?>')" title="Reemplazar archivo">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5a1 1 0 001 1h5M20 20v-5a1 1 0 00-1-1h-5M5 9l6-6M19 15l-6 6"/></svg>
-                    </button>
+    <?php if (!empty($archivos)): ?>
+        <?php foreach ($archivos as $archivo): ?>
+            <?php
+                $url         = $inquilino['s3_base_url'] . $archivo['s3_key'];
+                $tipoArchivo = strtolower(pathinfo($archivo['s3_key'], PATHINFO_EXTENSION));
+                $esImagen    = in_array($tipoArchivo, ['jpg','jpeg','png','webp']);
+                $tipo        = $archivo['tipo'] ?? '';
+                $dzId        = 'dz-replace-' . (int)$archivo['id'];
+                $acceptAttr  = acceptFor($tipo);
+            ?>
+            <div class="bg-white/10 border border-pink-400/20 p-4 rounded-xl shadow-md flex flex-col items-center text-center relative group">
+                
+                <!-- Botón eliminar -->
+                <button type="button"
+                    class="absolute top-2 left-2 opacity-70 hover:opacity-100 bg-gray-700/90 hover:bg-red-600 text-white rounded-full p-2"
+                    onclick="eliminarArchivo('<?php echo $archivo['id']; ?>')" title="Eliminar archivo">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
 
-                    <!-- Miniatura actual -->
-                    <?php if ($esImagen): ?>
-                        <img src="<?php echo htmlspecialchars($url) ?>"
-                             alt="Archivo imagen"
-                             class="rounded-lg max-h-44 object-contain mb-3 shadow-md cursor-zoom-in hover:scale-105 transition"
-                             onclick="abrirModalImg('<?php echo htmlspecialchars($url) ?>', '<?php echo addslashes($tipo) ?>')" />
-                    <?php else: ?>
-                        <div class="relative flex items-center justify-center mb-3">
-                            <span class="absolute inset-0 flex items-center justify-center">
-                                <span class="block w-14 h-14 bg-gradient-to-tr from-pink-400/30 via-indigo-300/20 to-pink-600/40 rounded-full blur-[2px] opacity-80"></span>
-                            </span>
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
-                                 stroke-width="1.5" class="relative w-11 h-11 text-pink-400 drop-shadow-lg"
-                                 stroke="url(#archivo-grad-<?php echo $archivo['id'] ?? rand(1, 9999); ?>)">
-                                <defs><linearGradient id="archivo-grad-<?php echo $archivo['id'] ?? rand(1, 9999); ?>" x1="0" x2="1" y1="0" y2="1"><stop offset="0%" stop-color="#ec4899"/><stop offset="80%" stop-color="#6366f1"/></linearGradient></defs>
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M10.125 2.25h-4.5c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125v-9M10.125 2.25h.375a9 9 0 0 1 9 9v.375M10.125 2.25A3.375 3.375 0 0 1 13.5 5.625v1.5c0 .621.504 1.125 1.125 1.125h1.5a3.375 3.375 0 0 1 3.375 3.375M9 15l2.25 2.25L15 12" />
-                            </svg>
-                        </div>
-                    <?php endif; ?>
+                <!-- Botón reemplazar -->
+                <button type="button"
+                    class="absolute top-2 right-2 opacity-90 hover:opacity-100 bg-indigo-700/90 hover:bg-pink-600 text-white rounded-full p-2"
+                    onclick="document.getElementById('<?php echo $dzId; ?>-input').click()" title="Reemplazar archivo">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5a1 1 0 001 1h5M20 20v-5a1 1 0 00-1-1h-5M5 9l6-6M19 15l-6 6"/></svg>
+                </button>
 
-                    <p class="text-xs font-semibold text-gray-200 truncate w-full mb-2"><?php echo htmlspecialchars($tipo); ?></p>
-                    <?php if ($esImagen): ?>
-                        <a href="#" onclick="abrirModalImg('<?php echo htmlspecialchars($url) ?>', '<?php echo addslashes($tipo) ?>'); return false;"
-                           class="bg-gradient-to-r from-pink-500 via-indigo-500 to-indigo-700 hover:from-indigo-700 hover:to-pink-400 text-white text-xs px-3 py-1 rounded-full shadow">
-                           Ver imagen
-                        </a>
-                    <?php else: ?>
-                        <a href="#" onclick="abrirModalPdf('<?php echo htmlspecialchars($url) ?>', '<?php echo addslashes($tipo) ?>'); return false;"
-                           class="bg-gradient-to-r from-pink-500 via-indigo-500 to-indigo-700 hover:from-indigo-700 hover:to-pink-400 text-white text-xs px-3 py-1 rounded-full shadow">
-                           Ver archivo
-                        </a>
-                    <?php endif; ?>
-
-                    <!-- Dropzone casero (REEMPLAZO) -->
-                    <div id="<?php echo $dzId; ?>" class="inline-dropzone hidden mt-4 w-full"
-                         data-mode="replace" data-accept="<?php echo htmlspecialchars($acceptAttr); ?>">
-                        <form class="dz-form" action="javascript:void(0)" enctype="multipart/form-data">
-                            <input type="hidden" name="archivo_id" value="<?php echo (int)$archivo['id']; ?>">
-                            <input type="hidden" name="tipo" value="<?php echo htmlspecialchars($tipo); ?>">
-                            <input type="hidden" name="nombre_inquilino" value="<?php echo htmlspecialchars($nombreProspecto); ?>">
-                            <div class="dz-area rounded-xl border-2 border-dashed border-pink-400/70 bg-white/10 py-6 flex flex-col items-center justify-center transition-all">
-                                <div class="dz-empty text-pink-300 text-sm">
-                                    Arrastra y suelta o <span class="underline decoration-pink-400 cursor-pointer dz-pick">elige un archivo</span>
-                                    <div class="text-xs text-gray-400 mt-1"><?php echo htmlspecialchars($acceptAttr); ?> (máx ~10 MB)</div>
-                                </div>
-                                <div class="dz-preview hidden mt-3 flex flex-col items-center">
-                                    <img class="dz-thumb max-h-40 rounded-lg shadow mb-2 hidden" alt="preview">
-                                    <div class="dz-file text-xs text-gray-300"></div>
-                                </div>
-                                <input class="dz-input hidden" type="file" name="archivo" accept="<?php echo htmlspecialchars($acceptAttr); ?>">
-                            </div>
-                            <div class="flex items-center gap-4 mt-3">
-                                <button type="button" class="dz-send bg-gradient-to-r from-pink-500 via-fuchsia-500 to-indigo-600 hover:from-pink-600 hover:to-indigo-700 text-white text-xs px-3 py-2 rounded-lg shadow">Subir reemplazo</button>
-                                <button type="button" class="dz-clear text-xs text-gray-300 hover:text-white">Quitar</button>
-                                <button type="button" class="text-xs text-gray-300 hover:text-white" onclick="toggleInlineDZ('<?php echo $dzId; ?>')">Cancelar</button>
-                            </div>
-                        </form>
+                <!-- Preview archivo actual -->
+                <?php if ($esImagen): ?>
+                    <img src="<?php echo htmlspecialchars($url) ?>"
+                        alt="Archivo imagen"
+                        class="rounded-lg max-h-44 object-contain mb-3 shadow-md cursor-zoom-in hover:scale-105 transition"
+                        onclick="abrirModalImg('<?php echo htmlspecialchars($url) ?>', '<?php echo addslashes($tipo) ?>')" />
+                <?php else: ?>
+                    <div class="flex items-center justify-center mb-3">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-12 h-12 text-pink-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                  d="M12 4.5v15m7.5-7.5h-15" />
+                        </svg>
                     </div>
-                </div>
-            <?php endforeach; ?>
-        <?php endif; ?>
+                <?php endif; ?>
 
-        <?php
-            // --------- Tarjetas que faltan (misma UI de dropzone casero) ----------
-            $slots = [];
-            if (!$hasSelfie) $slots[] = ['tipo'=>'selfie','label'=>'Selfie'];
+                <p class="text-xs font-semibold text-gray-200 truncate w-full mb-2"><?php echo htmlspecialchars($tipo); ?></p>
 
-            if ($needINE) {
-                if (empty($byType['ine_frontal'])) $slots[] = ['tipo'=>'ine_frontal','label'=>'INE - Frente'];
-                if (empty($byType['ine_reverso'])) $slots[] = ['tipo'=>'ine_reverso','label'=>'INE - Reverso'];
-                if (!$hasPassport) $slots[] = ['tipo'=>'pasaporte','label'=>'Opción: Pasaporte (sustituye INE)'];
-            }
-            for ($i=0; $i<$faltanComp; $i++) $slots[] = ['tipo'=>'comprobante_ingreso','label'=>'Comprobante de ingreso (PDF)'];
-        ?>
+                <!-- Acciones -->
+                <?php if ($esImagen): ?>
+                    <a href="#" onclick="abrirModalImg('<?php echo htmlspecialchars($url) ?>', '<?php echo addslashes($tipo) ?>'); return false;"
+                       class="bg-pink-500 hover:bg-pink-600 text-white text-xs px-3 py-1 rounded-full shadow">
+                       Ver imagen
+                    </a>
+                <?php else: ?>
+                    <a href="#" onclick="abrirModalPdf('<?php echo htmlspecialchars($url) ?>', '<?php echo addslashes($tipo) ?>'); return false;"
+                       class="bg-pink-500 hover:bg-pink-600 text-white text-xs px-3 py-1 rounded-full shadow">
+                       Ver archivo
+                    </a>
+                <?php endif; ?>
 
-        <?php foreach ($slots as $idx=>$t): ?>
-            <?php $dzId = 'dz-new-' . $t['tipo'] . '-' . $idx; $acceptAttr = acceptFor($t['tipo']); ?>
-            <div class="bg-white/10 border border-pink-400/20 p-5 rounded-xl shadow-md flex flex-col items-center text-center">
-                <div class="relative flex items-center justify-center mb-3">
-                    <span class="absolute inset-0 flex items-center justify-center">
-                        <span class="block w-16 h-16 bg-gradient-to-tr from-pink-400/30 via-indigo-300/20 to-pink-600/40 rounded-full blur-[3px] opacity-80"></span>
-                    </span>
-                    <svg class="relative w-12 h-12 text-pink-400 drop-shadow-lg" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M7.5 12 12 7.5 16.5 12M12 7.5V21"/>
-                    </svg>
-                </div>
-                <p class="text-sm font-semibold text-gray-200 mb-2"><?php echo htmlspecialchars($t['label']); ?></p>
-
-                <!-- Dropzone casero (NUEVO) -->
-                <div id="<?php echo $dzId; ?>" class="inline-dropzone w-full"
-                     data-mode="new" data-accept="<?php echo htmlspecialchars($acceptAttr); ?>">
-                    <form class="dz-form" action="javascript:void(0)" enctype="multipart/form-data">
-                        <input type="hidden" name="id_inquilino" value="<?php echo $idInquilino; ?>">
-                        <input type="hidden" name="tipo" value="<?php echo htmlspecialchars($t['tipo']); ?>">
-                        <input type="hidden" name="nombre_inquilino" value="<?php echo htmlspecialchars($nombreProspecto); ?>">
-                        <div class="dz-area rounded-xl border-2 border-dashed border-pink-400/70 bg-white/10 py-6 flex flex-col items-center justify-center transition-all">
-                            <div class="dz-empty text-pink-300 text-sm">
-                                Arrastra y suelta o <span class="underline decoration-pink-400 cursor-pointer dz-pick">elige un archivo</span>
-                                <div class="text-xs text-gray-400 mt-1"><?php echo htmlspecialchars($acceptAttr); ?> (máx ~10 MB)</div>
-                            </div>
-                            <div class="dz-preview hidden mt-3 flex flex-col items-center">
-                                <img class="dz-thumb max-h-40 rounded-lg shadow mb-2 hidden" alt="preview">
-                                <div class="dz-file text-xs text-gray-300"></div>
-                            </div>
-                            <input class="dz-input hidden" type="file" name="archivo" accept="<?php echo htmlspecialchars($acceptAttr); ?>">
-                        </div>
-                        <div class="flex items-center gap-4 mt-3">
-                            <button type="button" class="dz-send bg-gradient-to-r from-pink-500 via-fuchsia-500 to-indigo-600 hover:from-pink-600 hover:to-indigo-700 text-white text-xs px-3 py-2 rounded-lg shadow">Subir <?php echo htmlspecialchars($t['label']); ?></button>
-                            <button type="button" class="dz-clear text-xs text-gray-300 hover:text-white">Quitar</button>
-                        </div>
-                    </form>
-                </div>
+                <!-- Dropzone casero REEMPLAZO -->
+                <input type="file" id="<?php echo $dzId; ?>-input" class="hidden"
+                       accept="<?php echo htmlspecialchars($acceptAttr); ?>"
+                       onchange="previewAndReplaceFile(this, '<?php echo $archivo['id']; ?>', '<?php echo $tipo; ?>', '<?php echo htmlspecialchars($nombreProspecto); ?>')">
             </div>
         <?php endforeach; ?>
+    <?php endif; ?>
 
-        <?php
-            $slug = (string)($inquilino['slug'] ?? '');
-            $urlValidaciones = rtrim($baseUrl, '/') . '/inquilino/' . rawurlencode($slug) . '/validaciones';
-        ?>
-        <div class="mt-6 flex justify-center sm:col-span-2 md:col-span-3">
-            <a href="<?= htmlspecialchars($urlValidaciones, ENT_QUOTES) ?>"
-               class="group inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl text-sm font-semibold text-white bg-gradient-to-r from-pink-500 via-fuchsia-500 to-indigo-500 shadow-lg shadow-pink-500/20 hover:shadow-pink-500/40 transition transform hover:-translate-y-0.5 active:translate-y-0 focus:outline-none focus:ring-2 focus:ring-pink-300 w-full sm:w-auto min-w-[240px]">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 opacity-90 group-hover:opacity-100" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                <span>Ir a las validaciones</span>
-            </a>
+
+    <!-- Slots para archivos faltantes -->
+ <?php
+    // --------- Tarjetas que faltan (misma UI de dropzone casero) ----------
+    $slots = [];
+    if (!$hasSelfie) {
+        $slots[] = ['tipo'=>'selfie','label'=>'Selfie'];
+    }
+
+    if ($needINE) {
+        if (empty($byType['ine_frontal'])) {
+            $slots[] = ['tipo'=>'ine_frontal','label'=>'INE - Frente'];
+        }
+        if (empty($byType['ine_reverso'])) {
+            $slots[] = ['tipo'=>'ine_reverso','label'=>'INE - Reverso'];
+        }
+        if (!$hasPassport) {
+            $slots[] = ['tipo'=>'pasaporte','label'=>'Pasaporte'];
+        }
+    }
+
+    // Forma migratoria (frente y reverso)
+    if (empty($byType['forma_frontal'])) {
+        $slots[] = ['tipo'=>'forma_frontal','label'=>'Forma Migratoria - Frente'];
+    }
+    if (empty($byType['forma_reverso'])) {
+        $slots[] = ['tipo'=>'forma_reverso','label'=>'Forma Migratoria - Reverso'];
+    }
+
+    // Escritura
+    if (empty($byType['escritura'])) {
+        $slots[] = ['tipo'=>'escritura','label'=>'Escritura de inmueble (PDF)'];
+    }
+
+    // Comprobantes de ingresos
+    for ($i=0; $i<$faltanComp; $i++) {
+        $slots[] = ['tipo'=>'comprobante_ingreso','label'=>'Comprobante de ingreso (PDF)'];
+    }
+?>
+
+    <?php foreach ($slots as $idx=>$t): ?>
+        <div class="bg-white/10 border border-pink-400/20 p-5 rounded-xl shadow-md flex flex-col items-center text-center">
+            <svg class="w-12 h-12 text-pink-400 mb-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.5v15m7.5-7.5h-15" /></svg>
+            <p class="text-sm font-semibold text-gray-200 mb-2"><?php echo htmlspecialchars($t['label']); ?></p>
+
+            <!-- Dropzone casero NUEVO -->
+            <input type="file" id="dz-new-<?php echo $t['tipo'].'-'.$idx; ?>" class="hidden"
+                   accept="<?php echo htmlspecialchars(acceptFor($t['tipo'])); ?>"
+                   onchange="previewAndUploadFile(this, '<?php echo $idInquilino; ?>', '<?php echo $t['tipo']; ?>', '<?php echo htmlspecialchars($nombreProspecto); ?>')">
+
+            <button type="button"
+                class="bg-gradient-to-r from-pink-500 to-indigo-600 hover:from-pink-600 hover:to-indigo-700 text-white text-xs px-3 py-2 rounded-lg shadow"
+                onclick="document.getElementById('dz-new-<?php echo $t['tipo'].'-'.$idx; ?>').click()">
+                Subir <?php echo htmlspecialchars($t['label']); ?>
+            </button>
         </div>
+    <?php endforeach; ?>
+
+
+    <!-- Dropzone OTROS ARCHIVOS -->
+    <div class="bg-white/10 border border-pink-400/20 p-6 rounded-xl shadow-md flex flex-col items-center text-center sm:col-span-2 md:col-span-3">
+        <svg class="w-14 h-14 text-pink-400 mb-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.5v15m7.5-7.5h-15" />
+        </svg>
+        <p class="text-sm font-semibold text-gray-200 mb-2">Otros archivos (PDF o imagen)</p>
+
+        <input type="file" id="dz-otros-archivos" class="hidden" accept=".pdf,image/*" multiple
+               onchange="previewAndUploadOtros(this, '<?php echo $idInquilino; ?>', '<?php echo htmlspecialchars($nombreProspecto); ?>')">
+
+        <button type="button"
+            class="bg-gradient-to-r from-pink-500 to-indigo-600 hover:from-pink-600 hover:to-indigo-700 text-white text-xs px-3 py-2 rounded-lg shadow"
+            onclick="document.getElementById('dz-otros-archivos').click()">
+            Subir otros archivos
+        </button>
     </div>
+
+</div>
+
 </div>                                                                  
     <!-- Fin de Contenido de Archivos -->
     

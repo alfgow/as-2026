@@ -50,8 +50,8 @@
                 class="my-4 ml-2 rounded-lg border border-white/10 bg-gray-800 text-slate-200 px-3 py-1 text-sm font-medium
                     focus:outline-none focus:ring-2 focus:ring-indigo-400 hover:bg-gray-700 transition">
                 <option value="1" <?= ($inquilino['status'] ?? 1) == 1 ? 'selected' : '' ?>>Nuevo</option>
-                <option value="2" <?= ($inquilino['status'] ?? 1) == 2 ? 'selected' : '' ?>>En Proceso</option>
-                <option value="3" <?= ($inquilino['status'] ?? 1) == 3 ? 'selected' : '' ?>>Aprobado</option>
+                <option value="2" <?= ($inquilino['status'] ?? 1) == 2 ? 'selected' : '' ?>>Aprobado</option>
+                <option value="3" <?= ($inquilino['status'] ?? 1) == 3 ? 'selected' : '' ?>>En Proceso</option>
                 <option value="4" <?= ($inquilino['status'] ?? 1) == 4 ? 'selected' : '' ?>>Rechazado</option>
             </select>
             <div class="mt-1 text-sm text-slate-400 break-words">
