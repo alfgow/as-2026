@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -85,7 +86,7 @@
     <!-- INMUEBLE -->
     <div class="section-title">2. Inmueble Asegurado</div>
     <div class="detalle-linea"><span class="label">Tipo de inmueble:</span><span class="valor"><?= $poliza['tipo_inmueble'] ?></span></div>
-    <div class="detalle-linea"><span class="label">Dirección:</span><span class="valor"><?= $poliza['direccion'] ?></span></div>
+    <div class="detalle-linea"><span class="label">Dirección:</span><span class="valor"><?= $poliza['direccion_inmueble'] ?></span></div>
 
     <!-- ARRENDADOR -->
     <div class="section-title">3. Datos del Arrendador</div>
@@ -94,7 +95,7 @@
     <!-- INQUILINO -->
     <div class="section-title">4. Datos del Inquilino</div>
     <div class="detalle-linea"><span class="label">Nombre:</span><span class="valor"><?= $poliza['nombre_inquilino_completo'] ?></span></div>
-    <div class="detalle-linea"><span class="label">Dirección:</span><span class="valor"><?= $poliza['direccion'] ?></span></div>
+    <div class="detalle-linea"><span class="label">Dirección:</span><span class="valor"><?= $poliza['direccion_inmueble'] ?></span></div>
 
     <!-- VIGENCIA -->
     <div class="section-title">5. Vigencia y Cobertura</div>

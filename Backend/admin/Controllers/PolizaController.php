@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace App\Controllers;
@@ -26,7 +27,9 @@ use NumberFormatter;
 use PhpOffice\PhpWord\TemplateProcessor;
 
 require_once __DIR__ . '/../Middleware/AuthMiddleware.php';
+
 use App\Middleware\AuthMiddleware;
+
 AuthMiddleware::verificarSesion();
 
 class PolizaController
@@ -79,6 +82,116 @@ class PolizaController
         include __DIR__ . '/../Views/polizas/pdf.php';
     }
 
+    public function generarPdf(int $numero): void
+    {
+        $modelo = new PolizaModel();
+        $poliza = $modelo->obtenerPorNumero($numero);
+
+        if (!$poliza) {
+            http_response_code(404);
+            echo 'No se encontró la póliza';
+            return;
+        }
+        $normalizeName = function (string $str): string {
+            $str = mb_strtolower(trim($str), 'UTF-8');
+            $str = strtr($str, [
+                'á' => 'a',
+                'é' => 'e',
+                'í' => 'i',
+                'ó' => 'o',
+                'ú' => 'u',
+                'ä' => 'a',
+                'ë' => 'e',
+                'ï' => 'i',
+                'ö' => 'o',
+                'ü' => 'u',
+                'Á' => 'a',
+                'É' => 'e',
+                'Í' => 'i',
+                'Ó' => 'o',
+                'Ú' => 'u',
+                'ñ' => 'n',
+                'Ñ' => 'n',
+                'ç' => 'c'
+            ]);
+            return preg_replace('/[^a-z0-9]/', '', $str);
+        };
+
+        // --- Normalización de nombres para el s3_key ---
+        $nombreNormalizado = $normalizeName($poliza['nombre_arrendador']);
+        $direccionSlug = substr(
+            preg_replace('/[^a-z0-9]+/i', '_', strtolower($poliza['direccion_inmueble'])),
+            0,
+            40
+        );
+
+        // --- Construcción del s3_key ---
+        $s3Key = "{$poliza['id_arrendador']}_{$nombreNormalizado}/Poliza_{$poliza['numero_poliza']}_{$direccionSlug}.docx";
+
+        // --- Selección de plantilla según tipo de póliza ---
+        $tipoPoliza = strtolower($poliza['tipo_poliza']);
+        $plantillaPath = __DIR__ . '/../../plantillas/Plantilla_Poliza_' . $tipoPoliza . '.docx';
+
+        if (!file_exists($plantillaPath)) {
+            throw new \Exception("No se encontró la plantilla para el tipo de póliza: {$tipoPoliza}");
+        }
+
+        // --- Cargar plantilla ---
+        $template = new \PhpOffice\PhpWord\TemplateProcessor($plantillaPath);
+
+        // --- Reemplazar placeholders ---
+        $template->setValue('NUM', $poliza['numero_poliza']);
+        $template->setValue('FECHA_EMISION', date('d/m/Y', strtotime($poliza['fecha_poliza'])));
+        $template->setValue('SERIE', $poliza['serie_poliza']);
+        $template->setValue('ASESOR', $poliza['nombre_asesor']);
+        $template->setValue('VIGENCIA', $poliza['vigencia']);
+        $template->setValue('MONTO_RENTA', '$' . number_format((float)$poliza['monto_renta'], 2));
+        $template->setValue('MONTO_POLIZA', '$' . number_format((float)$poliza['monto_poliza'], 2));
+        $template->setValue('TIPO_INMUEBLE', $poliza['tipo_inmueble']);
+        $template->setValue('DIRECCION_INMUEBLE', $poliza['direccion_inmueble']);
+        $template->setValue('ARRENDADOR', $poliza['nombre_arrendador']);
+        $template->setValue('ARRENDATARIO', $poliza['nombre_inquilino_completo']);
+        $template->setValue('OBLIGADO_SOLIDARIO', $poliza['nombre_obligado_completo'] ?? 'N/A');
+        $template->setValue('FIADOR', $poliza['nombre_fiador'] ?? 'N/A');
+
+        // --- Guardar temporal DOCX ---
+        $tmpDocx = sys_get_temp_dir() . "/poliza_{$numero}.docx";
+        $template->saveAs($tmpDocx);
+
+        // --- Configurar cliente S3 usando bucket arrendadores ---
+        $config = require __DIR__ . '/../config/s3config.php';
+        $s3Config = $config['arrendadores'];
+
+        $s3 = new \Aws\S3\S3Client([
+            'region'      => $s3Config['region'],
+            'version'     => 'latest',
+            'credentials' => $s3Config['credentials'],
+        ]);
+
+        // --- Subir a S3 ---
+        $s3->putObject([
+            'Bucket'      => $s3Config['bucket'],
+            'Key'         => $s3Key,
+            'SourceFile'  => $tmpDocx,
+            'ACL'         => 'private',
+            'ContentType' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        ]);
+
+        // --- Registrar en arrendadores_archivos ---
+        $modelo->guardarArchivoPoliza($poliza['id_arrendador'], $s3Key);
+
+        // --- Forzar descarga en navegador ---
+        header('Content-Description: File Transfer');
+        header('Content-Type: application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+        header('Content-Disposition: attachment; filename="Poliza_' . $poliza['numero_poliza'] . '.docx"');
+        header('Expires: 0');
+        header('Cache-Control: must-revalidate');
+        header('Pragma: public');
+        header('Content-Length: ' . filesize($tmpDocx));
+        readfile($tmpDocx);
+        exit;
+    }
+
     public function buscar(): void
     {
         $numero = $_GET['numero'] ?? null;
@@ -108,7 +221,7 @@ class PolizaController
             return;
         }
 
-        $title       = 'Póliza #'. htmlspecialchars((string)$poliza['numero_poliza']);
+        $title       = 'Póliza #' . htmlspecialchars((string)$poliza['numero_poliza']);
         $headerTitle = 'Póliza #' . htmlspecialchars((string)$poliza['numero_poliza']);
 
         $arrendadores = $arrendadorModel->obtenerTodos();
@@ -119,11 +232,10 @@ class PolizaController
 
 
         $inmuebles    = $inmuebleModel->obtenerTodos();
-        $inmueble     = $inmuebleModel->obtenerPorId((int)$poliza
-        ['id_inmueble']);
+        $inmueble     = $inmuebleModel->obtenerPorId((int)$poliza['id_inmueble']);
 
         // Compatibilidad con ambos nombres de métodos
-      
+
 
         $siguienteNumero = (int)$model->obtenerUltimaPolizaEmitida() + 1;
 
@@ -132,7 +244,7 @@ class PolizaController
     }
 
 
-   public function nueva(): void
+    public function nueva(): void
     {
         $polizaModel     = new PolizaModel();
         $arrendadorModel = new ArrendadorModel();
@@ -149,147 +261,152 @@ class PolizaController
         $obligados = $inquilinoModel->getObligadosAll();
 
         // Compatibilidad con ambos nombres de métodos
-      
+
         $title       = 'Nueva póliza';
         $headerTitle = 'Registrar póliza';
         $contentView = __DIR__ . '/../Views/polizas/nueva.php';
         include __DIR__ . '/../Views/layouts/main.php';
     }
 
-   
-
     // Dentro de App\Controllers\PolizaController
 
-public function editar(int $numeroPoliza): void
-{
-    try {
-        $polizaModel     = new \App\Models\PolizaModel();
-$arrendadorModel = new \App\Models\ArrendadorModel();
-$inquilinoModel  = new \App\Models\InquilinoModel();
-$inmuebleModel   = new \App\Models\InmuebleModel();
-$asesorModel     = new \App\Models\AsesorModel();
+    public function editar(int $numeroPoliza): void
+    {
+        try {
+            $polizaModel     = new \App\Models\PolizaModel();
+            $arrendadorModel = new \App\Models\ArrendadorModel();
+            $inquilinoModel  = new \App\Models\InquilinoModel();
+            $inmuebleModel   = new \App\Models\InmuebleModel();
+            $asesorModel     = new \App\Models\AsesorModel();
 
-$poliza = $polizaModel->obtenerPorNumero($numeroPoliza);
-if (!$poliza) {
-    http_response_code(404);
-    $headerTitle = 'Póliza no encontrada';
-    $contentView = __DIR__ . '/../Views/404.php';
-    include __DIR__ . '/../Views/layouts/main.php';
-    return;
-}
+            $poliza = $polizaModel->obtenerPorNumero($numeroPoliza);
+            if (!$poliza) {
+                http_response_code(404);
+                $headerTitle = 'Póliza no encontrada';
+                $contentView = __DIR__ . '/../Views/404.php';
+                include __DIR__ . '/../Views/layouts/main.php';
+                return;
+            }
 
-// Catálogos básicos
-$arrendadores = $arrendadorModel->obtenerTodos();
-$asesores     = $asesorModel->all();
-$inmuebles    = $inmuebleModel->obtenerTodos();
+            // Catálogos básicos
+            $arrendadores = $arrendadorModel->obtenerTodos();
+            $asesores     = $asesorModel->all();
+            $inmuebles    = $inmuebleModel->obtenerTodos();
 
-// Trae TODOS los prospectos y filtra por rol (aceptando sinónimos)
-$todos = $inquilinoModel->buscarConFiltros('', '', '', 10000, 0); // SELECT * FROM inquilinos
-$norm = static fn($r) => mb_strtolower(trim($r['tipo'] ?? ''), 'UTF-8');
+            // Trae TODOS los prospectos y filtra por rol (aceptando sinónimos)
+            $todos = $inquilinoModel->buscarConFiltros('', '', '', 10000, 0); // SELECT * FROM inquilinos
+            $norm = static fn($r) => mb_strtolower(trim($r['tipo'] ?? ''), 'UTF-8');
 
-$inquilinos = array_values(array_filter($todos, fn($r) => in_array($norm($r), [
-    'arrendatario', 'inquilino'
-], true)));
+            $inquilinos = array_values(array_filter($todos, fn($r) => in_array($norm($r), [
+                'arrendatario',
+                'inquilino'
+            ], true)));
 
-$fiadores = array_values(array_filter($todos, fn($r) => in_array($norm($r), [
-    'fiador'
-], true)));
+            $fiadores = array_values(array_filter($todos, fn($r) => in_array($norm($r), [
+                'fiador'
+            ], true)));
 
-$obligados = array_values(array_filter($todos, fn($r) => in_array($norm($r), [
-    'obligado solidario', 'obligado'
-], true)));
+            $obligados = array_values(array_filter($todos, fn($r) => in_array($norm($r), [
+                'obligado solidario',
+                'obligado'
+            ], true)));
 
-// Render de la vista de edición (asegúrate de apuntar a editar.php)
-$editMode    = true;
-$headerTitle = 'Editar Póliza #' . htmlspecialchars((string)$poliza['numero_poliza']);
-$contentView = __DIR__ . '/../Views/polizas/editar.php';
-include __DIR__ . '/../Views/layouts/main.php';
-
-
-    } catch (\Throwable $e) {
-        http_response_code(500);
-        echo "Error al cargar edición: " . $e->getMessage();
+            // Render de la vista de edición (asegúrate de apuntar a editar.php)
+            $editMode    = true;
+            $headerTitle = 'Editar Póliza #' . htmlspecialchars((string)$poliza['numero_poliza']);
+            $contentView = __DIR__ . '/../Views/polizas/editar.php';
+            include __DIR__ . '/../Views/layouts/main.php';
+        } catch (\Throwable $e) {
+            http_response_code(500);
+            echo "Error al cargar edición: " . $e->getMessage();
+        }
     }
-}
 
 
-public function renovar(int $numeroPoliza): void
-{
-    try {
-        // ── Modelos
-        $polizaModel     = new \App\Models\PolizaModel();
-        $asesorModel     = new \App\Models\AsesorModel();
-        $arrendadorModel = new \App\Models\ArrendadorModel();
-        $inmueblesModel  = new \App\Models\InmuebleModel(); // nombre del archivo que tienes
-        $inquilinoModel  = new \App\Models\InquilinoModel();
+    public function renovar(int $numeroPoliza): void
+    {
+        try {
+            // ── Modelos
+            $polizaModel     = new \App\Models\PolizaModel();
+            $asesorModel     = new \App\Models\AsesorModel();
+            $arrendadorModel = new \App\Models\ArrendadorModel();
+            $inmueblesModel  = new \App\Models\InmuebleModel(); // nombre del archivo que tienes
+            $inquilinoModel  = new \App\Models\InquilinoModel();
 
-        // ── 1) Póliza base
-        $poliza = $polizaModel->obtenerPorNumero($numeroPoliza);
-        if (!$poliza) {
-            http_response_code(404);
-            echo "Póliza no encontrada";
-            return;
+            // ── 1) Póliza base
+            $poliza = $polizaModel->obtenerPorNumero($numeroPoliza);
+            if (!$poliza) {
+                http_response_code(404);
+                echo "Póliza no encontrada";
+                return;
+            }
+
+            // ── 2) Siguiente número de póliza (CORREGIDO)
+            $ultimaNumero    = (int) $polizaModel->obtenerUltimaPolizaEmitida(); // devuelve string, conviértelo
+            $siguienteNumero = $ultimaNumero > 0
+                ? ($ultimaNumero + 1)
+                : ((int)$poliza['numero_poliza'] + 1);
+
+            // ── 3) Catálogos base
+            $asesores     = method_exists($asesorModel, 'all') ? $asesorModel->all()
+                : (method_exists($asesorModel, 'obtenerTodos') ? $asesorModel->all() : []);
+            $arrendadores = method_exists($arrendadorModel, 'obtenerTodos') ? $arrendadorModel->obtenerTodos() : [];
+            $inmuebles    = method_exists($inmueblesModel, 'obtenerTodos')  ? $inmueblesModel->obtenerTodos()  : [];
+
+            // ── 4) Prospectos (trae TODOS y filtra por tipo en PHP)
+            if (method_exists($inquilinoModel, 'buscarConFiltros')) {
+                $todosProspectos = $inquilinoModel->buscarConFiltros('', '', '', 10000, 0);
+            } elseif (method_exists($inquilinoModel, 'obtenerTodos')) {
+                $todosProspectos = $inquilinoModel->getInquilinosAll();
+            } else {
+                $todosProspectos = [];
+            }
+
+            $norm = static function ($row) {
+                return mb_strtolower(trim($row['tipo'] ?? ''), 'UTF-8');
+            };
+
+            $inquilinos = array_values(array_filter(
+                $todosProspectos,
+                fn($r) =>
+                in_array($norm($r), ['arrendatario', 'inquilino'], true)
+            ));
+
+            $fiadores = array_values(array_filter(
+                $todosProspectos,
+                fn($r) =>
+                $norm($r) === 'fiador'
+            ));
+
+            $obligados = array_values(array_filter(
+                $todosProspectos,
+                fn($r) =>
+                in_array($norm($r), ['obligado', 'obligado solidario'], true)
+            ));
+
+            // ── 5) Inmueble seleccionado (para renta mostrada en la vista)
+            $inmueble = null;
+            foreach ($inmuebles as $i) {
+                if ((int)($i['id'] ?? 0) === (int)($poliza['id_inmueble'] ?? 0)) {
+                    $inmueble = $i;
+                    break;
+                }
+            }
+
+            // ── 6) Variables de vista
+            $baseUrl      = function_exists('base_url') ? base_url() : '';
+            $headerTitle  = 'Renovar póliza';
+            $title        = 'Renovar póliza #' . htmlspecialchars((string)$poliza['numero_poliza']);
+            $editMode     = false;
+
+            // ── 7) Vista
+            $contentView = __DIR__ . '/../Views/polizas/renovar.php';
+            include __DIR__ . '/../Views/layouts/main.php';
+        } catch (\Throwable $e) {
+            http_response_code(500);
+            echo "Error al cargar renovación: " . $e->getMessage();
         }
-
-       // ── 2) Siguiente número de póliza (CORREGIDO)
-        $ultimaNumero    = (int) $polizaModel->obtenerUltimaPolizaEmitida(); // devuelve string, conviértelo
-        $siguienteNumero = $ultimaNumero > 0
-            ? ($ultimaNumero + 1)
-            : ((int)$poliza['numero_poliza'] + 1);
-
-        // ── 3) Catálogos base
-        $asesores     = method_exists($asesorModel, 'all') ? $asesorModel->all()
-                      : (method_exists($asesorModel, 'obtenerTodos') ? $asesorModel->all() : []);
-        $arrendadores = method_exists($arrendadorModel, 'obtenerTodos') ? $arrendadorModel->obtenerTodos() : [];
-        $inmuebles    = method_exists($inmueblesModel, 'obtenerTodos')  ? $inmueblesModel->obtenerTodos()  : [];
-
-        // ── 4) Prospectos (trae TODOS y filtra por tipo en PHP)
-        if (method_exists($inquilinoModel, 'buscarConFiltros')) {
-            $todosProspectos = $inquilinoModel->buscarConFiltros('', '', '', 10000, 0);
-        } elseif (method_exists($inquilinoModel, 'obtenerTodos')) {
-            $todosProspectos = $inquilinoModel->obtenerTodos();
-        } else {
-            $todosProspectos = [];
-        }
-
-        $norm = static function($row) {
-            return mb_strtolower(trim($row['tipo'] ?? ''), 'UTF-8');
-        };
-
-        $inquilinos = array_values(array_filter($todosProspectos, fn($r) =>
-            in_array($norm($r), ['arrendatario','inquilino'], true)
-        ));
-
-        $fiadores = array_values(array_filter($todosProspectos, fn($r) =>
-            $norm($r) === 'fiador'
-        ));
-
-        $obligados = array_values(array_filter($todosProspectos, fn($r) =>
-            in_array($norm($r), ['obligado','obligado solidario'], true)
-        ));
-
-        // ── 5) Inmueble seleccionado (para renta mostrada en la vista)
-        $inmueble = null;
-        foreach ($inmuebles as $i) {
-            if ((int)($i['id'] ?? 0) === (int)($poliza['id_inmueble'] ?? 0)) { $inmueble = $i; break; }
-        }
-
-        // ── 6) Variables de vista
-        $baseUrl      = function_exists('base_url') ? base_url() : '';
-        $headerTitle  = 'Renovar póliza';
-        $title        = 'Renovar póliza #' . htmlspecialchars((string)$poliza['numero_poliza']);
-        $editMode     = false;
-
-        // ── 7) Vista
-        $contentView = __DIR__ . '/../Views/polizas/renovar.php';
-        include __DIR__ . '/../Views/layouts/main.php';
-
-    } catch (\Throwable $e) {
-        http_response_code(500);
-        echo "Error al cargar renovación: " . $e->getMessage();
     }
-}
-
 
     // ─────────────────────────────────────────────────────────────
     // EDITAR (POST /polizas/actualizar)
@@ -302,7 +419,7 @@ public function renovar(int $numeroPoliza): void
             $numero = $_POST['numero_poliza'] ?? null;
             if (!$numero) throw new \Exception('Falta número de póliza');
 
-            $data = $this->mapEntradaPoliza($_POST, /*esCreacion=*/false);
+            $data = $this->mapEntradaPoliza($_POST, /*esCreacion=*/ false);
 
             $polizaModel = new \App\Models\PolizaModel();
             $ok = $polizaModel->update((int)$numero, $data);
@@ -320,9 +437,9 @@ public function renovar(int $numeroPoliza): void
     public function store(): void
     {
         header('Content-Type: application/json; charset=utf-8');
-
         try {
-            $data = $this->mapEntradaPoliza($_POST, /*esCreacion=*/true);
+
+            $data = $this->mapEntradaPoliza($_POST, /*esCreacion=*/ true);
 
             // Recalcula SIEMPRE el número en servidor para evitar duplicados
             $polizaModel = new \App\Models\PolizaModel();
@@ -330,7 +447,7 @@ public function renovar(int $numeroPoliza): void
 
             // Campos requeridos por crear()
             $data['usuario'] = $_SESSION['user_id'] ?? 1;
-            $data['serie_poliza'] = $data['serie_poliza'] ?? 1;
+            $data['serie_poliza'] = $data['serie_poliza'] ?? date('Y');
             if (!empty($data['fecha_fin'])) {
                 $ts = strtotime($data['fecha_fin']);
                 $data['mes_vencimiento']  = (int)date('n', $ts);
@@ -365,158 +482,156 @@ public function renovar(int $numeroPoliza): void
         }
     }
 
+    // ─────────────────────────────────────────────────────────────
+    // HELPERS PRIVADOS
+    // ─────────────────────────────────────────────────────────────
 
+    /**
+     * Mapea y sanea la entrada de formularios de editar/renovar a columnas del modelo.
+     * @param array $in POST
+     * @param bool $esCreacion true para store (renovar)
+     * @return array
+     * @throws \Exception
+     */
+    private function mapEntradaPoliza(array $in, bool $esCreacion): array
+    {
+        // Normalizar/validar
+        $tipoPoliza   = trim($in['tipo_poliza'] ?? '');
+        $idAsesor     = $this->intvalOrNull($in['id_asesor'] ?? null);
+        $idArrendador = $this->intvalOrNull($in['id_arrendador'] ?? null);
+        $idInmueble   = $this->intvalOrNull($in['id_inmueble'] ?? null);
+        $tipoInmueble = trim($in['tipo_inmueble'] ?? '');
+        $fechaInicio  = $this->yyyy_mm_dd($in['fecha_poliza'] ?? null);
+        $fechaFin     = $this->yyyy_mm_dd($in['fecha_fin'] ?? null);
 
+        if (!$tipoPoliza)         throw new \Exception('Falta tipo de póliza');
+        if (!$idArrendador)       throw new \Exception('Selecciona un arrendador');
+        if (!$idInmueble)         throw new \Exception('Selecciona un inmueble');
+        if (!$fechaInicio)        throw new \Exception('Falta fecha de inicio');
+        if (!$fechaFin)           throw new \Exception('Falta fecha de fin');
+        if ($fechaInicio > $fechaFin) throw new \Exception('La fecha de inicio no puede ser mayor a la de fin');
 
-// ─────────────────────────────────────────────────────────────
-// HELPERS PRIVADOS
-// ─────────────────────────────────────────────────────────────
+        // Estado: soporta numérico o texto; guardamos SIEMPRE el número
+        $estado = (int)($in['estado'] ?? 1);
+        if ($estado < 1 || $estado > 4) {
+            $estado = 1; // default Vigente
+        }
 
-/**
- * Mapea y sanea la entrada de formularios de editar/renovar a columnas del modelo.
- * @param array $in POST
- * @param bool $esCreacion true para store (renovar)
- * @return array
- * @throws \Exception
- */
-private function mapEntradaPoliza(array $in, bool $esCreacion): array
-{
-    // Normalizar/validar
-    $tipoPoliza   = trim($in['tipo_poliza'] ?? '');
-    $idAsesor     = $this->intvalOrNull($in['id_asesor'] ?? null);
-    $idArrendador = $this->intvalOrNull($in['id_arrendador'] ?? null);
-    $idInmueble   = $this->intvalOrNull($in['id_inmueble'] ?? null);
-    $tipoInmueble = trim($in['tipo_inmueble'] ?? '');
-    $fechaInicio  = $this->yyyy_mm_dd($in['fecha_poliza'] ?? null);
-    $fechaFin     = $this->yyyy_mm_dd($in['fecha_fin'] ?? null);
+        // Montos
+        // renta llega como "$12,345.67" o "12345.67"
+        $montoRenta  = $this->toFloat($in['monto_renta'] ?? null);
+        // monto póliza puede venir vacío: lo calculamos con la fórmula JS, pero en PHP
+        $montoPoliza = $this->toFloat($in['monto_poliza'] ?? null);
+        if ($montoPoliza <= 0 && $montoRenta > 0) {
+            $montoPoliza = $this->calcularMontoPolizaPHP($montoRenta, $tipoPoliza);
+        }
 
-    if (!$tipoPoliza)         throw new \Exception('Falta tipo de póliza');
-    if (!$idArrendador)       throw new \Exception('Selecciona un arrendador');
-    if (!$idInmueble)         throw new \Exception('Selecciona un inmueble');
-    if (!$fechaInicio)        throw new \Exception('Falta fecha de inicio');
-    if (!$fechaFin)           throw new \Exception('Falta fecha de fin');
-    if ($fechaInicio > $fechaFin) throw new \Exception('La fecha de inicio no puede ser mayor a la de fin');
+        // Vigencia en texto (si viene vacío, la generamos)
+        $vigencia = trim($in['vigencia'] ?? '');
+        if ($vigencia === '' && $fechaInicio && $fechaFin) {
+            $vigencia = $this->vigenciaTexto($fechaInicio, $fechaFin);
+        }
 
-    // Estado: soporta numérico o texto; guardamos como texto
-    $estadoTxt = $this->estadoATexto($in['estado'] ?? null);
+        $idInquilino = $this->intvalOrNull($in['id_inquilino'] ?? null);
+        $idFiador    = $this->intvalOrNull($in['id_fiador'] ?? null);
+        $idObligado  = $this->intvalOrNull($in['id_obligado'] ?? null);
 
-    // Montos
-    // renta llega como "$12,345.67" o "12345.67"
-    $montoRenta  = $this->toFloat($in['monto_renta'] ?? null);
-    // monto póliza puede venir vacío: lo calculamos con la fórmula JS, pero en PHP
-    $montoPoliza = $this->toFloat($in['monto_poliza'] ?? null);
-    if ($montoPoliza <= 0 && $montoRenta > 0) {
-        $montoPoliza = $this->calcularMontoPolizaPHP($montoRenta, $tipoPoliza);
-    }
+        // Comentarios
+        $comentarios = trim($in['comentarios'] ?? '');
 
-    // Vigencia en texto (si viene vacío, la generamos)
-    $vigencia = trim($in['vigencia'] ?? '');
-    if ($vigencia === '' && $fechaInicio && $fechaFin) {
-        $vigencia = $this->vigenciaTexto($fechaInicio, $fechaFin);
-    }
-
-    // Selects combinados
-    $idInquilino = $this->intvalOrNull($in['inquilino_combinado'] ?? null);
-    $idFiador    = $this->intvalOrNull($in['fiador_combinado'] ?? null);
-    $idObligado  = $this->intvalOrNull($in['obligado_combinado'] ?? null);
-
-    // Comentarios
-    $comentarios = trim($in['comentarios'] ?? '');
-
-    // Armamos payload para el modelo (ajusta claves si tu modelo usa otros nombres)
-    $data = [
-        'tipo_poliza'   => $tipoPoliza,
-        'vigencia'      => $vigencia,
-        'fecha_poliza'  => $fechaInicio,
-        'fecha_fin'     => $fechaFin,
-        'monto_poliza'  => $montoPoliza,
-        'monto_renta'   => $montoRenta,
-        'estado'        => $estadoTxt,
-        'id_inmueble'   => $idInmueble,
-        'tipo_inmueble' => $tipoInmueble,
-        'id_arrendador' => $idArrendador,
-        'id_inquilino'  => $idInquilino,
-        'id_fiador'     => $idFiador,
-        'id_obligado'   => $idObligado,
-        'id_asesor'     => $idAsesor,
-        'comentarios'   => $comentarios,
-    ];
-
-    // En creación podrías setear defaults adicionales si aplica
-    if ($esCreacion) {
-        // por ejemplo, estado inicial Vigente si no viene:
-        if (!$data['estado']) $data['estado'] = '1';
-    }
-
-    return $data;
-}
-
-private function intvalOrNull($v): ?int
-{
-    if ($v === '' || $v === null) return null;
-    return (int)$v;
-}
-
-private function toFloat($v): float
-{
-    if ($v === null || $v === '') return 0.0;
-    // elimina símbolos de moneda y separadores de miles
-    $s = preg_replace('/[^\d\.\-]/', '', (string)$v);
-    return (float)$s;
-}
-
-private function yyyy_mm_dd($v): ?string
-{
-    if (!$v) return null;
-    // acepta 'YYYY-MM-DD' estrictamente
-    if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $v)) return $v;
-    // si llega en otro formato, intenta normalizar (puedes ampliar este bloque si lo necesitas)
-    return null;
-}
-
-private function estadoATexto($estado): string
-{
-    // Soporta numérico (1..4) o texto directo
-    if (is_numeric($estado)) {
-        $map = [
-            1 => 'Vigente',
-            2 => 'Concluida',
-            3 => 'Término Anticipado',
-            4 => 'Incumplimiento',
+        // Armamos payload para el modelo (ajusta claves si tu modelo usa otros nombres)
+        $data = [
+            'tipo_poliza'   => $tipoPoliza,
+            'vigencia'      => $vigencia,
+            'fecha_poliza'  => $fechaInicio,
+            'fecha_fin'     => $fechaFin,
+            'monto_poliza'  => $montoPoliza,
+            'monto_renta'   => $montoRenta,
+            'estado'        => $estado,
+            'id_inmueble'   => $idInmueble,
+            'tipo_inmueble' => $tipoInmueble,
+            'id_arrendador' => $idArrendador,
+            'id_inquilino'  => $idInquilino,
+            'id_fiador'     => $idFiador,
+            'id_obligado'   => $idObligado,
+            'id_asesor'     => $idAsesor,
+            'comentarios'   => $comentarios,
         ];
-        return $map[(int)$estado] ?? 'Vigente';
+
+        // En creación podrías setear defaults adicionales si aplica
+        if ($esCreacion) {
+            // por ejemplo, estado inicial Vigente si no viene:
+            if (!$data['estado']) $data['estado'] = '1';
+        }
+
+        return $data;
     }
-    $txt = trim((string)$estado);
-    return $txt !== '' ? $txt : 'Vigente';
-}
 
-private function vigenciaTexto(string $ini, string $fin): string
-{
-    static $meses = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-    [$yi,$mi,$di] = explode('-', $ini);
-    [$yf,$mf,$df] = explode('-', $fin);
-    $mi = (int)$mi; $mf = (int)$mf;
-    return sprintf('del %d de %s de %d al %d de %s de %d', (int)$di, $meses[$mi-1], (int)$yi, (int)$df, $meses[$mf-1], (int)$yf);
-}
-
-/**
- * Réplica de la regla JS en PHP
- */
-private function calcularMontoPolizaPHP(float $renta, string $tipo): float
-{
-    $rangos = [10000,15000,20000,25000,30000,35000,40000,45000,50000];
-    $tramosClasica = [3700,4300,4500,5200,5500,8100,9300,10000,12000, $renta * 0.25];
-    $tramosPlus    = [4800,5500,7500,8600,9400,11000,11500,13750,14250, $renta * 0.30];
-
-    $precios = (mb_strtolower($tipo) === 'plus') ? $tramosPlus : $tramosClasica;
-
-    foreach ($rangos as $i => $limite) {
-        if ($renta <= $limite) return (float)$precios[$i];
+    private function intvalOrNull($v): ?int
+    {
+        if ($v === '' || $v === null) return null;
+        return (int)$v;
     }
-    return (float)end($precios);
-}
 
+    private function toFloat($v): float
+    {
+        if ($v === null || $v === '') return 0.0;
+        // elimina símbolos de moneda y separadores de miles
+        $s = preg_replace('/[^\d\.\-]/', '', (string)$v);
+        return (float)$s;
+    }
 
+    private function yyyy_mm_dd($v): ?string
+    {
+        if (!$v) return null;
+        // acepta 'YYYY-MM-DD' estrictamente
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $v)) return $v;
+        // si llega en otro formato, intenta normalizar (puedes ampliar este bloque si lo necesitas)
+        return null;
+    }
+
+    private function estadoATexto($estado): string
+    {
+        // Soporta numérico (1..4) o texto directo
+        if (is_numeric($estado)) {
+            $map = [
+                1 => 'Vigente',
+                2 => 'Concluida',
+                3 => 'Término Anticipado',
+                4 => 'Incumplimiento',
+            ];
+            return $map[(int)$estado] ?? 'Vigente';
+        }
+        $txt = trim((string)$estado);
+        return $txt !== '' ? $txt : 'Vigente';
+    }
+
+    private function vigenciaTexto(string $ini, string $fin): string
+    {
+        static $meses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+        [$yi, $mi, $di] = explode('-', $ini);
+        [$yf, $mf, $df] = explode('-', $fin);
+        $mi = (int)$mi;
+        $mf = (int)$mf;
+        return sprintf('del %d de %s de %d al %d de %s de %d', (int)$di, $meses[$mi - 1], (int)$yi, (int)$df, $meses[$mf - 1], (int)$yf);
+    }
+
+    /**
+     * Réplica de la regla JS en PHP
+     */
+    private function calcularMontoPolizaPHP(float $renta, string $tipo): float
+    {
+        $rangos = [10000, 15000, 20000, 25000, 30000, 35000, 40000, 45000, 50000];
+        $tramosClasica = [3700, 4300, 4500, 5200, 5500, 8100, 9300, 10000, 12000, $renta * 0.25];
+        $tramosPlus    = [4800, 5500, 7500, 8600, 9400, 11000, 11500, 13750, 14250, $renta * 0.30];
+
+        $precios = (mb_strtolower($tipo) === 'plus') ? $tramosPlus : $tramosClasica;
+
+        foreach ($rangos as $i => $limite) {
+            if ($renta <= $limite) return (float)$precios[$i];
+        }
+        return (float)end($precios);
+    }
 
     /* =========================
        Generación de contratos
@@ -589,9 +704,9 @@ private function calcularMontoPolizaPHP(float $renta, string $tipo): float
 
         // Nombres
         $inquilino = trim($poliza['nombre_inquilino_completo'] ?? '');
-        $arrendador = trim($poliza['nombre_arrendador']?? '');
-        $obligadoSolidario = trim($poliza['nombre_obligado_completo']?? '');
-        $fiador = trim($poliza['nombre_fiador_completo']?? '');
+        $arrendador = trim($poliza['nombre_arrendador'] ?? '');
+        $obligadoSolidario = trim($poliza['nombre_obligado_completo'] ?? '');
+        $fiador = trim($poliza['nombre_fiador_completo'] ?? '');
 
         // Helpers locales
         $nf = new NumberFormatter('es', NumberFormatter::SPELLOUT);
@@ -614,7 +729,10 @@ private function calcularMontoPolizaPHP(float $renta, string $tipo): float
             // Separar entero y centavos cuidando el redondeo
             $entero   = (int) floor($monto);
             $centavos = (int) round(($monto - $entero) * 100);
-            if ($centavos === 100) { $entero += 1; $centavos = 0; }
+            if ($centavos === 100) {
+                $entero += 1;
+                $centavos = 0;
+            }
 
             // Texto en español en mayúsculas, ajustando "UNO" -> "UN"
             $texto = mb_strtoupper($nf->format($entero), 'UTF-8');
@@ -628,11 +746,11 @@ private function calcularMontoPolizaPHP(float $renta, string $tipo): float
             if ($tipo === 'PASAPORTE') return 'PASAPORTE';
             return $tipo;
         };
-        
+
         // Normaliza el campo (acepta: "Si", "Sí", "1", "true", "incluye", etc.)
         $raw = (string)($poliza['mantenimiento_inmueble'] ?? '');
         $val = mb_strtolower(trim($raw), 'UTF-8');
-        $incluyeMtto = in_array($val, ['si','sí','1','true','incluye','incluido'], true);
+        $incluyeMtto = in_array($val, ['si', 'sí', '1', 'true', 'incluye', 'incluido'], true);
 
         $txtIncluido = <<<'TXT'
         YA ESTÁ INCLUIDO EN EL MONTO DE LA RENTA MENSUAL ESTABLECIDO EN LA CLÁUSULA SEGUNDA DEL PRESENTE CONTRATO, EN CONSECUENCIA "EL ARRENDADOR" SE OBLIGA A REALIZAR DICHO PAGO PUNTUALMENTE ANTE LA ADMINISTRACIÓN DEL EDIFICIO O CONJUNTO HABITACIONAL CORRESPONDIENTE, GARANTIZANDO A "EL ARRENDATARIO" QUE LOS SERVICIOS COMUNES INCLUIDOS EN DICHA CUOTA NO SERÁN INTERRUMPIDOS, LIMITADOS NI SUSPENDIDOS DURANTE LA VIGENCIA DEL PRESENTE CONTRATO.
@@ -650,7 +768,7 @@ private function calcularMontoPolizaPHP(float $renta, string $tipo): float
         // Normaliza el campo de mascotas del inmueble (adáptalo a tus posibles valores)
         $rawMascotas = (string)($poliza['mascotas_inmueble'] ?? '');
         $valor = mb_strtolower(trim($rawMascotas), 'UTF-8');
-        $permiteMascotas = in_array($valor, ['si','sí','1','true','permitidas'], true);
+        $permiteMascotas = in_array($valor, ['si', 'sí', '1', 'true', 'permitidas'], true);
         // Si tu app sólo guarda "Sí" / "No", con esto basta:
         // $permiteMascotas = ($valor === 'sí' || $valor === 'si');
 
@@ -663,53 +781,18 @@ private function calcularMontoPolizaPHP(float $renta, string $tipo): float
         TXT;
 
         $mascotasTexto = $permiteMascotas ? $clausulaPermitido : $clausulaProhibido;
-        
-        // Set values
-        // $template->setValue('ARRENDADOR', mb_strtoupper($arrendador, 'UTF-8'));
-        // $template->setValue('ARRENDATARIO', mb_strtoupper($inquilino, 'UTF-8'));
-        // $template->setValue('OBLIGADO SOLIDARIO', mb_strtoupper($obligadoSolidario, 'UTF-8'));
-        // $template->setValue('INMUEBLE', mb_strtoupper($poliza['direccion_inmueble'] ?? '', 'UTF-8'));
-        // $template->setValue('ESTACIONAMIENTO', $textoCajones($poliza['estacionamiento_inmueble'] ?? 0));
-        // $template->setValue('TIPO_ID_ARRENDADOR', $normalizarTipoIdentificacion($poliza['tipo_id_arrendador'] ?? ''));
-        // $template->setValue('NUM_ID_ARRENDADOR', mb_strtoupper($poliza['num_id_arrendador'] ?? '', 'UTF-8'));
-        // $template->setValue('DIRECCION_ARRENDADOR', mb_strtoupper($poliza['direccion_arrendador'] ?? '', 'UTF-8'));
-        // $template->setValue('TIPO_ID_ARRENDATARIO', $normalizarTipoIdentificacion($poliza['tipo_id_inquilino'] ?? ''));
-        // $template->setValue('NUM_ID_ARRENDATARIO', mb_strtoupper($poliza['num_id_inquilino'] ?? '', 'UTF-8'));
-        // $template->setValue('TIPO_ID_OBLIGADO', $normalizarTipoIdentificacion($poliza['tipo_id_obligado'] ?? ''));
-        // $template->setValue('NUM_ID_OBLIGADO', mb_strtoupper($poliza['num_id_obligado'] ?? '', 'UTF-8'));
-        // $template->setValue('TIPO_ID_FIADOR', $normalizarTipoIdentificacion($poliza['tipo_id_fiador'] ?? ''));
-        // $template->setValue('NUM_ID_FIADOR', mb_strtoupper($poliza['num_id_fiador'] ?? '', 'UTF-8'));
-        // $template->setValue('monto_renta', $montoEnNumeroYTexto((float)($poliza['monto_renta'] ?? 0)));
-        // $template->setValue('monto_mantenimiento', $montoEnNumeroYTexto((float)($poliza['monto_mantenimiento'] ?? 0)));
-        // $template->setValue('MASCOTAS', mb_strtoupper($mascotasTexto, 'UTF-8'));
-        // $fechaInicio = $poliza['fecha_poliza'] ?? date('Y-m-d');
-        // // VIGENCIA legible (si en bd ya existe texto, lo respetamos)
-        // $vigenciaTexto = $poliza['vigencia'] ?: (date('d/m/Y', strtotime($fechaInicio)) . ' al ' . date('d/m/Y', strtotime('+1 year -1 day', strtotime($fechaInicio))));
-        // $template->setValue('VIGENCIA', mb_strtoupper($vigenciaTexto, 'UTF-8'));
-        // $template->setValue('DIA_PAGO', date('d', strtotime($fechaInicio)));
-        // // Bancarios (si los tienes en la consulta de la póliza)
-        // $template->setValue('num_cuenta', $poliza['cuenta_arrendador'] ?? '');
-        // $template->setValue('banco', mb_strtoupper($poliza['banco_arrendador'] ?? '', 'UTF-8'));
-        // $template->setValue('clabe', $poliza['clabe_arrendador'] ?? '');
-        // // Mes de renta en texto (es_MX)
-        // $fecha = new DateTime($fechaInicio);
-        // $fmtMes = new IntlDateFormatter('es_MX', IntlDateFormatter::FULL, IntlDateFormatter::NONE, 'America/Mexico_City', IntlDateFormatter::GREGORIAN, 'LLLL');
-        // $template->setValue('mes_renta', mb_strtoupper($fmtMes->format($fecha), 'UTF-8'));
-        // // Fecha inicio larga
-        // $fmtLargo = new IntlDateFormatter('es_MX', IntlDateFormatter::LONG, IntlDateFormatter::NONE, 'America/Mexico_City', IntlDateFormatter::GREGORIAN, "dd 'de' MMMM 'de' yyyy");
-        // $template->setValue('fecha_inicio', mb_strtoupper($fmtLargo->format($fecha), 'UTF-8'));
 
         $set('ARRENDADOR',        $mayus($arrendador));
         $set('ARRENDATARIO',      $mayus($inquilino));
-        $set('OBLIGADO SOLIDARIO',$mayus($obligadoSolidario));
+        $set('OBLIGADO SOLIDARIO', $mayus($obligadoSolidario));
         $set('INMUEBLE',          $mayus($poliza['direccion_inmueble'] ?? ''));
         $set('ESTACIONAMIENTO',   $textoCajones($poliza['estacionamiento_inmueble'] ?? 0));
 
         $set('TIPO_ID_ARRENDADOR', $normalizarTipoIdentificacion($poliza['tipo_id_arrendador'] ?? ''));
         $set('NUM_ID_ARRENDADOR',  $mayus($poliza['num_id_arrendador'] ?? ''));
-        $set('DIRECCION_ARRENDADOR',$mayus($poliza['direccion_arrendador'] ?? ''));
+        $set('DIRECCION_ARRENDADOR', $mayus($poliza['direccion_arrendador'] ?? ''));
 
-        $set('TIPO_ID_ARRENDATARIO',$normalizarTipoIdentificacion($poliza['tipo_id_inquilino'] ?? ''));
+        $set('TIPO_ID_ARRENDATARIO', $normalizarTipoIdentificacion($poliza['tipo_id_inquilino'] ?? ''));
         $set('NUM_ID_ARRENDATARIO', $mayus($poliza['num_id_inquilino'] ?? ''));
 
         $set('TIPO_ID_OBLIGADO', $normalizarTipoIdentificacion($poliza['tipo_id_obligado'] ?? ''));
@@ -743,59 +826,62 @@ private function calcularMontoPolizaPHP(float $renta, string $tipo): float
 
 
         // Helper: nombre de archivo seguro (ASCII) para guardar en disco
-      // --- Helpers ---
-            function ensureUtf8(string $s): string {
-                // Si viniera en ISO-8859-1, conviértelo a UTF-8
-                return mb_check_encoding($s, 'UTF-8') ? $s : mb_convert_encoding($s, 'UTF-8', 'ISO-8859-1');
-            }
-            function safeAsciiFilename(string $s, int $max = 180): string {
-                // Quita comillas para no romper el header
-                $s = str_replace(['"', "'"], '', $s);
-                // Translit a ASCII y limpia caracteres raros
-                $ascii = iconv('UTF-8','ASCII//TRANSLIT//IGNORE',$s);
-                $ascii = preg_replace('/[^A-Za-z0-9 _.\-]/','',$ascii);
-                $ascii = preg_replace('/\s+/',' ', trim($ascii));
-                // Asegura extensión
-                if (!str_ends_with($ascii, '.docx')) $ascii .= '.docx';
-                return substr($ascii, 0, $max);
-            }
-            function versionTag(?string $fromDate = null, string $minor='2.0'): string {
-                $y = $fromDate ? (new DateTime($fromDate))->format('Y') : date('Y');
-                return 'v'.$y.'.'.$minor;
-            }
-
-            // --- Construcción del nombre “bonito” con acentos ---
-            // Construye el nombre “bonito” en UTF-8
-            $direccion = (string)($poliza['direccion_inmueble'] ?? '');
-            $anio      = !empty($poliza['fecha_poliza'])
-                    ? (new DateTime($poliza['fecha_poliza']))->format('Y')
-                    : date('Y');
-            $nombreUtf8  = 'Contrato ' . trim($direccion) . " v{$anio}.2.0.docx";
-
-            // Fallback ASCII para guardar y para filename=
-            $ascii = iconv('UTF-8','ASCII//TRANSLIT//IGNORE',$nombreUtf8);
-            $ascii = preg_replace('/[^A-Za-z0-9 _.\-]/','',$ascii);
+        // --- Helpers ---
+        function ensureUtf8(string $s): string
+        {
+            // Si viniera en ISO-8859-1, conviértelo a UTF-8
+            return mb_check_encoding($s, 'UTF-8') ? $s : mb_convert_encoding($s, 'UTF-8', 'ISO-8859-1');
+        }
+        function safeAsciiFilename(string $s, int $max = 180): string
+        {
+            // Quita comillas para no romper el header
+            $s = str_replace(['"', "'"], '', $s);
+            // Translit a ASCII y limpia caracteres raros
+            $ascii = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $s);
+            $ascii = preg_replace('/[^A-Za-z0-9 _.\-]/', '', $ascii);
             $ascii = preg_replace('/\s+/', ' ', trim($ascii));
-            $nombreAscii = $ascii !== '' ? $ascii : 'Contrato.docx';
+            // Asegura extensión
+            if (!str_ends_with($ascii, '.docx')) $ascii .= '.docx';
+            return substr($ascii, 0, $max);
+        }
+        function versionTag(?string $fromDate = null, string $minor = '2.0'): string
+        {
+            $y = $fromDate ? (new DateTime($fromDate))->format('Y') : date('Y');
+            return 'v' . $y . '.' . $minor;
+        }
 
-            // Guarda en disco con el ASCII (seguro)
-            $ruta = __DIR__ . '/../../output/' . $nombreAscii;
-            if (!is_dir(dirname($ruta))) { @mkdir(dirname($ruta), 0775, true); }
-            $template->saveAs($ruta);
+        // --- Construcción del nombre “bonito” con acentos ---
+        // Construye el nombre “bonito” en UTF-8
+        $direccion = (string)($poliza['direccion_inmueble'] ?? '');
+        $anio      = !empty($poliza['fecha_poliza'])
+            ? (new DateTime($poliza['fecha_poliza']))->format('Y')
+            : date('Y');
+        $nombreUtf8  = 'Contrato ' . trim($direccion) . " v{$anio}.2.0.docx";
 
-            // Limpia cualquier salida previa
-            while (function_exists('ob_get_level') && ob_get_level() > 0) { ob_end_clean(); }
+        // Fallback ASCII para guardar y para filename=
+        $ascii = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $nombreUtf8);
+        $ascii = preg_replace('/[^A-Za-z0-9 _.\-]/', '', $ascii);
+        $ascii = preg_replace('/\s+/', ' ', trim($ascii));
+        $nombreAscii = $ascii !== '' ? $ascii : 'Contrato.docx';
 
-            // Descarga con doble filename (correcto)
-            header('Content-Type: application/vnd.openxmlformats-officedocument.wordprocessingml.document');
-            header('Content-Length: ' . filesize($ruta));
-            header(
-            'Content-Disposition: attachment; '.
-            'filename="' . $nombreAscii . '"'           // nombre real (con acentos)
-            );
-            readfile($ruta);
-            exit;
+        // Guarda solo en archivo temporal
+        $tmpDocx = tempnam(sys_get_temp_dir(), 'contrato_') . '.docx';
+        $template->saveAs($tmpDocx);
 
+        // Limpia cualquier salida previa
+        while (function_exists('ob_get_level') && ob_get_level() > 0) {
+            ob_end_clean();
+        }
+
+        // Descarga directa
+        header('Content-Type: application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+        header('Content-Length: ' . filesize($tmpDocx));
+        header('Content-Disposition: attachment; filename="' . $nombreAscii . '"');
+        readfile($tmpDocx);
+
+        // Limpia el archivo temporal
+        @unlink($tmpDocx);
+        exit;
     }
 
     /* =========================

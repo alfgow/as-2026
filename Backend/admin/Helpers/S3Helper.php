@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Helpers;
 
 require_once __DIR__ . '/../aws-sdk-php/aws-autoloader.php';
@@ -27,7 +28,8 @@ class S3Helper
     }
 
     /**
-     * Flujo tradicional del blog: nombre aleatorio, prefijo opcional
+     * Subida simple estilo blog (aleatorio + prefijo opcional).
+     * ❌ Sólo para compatibilidad con vistas viejas.
      */
     public function uploadImage($file, $prefix = 'blog')
     {
@@ -55,67 +57,62 @@ class S3Helper
     }
 
     /**
-     * Permite definir un Key exacto para el archivo en S3
+     * Subir archivo con un Key exacto (cuando ya lo generaste tú).
      */
-    public function uploadWithCustomKey($file, $s3Key)
+    public function uploadFileWithKey(array $file, string $s3Key): bool
     {
-        if (!$file || $file['error'] !== UPLOAD_ERR_OK) {
-            error_log("Error en el archivo de subida S3: " . print_r($file, true));
-            return false;
-        }
-
-        $mimeType = mime_content_type($file['tmp_name']);
-
         try {
             $this->s3->putObject([
                 'Bucket'      => $this->bucket,
                 'Key'         => $s3Key,
                 'SourceFile'  => $file['tmp_name'],
-                'ContentType' => $mimeType,
+                'ACL'         => 'private',
+                'ContentType' => mime_content_type($file['tmp_name'])
             ]);
-            return $s3Key;
-        } catch (AwsException $e) {
-            error_log('Error al subir imagen a S3: ' . $e->getMessage());
+            return true;
+        } catch (\Exception $e) {
+            error_log("S3 upload error: " . $e->getMessage());
             return false;
         }
     }
 
     /**
-     * Devuelve la URL pública directa (útil si el objeto es público)
+     * Subir archivo de un inquilino usando convención oficial:
+     * {nombreNormalizado}/{tipo}_{nombreNormalizado}.ext
      */
-    public function getS3Url($key)
+    public function uploadInquilinoFile(array $file, string $nombreNormalizado, string $tipo = 'otro'): ?string
     {
-        if (!$key) {
-            return '';
+        if (!$file || $file['error'] !== UPLOAD_ERR_OK) {
+            error_log("Error en el archivo de subida S3: " . print_r($file, true));
+            return null;
         }
+
+        $ext   = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+        $s3Key = $nombreNormalizado . '/' . $tipo . '_' . $nombreNormalizado . '.' . $ext;
+
+        return $this->uploadFileWithKey($file, $s3Key) ? $s3Key : null;
+    }
+
+    /**
+     * Devuelve la URL pública directa (útil si el objeto es público).
+     */
+    public function getS3Url($key): string
+    {
+        if (!$key) return '';
         return "https://{$this->bucket}.s3.{$this->s3->getRegion()}.amazonaws.com/{$key}";
     }
 
     /**
      * Genera una URL presignada (temporal) para leer un objeto privado en S3.
-     * $expires acepta formatos como '+5 minutes', '+10 minutes', 300, etc.
-     * $responseHeaders permite forzar headers de respuesta (opcional).
-     *
-     * Ej:
-     *   $this->getPresignedUrl('blog/img.png', '+5 minutes');
-     *   $this->getPresignedUrl('blog/doc.pdf', '+5 minutes', [
-     *       'ContentType'        => 'image/png',
-     *       'ContentDisposition' => 'inline', // o 'attachment; filename="archivo.png"'
-     *       'CacheControl'       => 'private, max-age=60'
-     *   ]);
      */
     public function getPresignedUrl(string $key, $expires = '+5 minutes', array $responseHeaders = []): string
     {
-        if (!$key) {
-            return '';
-        }
+        if (!$key) return '';
 
         try {
-            // Construimos el comando GetObject con headers de respuesta opcionales
             $commandArgs = array_filter([
                 'Bucket' => $this->bucket,
                 'Key'    => $key,
-                // Headers de respuesta (opcionales)
                 'ResponseContentType'        => $responseHeaders['ContentType']        ?? null,
                 'ResponseContentDisposition' => $responseHeaders['ContentDisposition'] ?? null,
                 'ResponseCacheControl'       => $responseHeaders['CacheControl']       ?? null,
@@ -132,61 +129,35 @@ class S3Helper
     }
 
     /**
-     * Sube un archivo para un prospecto, generando un prefijo con su nombre
-     */
-    public function uploadProspectoFile($file, $nombreProspecto)
-    {
-        if (!$file || $file['error'] !== UPLOAD_ERR_OK) {
-            error_log("Error en el archivo de subida S3: " . print_r($file, true));
-            return false;
-        }
-
-        // Limpiar el nombre del prospecto: solo letras/números, sin espacios, en minúsculas
-        $prefix = strtolower(preg_replace('/\s+/', '', $nombreProspecto));
-
-        $filename = uniqid() . "_" . basename($file['name']);
-        $s3Key    = $prefix ? "{$prefix}/{$filename}" : $filename;
-        $mimeType = mime_content_type($file['tmp_name']);
-
-        try {
-            $this->s3->putObject([
-                'Bucket'      => $this->bucket,
-                'Key'         => $s3Key,
-                'SourceFile'  => $file['tmp_name'],
-                'ContentType' => $mimeType,
-            ]);
-            return $s3Key;
-        } catch (AwsException $e) {
-            error_log('Error al subir archivo a S3: ' . $e->getMessage());
-            return false;
-        }
-    }
-
-    public function uploadInquilinoFile($file, $nombreInquilino)
-    {
-        return $this->uploadProspectoFile($file, $nombreInquilino);
-    }
-
-        /**
-     * Normaliza el "folder" del prospecto en S3: todo junto, minúsculas, sin acentos ni signos.
-     * Ej.: "Alfonso Villanueva Quiroz" -> "alfonsovillanuevaquiroz"
+     * Normaliza un nombre para usar como "folder" en S3.
+     * Ej: "Alfonso Villanueva Quiroz" -> "alfonsovillanuevaquiroz"
      */
     public static function buildPersonKeyFromParts(string $nombre, string $apellidoP, ?string $apellidoM = null): string
     {
         $base = trim($nombre . ' ' . $apellidoP . ' ' . ($apellidoM ?? ''));
-        // Quitar acentos
         $trans = [
-            'á'=>'a','é'=>'e','í'=>'i','ó'=>'o','ú'=>'u','ü'=>'u','ñ'=>'n',
-            'Á'=>'A','É'=>'E','Í'=>'I','Ó'=>'O','Ú'=>'U','Ü'=>'U','Ñ'=>'N'
+            'á' => 'a',
+            'é' => 'e',
+            'í' => 'i',
+            'ó' => 'o',
+            'ú' => 'u',
+            'ü' => 'u',
+            'ñ' => 'n',
+            'Á' => 'A',
+            'É' => 'E',
+            'Í' => 'I',
+            'Ó' => 'O',
+            'Ú' => 'U',
+            'Ü' => 'U',
+            'Ñ' => 'N'
         ];
         $base = strtr($base, $trans);
-        // Dejar solo [a-z0-9], sin espacios, y a minúsculas
-        $key = strtolower(preg_replace('/[^a-z0-9]/i', '', $base));
+        $key  = strtolower(preg_replace('/[^a-z0-9]/i', '', $base));
         return $key;
     }
 
     /**
-     * Expone el bucket y la región cargados desde config para reutilizarlos en otros servicios.
+     * Exponer bucket y región
      */
     public function getBucketAndRegion(): array
     {
@@ -196,26 +167,24 @@ class S3Helper
         ];
     }
 
-    function presignS3(string $key, int $ttl = 300): string {
+    /**
+     * Presign alternativo directo con env vars (para pruebas rápidas).
+     */
+    public function presignS3(string $key, int $ttl = 300): string
+    {
         $bucket = getenv('S3_BUCKET_INQUILINOS') ?: 'as-s3-inquilinos';
-        $s3 = new S3Client(['version'=>'latest','region'=>getenv('AWS_REGION') ?: 'us-east-1']);
-        $cmd = $s3->getCommand('GetObject', ['Bucket'=>$bucket, 'Key'=>$key]);
+        $s3 = new S3Client(['version' => 'latest', 'region' => getenv('AWS_REGION') ?: 'us-east-1']);
+        $cmd = $s3->getCommand('GetObject', ['Bucket' => $bucket, 'Key' => $key]);
         $req = $s3->createPresignedRequest($cmd, "+{$ttl} seconds");
         return (string)$req->getUri();
     }
 
-        /**
+    /**
      * Descarga un archivo desde S3 y lo devuelve como base64.
-     * Útil para enviar imágenes a APIs externas (ej. VerificaMex).
-     *
-     * @param string $s3Key Key exacto del objeto en el bucket.
-     * @return string|null Cadena base64 o null si falla.
      */
     public function getFileBase64(string $s3Key): ?string
     {
-        if (!$s3Key) {
-            return null;
-        }
+        if (!$s3Key) return null;
 
         try {
             $result  = $this->s3->getObject([
@@ -225,9 +194,8 @@ class S3Helper
             $content = (string) $result['Body'];
             $mime    = $result['ContentType'] ?? null;
 
-            // Verificamex espera imágenes (jpeg/png) con prefijo dataURL
             if (!in_array($mime, ['image/jpeg', 'image/png'])) {
-                error_log("Archivo no válido para Verificamex: {$s3Key} ({$mime})");
+                error_log("Archivo no válido para VerificaMex: {$s3Key} ({$mime})");
                 return null;
             }
 
@@ -238,8 +206,49 @@ class S3Helper
         }
     }
 
+    public function deleteFile(string $s3Key): bool
+    {
+        try {
+            $this->s3->deleteObject([
+                'Bucket' => $this->bucket,
+                'Key'    => $s3Key,
+            ]);
+            return true;
+        } catch (\Exception $e) {
+            error_log("Error al borrar archivo de S3: " . $e->getMessage());
+            return false;
+        }
+    }
 
+    public function uploadJson($jsonData, $prefix = 'validaciones')
+    {
+        if (empty($jsonData)) {
+            error_log("⚠️ JSON vacío, no se sube a S3");
+            return false;
+        }
 
+        // Usamos un nombre único
+        $filename = uniqid() . ".json";
+        $s3Key    = $prefix ? "{$prefix}/{$filename}" : $filename;
 
+        // Convertir array/objeto en string JSON si hace falta
+        if (is_array($jsonData) || is_object($jsonData)) {
+            $body = json_encode($jsonData, JSON_UNESCAPED_UNICODE);
+        } else {
+            $body = (string)$jsonData;
+        }
 
+        try {
+            $this->s3->putObject([
+                'Bucket'      => $this->bucket,
+                'Key'         => $s3Key,
+                'Body'        => $body,
+                'ContentType' => 'application/json',
+            ]);
+            return $s3Key;
+        } catch (AwsException $e) {
+            error_log('❌ Error al subir JSON a S3: ' . $e->getMessage());
+            return false;
+        }
+    }
 }

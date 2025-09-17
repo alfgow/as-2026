@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Models;
 
 require_once __DIR__ . '/../Core/Database.php';
@@ -33,10 +34,11 @@ class IAModel extends Database
         $ip        = isset($data['ip']) ? mb_substr((string)$data['ip'], 0, 45) : null;
         $userAgent = isset($data['user_agent']) ? mb_substr((string)$data['user_agent'], 0, 255) : null;
         $durMs     = isset($data['duration_ms']) ? (int)$data['duration_ms'] : 0;
+        $contexto  = isset($data['contexto']) ? (string)$data['contexto'] : null;
 
         $sql = "INSERT INTO ia_interacciones
-                (usuario_id, modelo_key, modelo_id, prompt, respuesta, duration_ms, ip, user_agent)
-                VALUES (:usuario_id, :modelo_key, :modelo_id, :prompt, :respuesta, :duration_ms, :ip, :user_agent)";
+            (usuario_id, modelo_key, modelo_id, prompt, respuesta, duration_ms, ip, user_agent, contexto)
+            VALUES (:usuario_id, :modelo_key, :modelo_id, :prompt, :respuesta, :duration_ms, :ip, :user_agent, :contexto)";
 
         $stmt = $this->db->prepare($sql);
         return $stmt->execute([
@@ -48,8 +50,39 @@ class IAModel extends Database
             ':duration_ms' => $durMs,
             ':ip'          => $ip,
             ':user_agent'  => $userAgent,
+            ':contexto'    => $contexto,
         ]);
     }
+
+    /**
+     * Obtiene la última interacción registrada para un usuario dado.
+     */
+    public function obtenerUltimaInteraccion(): ?array
+    {
+        $sql = "SELECT * 
+            FROM ia_interacciones 
+            ORDER BY id DESC 
+            LIMIT 1";
+
+        $stmt = $this->db->query($sql);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if ($row) {
+            // Si hay contexto en JSON, lo decodificamos
+            if (!empty($row['contexto'])) {
+                $decoded = json_decode($row['contexto'], true);
+                if (json_last_error() === JSON_ERROR_NONE) {
+                    $row['contexto'] = $decoded;
+                }
+            }
+            return $row;
+        }
+
+        return null;
+    }
+
+
+
 
     /**
      * Lista interacciones más recientes con límite y offset.

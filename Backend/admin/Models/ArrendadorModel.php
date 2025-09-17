@@ -1,388 +1,442 @@
 <?php
+
 declare(strict_types=1);
 
 namespace App\Models;
-require_once __DIR__ . '/../Core/Database.php';
-use App\Core\Database;
-use PDO;
 
-/**
- * Modelo de Arrendadores.
- *
- * Tablas involucradas:
- *  - arrendadores
- *  - inmuebles (FK lógica id_arrendador)
- *  - polizas (FK lógica id_arrendador)
- *  - arrendadores_archivos (FK explícita a arrendadores.id)
- *
- * Notas:
- *  - El esquema actual NO tiene columna `slug` en arrendadores.
- *  - Este modelo extiende Database y usa $this->db (PDO) con prepares nativos.
- */
-class ArrendadorModel extends Database
+require_once __DIR__ . '/../Core/Dynamo.php';
+require_once __DIR__ . '/../Helpers/NormalizadoHelper.php';
+
+
+use App\Helpers\NormalizadoHelper;
+use App\Core\Dynamo;
+use Aws\DynamoDb\DynamoDbClient;
+use Aws\DynamoDb\Marshaler;
+
+class ArrendadorModel
 {
+    private DynamoDbClient $client;
+    private Marshaler $marshaler;
+    private string $table;
+
+
+
     public function __construct()
     {
-        parent::__construct();
+        $this->client    = Dynamo::client();
+        $this->marshaler = Dynamo::marshaler();
+        $this->table     = Dynamo::table();
+    }
+
+    private function obtenerPolizasPorIds(array $ids): array
+    {
+        if (empty($ids)) return [];
+
+        $keys = [];
+        foreach ($ids as $pk) {
+            $keys[] = [
+                'pk' => ['S' => $pk],       // ej: POL#960
+                'sk' => ['S' => 'profile']
+            ];
+        }
+
+        $response = $this->client->batchGetItem([
+            'RequestItems' => [
+                $this->table => ['Keys' => $keys]
+            ]
+        ]);
+
+        $items = [];
+        if (!empty($response['Responses'][$this->table])) {
+            foreach ($response['Responses'][$this->table] as $item) {
+                $items[] = $this->marshaler->unmarshalItem($item);
+            }
+        }
+
+        return $items;
     }
 
     /**
-     * Listado de arrendadores (recientes primero).
-     * @return array<int, array<string, mixed>>
+     * Obtiene todos los arrendadores ordenados por fecha_registro DESC
      */
     public function obtenerTodos(): array
     {
-        $sql = "SELECT *
-                FROM arrendadores
-                ORDER BY fecha_registro DESC";
-        $stmt = $this->db->prepare($sql);
-        $stmt->execute();
-        /** @var array<int, array<string, mixed>> */
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $arrendadores = [];
+        $lastKey = null;
+
+        do {
+            $params = [
+                'TableName'                 => $this->table,
+                'FilterExpression'          => 'begins_with(pk, :pk) AND sk = :sk',
+                'ExpressionAttributeValues' => [
+                    ':pk' => ['S' => 'arr#'],
+                    ':sk' => ['S' => 'profile']
+                ]
+            ];
+            if ($lastKey) {
+                $params['ExclusiveStartKey'] = $lastKey;
+            }
+
+            $result = $this->client->scan($params);
+
+            foreach ($result['Items'] as $item) {
+                $arrendadores[] = $this->marshaler->unmarshalItem($item);
+            }
+
+            $lastKey = $result['LastEvaluatedKey'] ?? null;
+        } while ($lastKey);
+
+        usort(
+            $arrendadores,
+            fn($a, $b) =>
+            strtotime($b['fecha_registro']) <=> strtotime($a['fecha_registro'])
+        );
+
+        return $arrendadores;
     }
 
     /**
-     * Búsqueda con paginación + métricas agregadas.
-     *
-     * - num_inmuebles: total distinto de inmuebles vinculados
-     * - polizas_activas: cuántas pólizas VIGENTES del arrendador
-     * - ultima_poliza: fecha más reciente de póliza
-     *
-     * @param string $q      Texto a buscar (nombre/email/celular)
-     * @param int    $offset Desplazamiento
-     * @param int    $limite Límite de filas
-     * @return array<int, array<string, mixed>>
+     * Obtiene detalles de varios items por sus IDs (batchGet)
      */
-    public function buscarConPaginacion(string $q, int $offset, int $limite): array
+    private function obtenerItemsPorIds(array $ids): array
     {
-        $sql = "SELECT a.*,
-                       COUNT(DISTINCT i.id)                                            AS num_inmuebles,
-                       SUM(CASE WHEN p.estado = 'VIGENTE' THEN 1 ELSE 0 END)          AS polizas_activas,
-                       MAX(p.fecha_poliza)                                            AS ultima_poliza
-                FROM arrendadores a
-                LEFT JOIN inmuebles i ON i.id_arrendador = a.id
-                LEFT JOIN polizas   p ON p.id_arrendador = a.id
-                WHERE a.nombre_arrendador LIKE ?
-                   OR a.email LIKE ?
-                   OR a.celular LIKE ?
-                GROUP BY a.id
-                ORDER BY a.id DESC
-                LIMIT ?, ?";
-
-        $stmt   = $this->db->prepare($sql);
-        $qParam = '%' . $q . '%';
-
-        $stmt->bindValue(1, $qParam, PDO::PARAM_STR);
-        $stmt->bindValue(2, $qParam, PDO::PARAM_STR);
-        $stmt->bindValue(3, $qParam, PDO::PARAM_STR);
-        $stmt->bindValue(4, $offset, PDO::PARAM_INT);
-        $stmt->bindValue(5, $limite, PDO::PARAM_INT);
-
-        $stmt->execute();
-        /** @var array<int, array<string, mixed>> */
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
-    }
-
-    /**
-     * Cuenta de resultados para la misma búsqueda de buscarConPaginacion (sin agregados).
-     */
-    public function contarTotalResultados(string $q): int
-    {
-        $sql = "SELECT COUNT(*)
-                FROM arrendadores
-                WHERE nombre_arrendador LIKE ?
-                   OR email LIKE ?
-                   OR celular LIKE ?";
-
-        $stmt  = $this->db->prepare($sql);
-        $param = '%' . $q . '%';
-        $stmt->execute([$param, $param, $param]);
-
-        return (int) $stmt->fetchColumn();
-    }
-
-    /**
-     * Indicadores generales de arrendadores.
-     * - total
-     * - con_poliza (al menos 1 póliza vigente)
-     * - sin_documentacion (sin archivos en arrendadores_archivos)
-     * - nuevos_mes (creados en el mes/año actual)
-     *
-     * @return array<string, int>
-     */
-    public function obtenerIndicadores(): array
-    {
-        $total = (int) $this->db->query("SELECT COUNT(*) FROM arrendadores")->fetchColumn();
-
-        $conPoliza = (int) $this->db->query(
-            "SELECT COUNT(DISTINCT id_arrendador)
-             FROM polizas
-             WHERE estado = 'VIGENTE'"
-        )->fetchColumn();
-
-        $sinDocs = (int) $this->db->query(
-            "SELECT COUNT(*)
-             FROM arrendadores a
-             WHERE NOT EXISTS (
-               SELECT 1 FROM arrendadores_archivos d WHERE d.id_arrendador = a.id
-             )"
-        )->fetchColumn();
-
-        $nuevos = (int) $this->db->query(
-            "SELECT COUNT(*)
-             FROM arrendadores
-             WHERE MONTH(fecha_registro) = MONTH(NOW())
-               AND YEAR(fecha_registro)  = YEAR(NOW())"
-        )->fetchColumn();
-
-        return [
-            'total'              => $total,
-            'con_poliza'         => $conPoliza,
-            'sin_documentacion'  => $sinDocs,
-            'nuevos_mes'         => $nuevos,
-        ];
-    }
-
-    /**
-     * Obtiene un arrendador por ID con relaciones básicas.
-     *
-     * @param int $id
-     * @return array<string, mixed>|null
-     */
-    public function obtenerPorId(int $id): ?array
-    {
-        $stmt = $this->db->prepare("SELECT * FROM arrendadores WHERE id = ? LIMIT 1");
-        $stmt->execute([$id]);
-        $arrendador = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
-
-        if ($arrendador) {
-            $arrendador['inmuebles'] = $this->obtenerInmuebles((int)$arrendador['id']);
-            $arrendador['polizas']   = $this->obtenerPolizas((int)$arrendador['id']);
-            $arrendador['archivos']  = $this->obtenerArchivos((int)$arrendador['id']);
+        if (empty($ids)) {
+            return [];
         }
-        return $arrendador;
-    }
 
-    /**
-     * obtenerPorSlug($slug)
-     */
-    public function obtenerPorSlug(string $slug): ?array
-    {
-        $stmt = $this->db->prepare("SELECT * FROM arrendadores WHERE slug = ? LIMIT 1");
-        $stmt->execute([$slug]);
-        $arrendador = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
-        if ($arrendador) {
-            $arrendador['inmuebles'] = $this->obtenerInmuebles((int)$arrendador['id']);
-            $arrendador['polizas']   = $this->obtenerPolizas((int)$arrendador['id']);
-            $arrendador['archivos']  = $this->obtenerArchivos((int)$arrendador['id']);
+        $keys = [];
+        foreach ($ids as $id) {
+            // Ej: arrfile#..., INM#..., POL#...
+            $keys[] = ['pk' => ['S' => $id], 'sk' => ['S' => 'profile']];
         }
-        return $arrendador;
-    }
 
-    /**
-     * Inmuebles del arrendador.
-     * @param int $idArrendador
-     * @return array<int, array<string, mixed>>
-     */
-    private function obtenerInmuebles(int $idArrendador): array
-    {
-        $stmt = $this->db->prepare("SELECT * FROM inmuebles WHERE id_arrendador = ?");
-        $stmt->execute([$idArrendador]);
-        /** @var array<int, array<string, mixed>> */
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
-    }
-
-    /**
-     * Pólizas del arrendador.
-     * @param int $idArrendador
-     * @return array<int, array<string, mixed>>
-     */
-    private function obtenerPolizas(int $idArrendador): array
-    {
-        $stmt = $this->db->prepare("SELECT * FROM polizas WHERE id_arrendador = ?");
-        $stmt->execute([$idArrendador]);
-        /** @var array<int, array<string, mixed>> */
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
-    }
-
-    /**
-     * Archivos del arrendador.
-     * @param int $idArrendador
-     * @return array<int, array<string, mixed>>
-     */
-    private function obtenerArchivos(int $idArrendador): array
-    {
-        $stmt = $this->db->prepare("SELECT * FROM arrendadores_archivos WHERE id_arrendador = ?");
-        $stmt->execute([$idArrendador]);
-        /** @var array<int, array<string, mixed>> */
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
-    }
-
-    /**
-     * Actualiza campos básicos.
-     * @param int   $id
-     * @param array<string, mixed> $data
-     * @return bool
-     */
-    public function update(int $id, array $data): bool
-    {
-        $sql = "UPDATE arrendadores SET
-                    nombre_arrendador = :nombre_arrendador,
-                    email             = :email,
-                    celular           = :celular,
-                    telefono          = :telefono,
-                    rfc               = :rfc
-                WHERE id = :id";
-
-        $stmt = $this->db->prepare($sql);
-        return $stmt->execute([
-            ':nombre_arrendador' => (string)($data['nombre_arrendador'] ?? ''),
-            ':email'             => (string)($data['email'] ?? ''),
-            ':celular'           => (string)($data['celular'] ?? ''),
-            ':telefono'          => (string)($data['telefono'] ?? ''),
-            ':rfc'               => (string)($data['rfc'] ?? ''),
-            ':id'                => $id,
+        $response = $this->client->batchGetItem([
+            'RequestItems' => [
+                $this->table => ['Keys' => $keys]
+            ]
         ]);
+
+        $items = [];
+        foreach ($response['Responses'][$this->table] as $item) {
+            $items[] = $this->marshaler->unmarshalItem($item);
+        }
+
+        return $items;
     }
 
     /**
-     * Actualiza datos personales ampliados.
-     * @param int   $id
-     * @param array<string, mixed> $data
-     * @return bool
+     * Devuelve el archivo único de un arrendador para el tipo indicado
      */
-    public function actualizarDatosPersonales(int $id, array $data): bool
+    public function obtenerArchivoPorTipo(int $idArrendador, string $tipo): ?array
     {
-        $sql = "UPDATE arrendadores SET
-                    nombre_arrendador    = :nombre_arrendador,
-                    email                = :email,
-                    celular              = :celular,
-                    telefono             = :telefono,
-                    direccion_arrendador = :direccion_arrendador,
-                    estadocivil          = :estadocivil,
-                    nacionalidad         = :nacionalidad,
-                    rfc                  = :rfc,
-                    tipo_id              = :tipo_id,
-                    num_id               = :num_id
-                WHERE id = :id";
-
-        $stmt = $this->db->prepare($sql);
-        return $stmt->execute([
-            ':nombre_arrendador'    => (string)($data['nombre_arrendador'] ?? ''),
-            ':email'                => (string)($data['email'] ?? ''),
-            ':celular'              => (string)($data['celular'] ?? ''),
-            ':telefono'             => (string)($data['telefono'] ?? ''),
-            ':direccion_arrendador' => (string)($data['direccion_arrendador'] ?? ''),
-            ':estadocivil'          => (string)($data['estadocivil'] ?? ''),
-            ':nacionalidad'         => (string)($data['nacionalidad'] ?? ''),
-            ':rfc'                  => (string)($data['rfc'] ?? ''),
-            ':tipo_id'              => (string)($data['tipo_id'] ?? ''),
-            ':num_id'               => (string)($data['num_id'] ?? ''),
-            ':id'                   => $id,
-        ]);
+        $archivos = $this->obtenerArchivos($idArrendador);
+        foreach ($archivos as $archivo) {
+            if (($archivo['tipo'] ?? '') === $tipo) {
+                return $archivo;
+            }
+        }
+        return null;
     }
 
     /**
-     * Actualiza información bancaria.
+     * Elimina de DynamoDB el archivo de un arrendador para el tipo indicado
+     */
+    public function eliminarArchivo(int $idArrendador, string $tipo): bool
+    {
+        $archivos = $this->obtenerArchivos($idArrendador);
+        foreach ($archivos as $archivo) {
+            if (($archivo['tipo'] ?? '') === $tipo) {
+                $this->client->deleteItem([
+                    'TableName' => $this->table,
+                    'Key'       => [
+                        'pk' => ['S' => $archivo['pk']],
+                        'sk' => ['S' => $archivo['sk']]
+                    ]
+                ]);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Lista todos los archivos de un arrendador
+     */
+    public function obtenerArchivos(int $idArrendador): array
+    {
+        $arr = $this->obtenerPorId($idArrendador);
+        return $arr && !empty($arr['archivos_ids'])
+            ? $this->obtenerItemsPorIds($arr['archivos_ids'])
+            : [];
+    }
+
+    /**
+     * Obtiene varios ítems asociados a un arrendador usando pk + lista de sks
+     */
+    private function obtenerItemsPorArrendador(string $pkArr, array $ids): array
+    {
+        if (empty($ids)) {
+            return [];
+        }
+
+        $keys = [];
+        foreach ($ids as $sk) {
+            $keys[] = [
+                'pk' => ['S' => $pkArr], // siempre el arrendador
+                'sk' => ['S' => $sk]     // ej: arrfile#58, INM#539, POL#960
+            ];
+        }
+
+        $response = $this->client->batchGetItem([
+            'RequestItems' => [
+                $this->table => ['Keys' => $keys]
+            ]
+        ]);
+
+        $items = [];
+        if (!empty($response['Responses'][$this->table])) {
+            foreach ($response['Responses'][$this->table] as $item) {
+                $items[] = $this->marshaler->unmarshalItem($item);
+            }
+        }
+
+        return $items;
+    }
+
+
+    /**
+     * Actualiza datos personales ampliados
+     */
+    public function actualizarDatosPersonales(string $pk, array $data): bool
+    {
+        try {
+            $updateExpr = "SET 
+            nombre_arrendador = :n,
+            email = :e,
+            celular = :c,
+            direccion_arrendador = :d,
+            estadocivil = :ec,
+            nacionalidad = :na,
+            rfc = :r,
+            tipo_id = :ti,
+            num_id = :ni";
+
+            $params = [
+                'TableName' => $this->table,
+                'Key' => [
+                    'pk' => ['S' => $pk],
+                    'sk' => ['S' => 'profile'],
+                ],
+                'UpdateExpression' => $updateExpr,
+                'ExpressionAttributeValues' => [
+                    ':n'  => ['S' => $data['nombre_arrendador']],
+                    ':e'  => ['S' => $data['email']],
+                    ':c'  => ['S' => $data['celular']],
+                    ':d'  => ['S' => $data['direccion_arrendador']],
+                    ':ec' => ['S' => $data['estadocivil']],
+                    ':na' => ['S' => $data['nacionalidad']],
+                    ':r'  => ['S' => $data['rfc']],
+                    ':ti' => ['S' => $data['tipo_id']],
+                    ':ni' => ['S' => $data['num_id']],
+                ]
+            ];
+
+            $this->client->updateItem($params);
+            return true;
+        } catch (\Throwable $e) {
+            error_log("Error update arrendador: " . $e->getMessage());
+            return false;
+        }
+    }
+
+
+    /**
+     * Actualiza información bancaria
      */
     public function actualizarInfoBancaria(int $id, array $data): bool
     {
-        $sql = "UPDATE arrendadores
-                SET banco  = :banco,
-                    cuenta = :cuenta,
-                    clabe  = :clabe
-                WHERE id = :id";
-
-        $stmt = $this->db->prepare($sql);
-        return $stmt->execute([
-            ':banco'  => (string)($data['banco'] ?? ''),
-            ':cuenta' => (string)($data['cuenta'] ?? ''),
-            ':clabe'  => (string)($data['clabe'] ?? ''),
-            ':id'     => $id,
-        ]);
-    }
-
-    /**
-     * Actualiza comentarios libres.
-     */
-    public function actualizarComentarios(int $id, string $comentarios): bool
-    {
-        $stmt = $this->db->prepare(
-            "UPDATE arrendadores SET comentarios = :comentarios WHERE id = :id"
-        );
-        return $stmt->execute([
-            ':comentarios' => $comentarios,
-            ':id'          => $id,
-        ]);
-    }
-
-    /**
-     * ¿Tiene al menos una póliza activa?
-     */
-    public function tienePolizasActivas(int $id): bool
-    {
-        $stmt = $this->db->prepare(
-            "SELECT COUNT(*) FROM polizas
-             WHERE id_arrendador = ? AND estado = 'VIGENTE'"
-        );
-        $stmt->execute([$id]);
-        return ((int)$stmt->fetchColumn()) > 0;
-    }
-
-    /**
-     * Arrendadores por asesor.
-     * @param int $idAsesor
-     * @return array<int, array{id:int, nombre_arrendador:string}>
-     */
-    public function obtenerPorAsesor(int $idAsesor): array
-    {
-        $stmt = $this->db->prepare(
-            "SELECT id, nombre_arrendador
-             FROM arrendadores
-             WHERE id_asesor = ?
-             ORDER BY nombre_arrendador"
-        );
-        $stmt->execute([$idAsesor]);
-        /** @var array<int, array{id:int, nombre_arrendador:string}> */
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
-    }
-
-    /* =================
-       Métodos opcionales
-       ================= */
-
-    /**
-     * Crea un arrendador mínimo.
-     * @param array<string, mixed> $data
-     * @return int ID insertado
-     */
-    public function crear(array $data): int
-    {
-        $sql = "INSERT INTO arrendadores
-                   (nombre_arrendador, email, celular, telefono, id_asesor, fecha_registro)
-                VALUES
-                   (:nombre_arrendador, :email, :celular, :telefono, :id_asesor, NOW())";
-
-        $stmt = $this->db->prepare($sql);
-        $stmt->execute([
-            ':nombre_arrendador' => (string)($data['nombre_arrendador'] ?? ''),
-            ':email'             => (string)($data['email'] ?? ''),
-            ':celular'           => (string)($data['celular'] ?? ''),
-            ':telefono'          => (string)($data['telefono'] ?? ''),
-            ':id_asesor'         => (int)($data['id_asesor'] ?? 0),
+        $this->client->updateItem([
+            'TableName' => $this->table,
+            'Key'       => [
+                'pk' => ['S' => "arr#{$id}"],
+                'sk' => ['S' => 'profile']
+            ],
+            'UpdateExpression'          => 'SET banco = :banco, cuenta = :cuenta, clabe = :clabe',
+            'ExpressionAttributeValues' => [
+                ':banco'  => ['S' => (string)($data['banco'] ?? '')],
+                ':cuenta' => ['S' => (string)($data['cuenta'] ?? '')],
+                ':clabe'  => ['S' => (string)($data['clabe'] ?? '')],
+            ]
         ]);
 
-        return (int)$this->db->lastInsertId();
+        return true;
     }
 
     /**
-     * Elimina un arrendador por ID.
-     * (En cascada se borran sus archivos si existen FK, y lógicamente
-     * quedarán inmuebles/pólizas si no hay FK; maneja esto en tu capa de servicio.)
+     * Actualiza comentarios en Dynamo
      */
-    public function eliminar(int $id): bool
+    public function actualizarComentarios(string $pk, string $comentarios): bool
     {
-        $stmt = $this->db->prepare("DELETE FROM arrendadores WHERE id = ?");
-        return $stmt->execute([$id]);
+        try {
+            $this->client->updateItem([
+                'TableName' => $this->table,
+                'Key'       => [
+                    'pk' => ['S' => $pk],
+                    'sk' => ['S' => 'profile']
+                ],
+                'UpdateExpression'          => 'SET comentarios = :comentarios',
+                'ExpressionAttributeValues' => [
+                    ':comentarios' => ['S' => $comentarios],
+                ]
+            ]);
+            return true;
+        } catch (\Throwable $e) {
+            error_log("❌ Error al actualizar comentarios en Dynamo: " . $e->getMessage());
+            return false;
+        }
     }
+
+
+    public function obtenerPorAsesor(string $asesorId): array
+    {
+        $result = $this->client->scan([
+            'TableName'                 => $this->table,
+            'FilterExpression'          => 'begins_with(pk, :pk) AND sk = :sk AND asesor = :asesor',
+            'ExpressionAttributeValues' => [
+                ':pk'     => ['S' => 'arr#'],
+                ':sk'     => ['S' => 'profile'],
+                ':asesor' => ['S' => $asesorId] // Ej: ASE#1
+            ]
+        ]);
+
+        $arrendadores = [];
+        foreach ($result['Items'] as $item) {
+            $arrendadores[] = $this->marshaler->unmarshalItem($item);
+        }
+
+        usort(
+            $arrendadores,
+            fn($a, $b) =>
+            strcmp($a['nombre_arrendador'], $b['nombre_arrendador'])
+        );
+
+        return $arrendadores;
+    }
+
+    /**
+     * Buscar arrendadores por nombre, email o celular
+     * Incluye archivos, inmuebles, pólizas y selfie_url
+     */
+    public function buscar(string $q): array
+    {
+        $q = trim($q);
+        if ($q === '') {
+            return [];
+        }
+
+        $arrendadores = [];
+        $lastKey = null;
+        $qLower = NormalizadoHelper::lower($q);
+
+        do {
+            $params = [
+                'TableName'                 => $this->table,
+                'FilterExpression'          => 'begins_with(pk, :pk) AND sk = :sk',
+                'ExpressionAttributeValues' => [
+                    ':pk' => ['S' => 'arr#'],
+                    ':sk' => ['S' => 'profile']
+                ]
+            ];
+            if ($lastKey) {
+                $params['ExclusiveStartKey'] = $lastKey;
+            }
+
+            $result = $this->client->scan($params);
+
+            foreach ($result['Items'] as $item) {
+                $profile = $this->marshaler->unmarshalItem($item);
+
+                $nombre   = NormalizadoHelper::lower($profile['nombre_arrendador'] ?? '');
+                $email    = NormalizadoHelper::lower($profile['email'] ?? '');
+                $celular  = NormalizadoHelper::lower($profile['celular'] ?? '');
+
+                if (
+                    str_contains($nombre, $qLower) ||
+                    str_contains($email, $qLower) ||
+                    str_contains($celular, $qLower)
+                ) {
+                    // Resolver archivos e inmuebles usando pk del arrendador
+                    $archivos  = !empty($profile['archivos_ids'])
+                        ? $this->obtenerItemsPorArrendador($profile['pk'], $profile['archivos_ids'])
+                        : [];
+
+                    $inmuebles = !empty($profile['inmuebles_ids'])
+                        ? $this->obtenerItemsPorArrendador($profile['pk'], $profile['inmuebles_ids'])
+                        : [];
+
+                    // Resolver polizas (items independientes)
+                    $polizas   = !empty($profile['polizas_ids'])
+                        ? $this->obtenerPolizasPorIds($profile['polizas_ids'])
+                        : [];
+
+                    // Armar estructura final
+                    $arrendadores[] = [
+                        'profile'    => $profile,
+                        'archivos'   => $archivos,
+                        'inmuebles'  => $inmuebles,
+                        'polizas'    => $polizas,
+                    ];
+                }
+            }
+
+            $lastKey = $result['LastEvaluatedKey'] ?? null;
+        } while ($lastKey);
+
+        return $arrendadores;
+    }
+
+    /**
+     * Obtiene un arrendador por ID con sus archivos, inmuebles y pólizas
+     */
+    public function obtenerPorId(int $id): ?array
+    {
+        $pk = "arr#{$id}";
+
+        // 1. Traer el perfil
+        $result = $this->client->getItem([
+            'TableName' => $this->table,
+            'Key'       => [
+                'pk' => ['S' => $pk],
+                'sk' => ['S' => 'profile']
+            ]
+        ]);
+
+        if (empty($result['Item'])) {
+            return null; // no existe
+        }
+
+        $profile = $this->marshaler->unmarshalItem($result['Item']);
+
+        // 2. Resolver archivos, inmuebles y pólizas 
+        $archivos = !empty($profile['archivos_ids'])
+            ? $this->obtenerItemsPorArrendador($profile['pk'], $profile['archivos_ids'])
+            : [];
+
+        $inmuebles = !empty($profile['inmuebles_ids'])
+            ? $this->obtenerItemsPorArrendador($profile['pk'], $profile['inmuebles_ids'])
+            : [];
+
+        $polizas = !empty($profile['polizas_ids'])
+            ? $this->obtenerPolizasPorIds($profile['polizas_ids'])
+            : [];
+
+        // 3. Retornar estructura final
+        return [
+            'profile'    => $profile,
+            'archivos'   => $archivos,
+            'inmuebles'  => $inmuebles,
+            'polizas'    => $polizas,
+        ];
+    }
+
 }

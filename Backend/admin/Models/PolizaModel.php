@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Models;
 
 require_once __DIR__ . '/../Core/Database.php';
@@ -37,7 +38,7 @@ class PolizaModel extends Database
         array $parametros = [],
         bool $soloUna = false,
         string $extras = ''
-        ): array|null {
+    ): array|null {
         // Consulta base (TODOS los roles salen de `inquilinos`; direcciones de `inquilinos_direccion`)
         $sqlBase = '
         SELECT
@@ -472,6 +473,7 @@ class PolizaModel extends Database
     public function crear(array $data): bool
     {
 
+
         $sql = "INSERT INTO polizas (
                     tipo_poliza, id_asesor, id_arrendador,
                     id_inquilino, id_obligado, id_fiador,
@@ -520,6 +522,20 @@ class PolizaModel extends Database
             ':comentarios'      => $data['comentarios']      ?? null,
         ]);
     }
+
+    public function guardarArchivoPoliza(int $idArrendador, string $s3Key): bool
+    {
+        $sql = "INSERT INTO arrendadores_archivos (id_arrendador, s3_key, tipo)
+            VALUES (:id_arrendador, :s3_key, 'poliza')";
+
+        $stmt = $this->db->prepare($sql);
+        return $stmt->execute([
+            ':id_arrendador' => $idArrendador,
+            ':s3_key'        => $s3Key,
+        ]);
+    }
+
+
 
     /**
      * Update + (opcionalmente) actualización de dirección del inmueble si viene `direccion` en $data.
