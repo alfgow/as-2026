@@ -65,9 +65,9 @@
                             </a>
                         </p>
                     </div>
-             
+
                     <?php
-                        $linkInquilino = "$baseUrl/inquilino/" . $poliza['slug_inquilino'];
+                    $linkInquilino = "$baseUrl/inquilino/" . $poliza['slug_inquilino'];
                     ?>
                     <div class="">
                         <p class="text-sm text-white">
@@ -80,19 +80,19 @@
                         </p>
                     </div>
                     <?php
-                        // Determinar el enlace o el texto según los valores de id_fiador y id_fiador_2025
-                        $fiadorHtml = '';
+                    // Determinar el enlace o el texto según los valores de id_fiador y id_fiador_2025
+                    $fiadorHtml = '';
 
-                        if ($poliza['id_fiador'] == 40) {
-                            // Caso: sin fiador
-                            $fiadorHtml = '<span class="text-gray-300 ml-1">No Aplica</span>';
-                  
-                            $fiadorHtml = '<a href="' . $baseUrl . '/inquilino/' . $poliza['slug_fiador'] . '" 
+                    if ($poliza['id_fiador'] == 40) {
+                        // Caso: sin fiador
+                        $fiadorHtml = '<span class="text-gray-300 ml-1">No Aplica</span>';
+
+                        $fiadorHtml = '<a href="' . $baseUrl . '/inquilino/' . $poliza['slug_fiador'] . '" 
                                 class="text-indigo-300 underline hover:text-indigo-100 transition font-medium ml-1"
                                 id="val-fiador" target="_blank">'
-                                . htmlspecialchars($poliza['nombre_fiador_completo']) .
+                            . htmlspecialchars($poliza['nombre_fiador_completo']) .
                             '</a>';
-                        }
+                    }
                     ?>
 
                     <div>
@@ -101,7 +101,7 @@
                     </div>
 
                     <?php
-                        $linkObligado =  "$baseUrl/inquilino/" . $poliza['slug_obligado'];
+                    $linkObligado =  "$baseUrl/inquilino/" . $poliza['slug_obligado'];
                     ?>
                     <div>
                         <span class="font-semibold text-indigo-400">Obligado solidario:</span>
@@ -139,13 +139,13 @@
             <div class="text-sm space-y-1">
                 <div>
                     <?php
-                        $idInmueble = isset($poliza['id_inmueble']) ? (int)$poliza['id_inmueble'] : 0;
-                        $direccion  = $poliza['direccion_inmueble'] ?? '';
-                        $base       = isset($baseUrl) ? rtrim($baseUrl, '/') : ''; // opcional
-                        $urlInm     = $idInmueble ? ($base . '/inmuebles/' . $idInmueble) : null;
-                        ?>
-                        <span class="font-semibold text-indigo-400">Dirección:</span>
-                        <?php if ($urlInm): ?>
+                    $idInmueble = isset($poliza['id_inmueble']) ? (int)$poliza['id_inmueble'] : 0;
+                    $direccion  = $poliza['direccion_inmueble'] ?? '';
+                    $base       = isset($baseUrl) ? rtrim($baseUrl, '/') : ''; // opcional
+                    $urlInm     = $idInmueble ? ($base . '/inmuebles/' . $idInmueble) : null;
+                    ?>
+                    <span class="font-semibold text-indigo-400">Dirección:</span>
+                    <?php if ($urlInm): ?>
                         <a id="val-direccion"
                             href="<?= htmlspecialchars($urlInm) ?>"
                             target="_blank"
@@ -153,7 +153,7 @@
                             class="text-pink-300 hover:underline">
                             <?= htmlspecialchars($direccion) ?>
                         </a>
-                        <?php else: ?>
+                    <?php else: ?>
                         <span id="val-direccion"><?= htmlspecialchars($direccion) ?></span>
                     <?php endif; ?>
 
@@ -182,62 +182,61 @@
         </div>
 
         <div class="flex flex-col md:flex-row justify-center items-center gap-3 pt-4 text-center w-full">
-    <a href="<?= $baseUrl ?>/polizas/pdf/<?= $poliza['numero_poliza'] ?>" target="_blank"
-        class="px-4 py-2 bg-indigo-700 hover:bg-indigo-600 rounded-lg text-white font-semibold shadow transition text-center">
-        Descargar Póliza en PDF
-    </a>
+            <a href="<?= $baseUrl ?>/polizas/generar-pdf/<?= $poliza['numero_poliza'] ?>"
+                class="px-4 py-2 bg-indigo-700 hover:bg-indigo-600 rounded-lg text-white font-semibold shadow transition text-center">
+                Descargar Póliza
+            </a>
 
-    <a href="<?= $baseUrl ?>/polizas"
-        class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 rounded-full text-white text-sm shadow-lg transition text-center">
-        Volver al listado
-    </a>
+            <a href="<?= $baseUrl ?>/polizas"
+                class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 rounded-full text-white text-sm shadow-lg transition text-center">
+                Volver al listado
+            </a>
 
-    <a href="<?= $baseUrl ?>/polizas/editar/<?= $poliza['numero_poliza'] ?>"
-        class="px-4 py-2 bg-pink-600 hover:bg-pink-700 rounded-full text-white text-sm shadow-lg transition text-center">
-        Editar
-    </a>
+            <a href="<?= $baseUrl ?>/polizas/editar/<?= $poliza['numero_poliza'] ?>"
+                class="px-4 py-2 bg-pink-600 hover:bg-pink-700 rounded-full text-white text-sm shadow-lg transition text-center">
+                Editar
+            </a>
 
-    <a href="<?= $baseUrl ?>/polizas/renovar/<?= $poliza['numero_poliza'] ?>"
-        class="px-4 py-2 bg-green-600 hover:bg-green-700 rounded-full text-white text-sm shadow-lg transition text-center">
-        Renovar
-    </a>
+            <a href="<?= $baseUrl ?>/polizas/renovar/<?= $poliza['numero_poliza'] ?>"
+                class="px-4 py-2 bg-green-600 hover:bg-green-700 rounded-full text-white text-sm shadow-lg transition text-center">
+                Renovar
+            </a>
 
-    <a href="<?= $baseUrl ?>/polizas/generacion-contrato/<?= $poliza['numero_poliza'] ?>"
-        class="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 rounded-full text-white text-sm shadow-lg transition text-center">
-        Generar Contrato
-    </a>
-</div>
+            <a href="<?= $baseUrl ?>/polizas/generacion-contrato/<?= $poliza['numero_poliza'] ?>"
+                class="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 rounded-full text-white text-sm shadow-lg transition text-center">
+                Generar Contrato
+            </a>
+        </div>
 
 </section>
 
 <script>
-document.addEventListener('DOMContentLoaded', () => {
-  const BASE_URL = window.BASE_URL || '';
+    document.addEventListener('DOMContentLoaded', () => {
+        const BASE_URL = window.BASE_URL || '';
 
-  // Forma flexible de obtener el número de póliza sin acoplarse al markup:
-  const getPolizaNumero = () =>
-    document.querySelector('[data-numero-poliza]')?.dataset.numeroPoliza
-    || document.querySelector('input[name="numero_poliza"]')?.value
-    || (typeof window.POLIZA_NUMERO !== 'undefined' ? window.POLIZA_NUMERO : null);
+        // Forma flexible de obtener el número de póliza sin acoplarse al markup:
+        const getPolizaNumero = () =>
+            document.querySelector('[data-numero-poliza]')?.dataset.numeroPoliza ||
+            document.querySelector('input[name="numero_poliza"]')?.value ||
+            (typeof window.POLIZA_NUMERO !== 'undefined' ? window.POLIZA_NUMERO : null);
 
-  const POLIZA_NUM = getPolizaNumero();
+        const POLIZA_NUM = getPolizaNumero();
 
-  // Botones (si existen en la vista)
-  const btnEditar  = document.getElementById('btn-editar-poliza');
-  const btnRenovar = document.getElementById('btn-renovar-poliza');
+        // Botones (si existen en la vista)
+        const btnEditar = document.getElementById('btn-editar-poliza');
+        const btnRenovar = document.getElementById('btn-renovar-poliza');
 
-  if (btnEditar && POLIZA_NUM) {
-    btnEditar.addEventListener('click', () => {
-      window.location.href = `${BASE_URL}/polizas/editar/${encodeURIComponent(POLIZA_NUM)}`;
+        if (btnEditar && POLIZA_NUM) {
+            btnEditar.addEventListener('click', () => {
+                window.location.href = `${BASE_URL}/polizas/editar/${encodeURIComponent(POLIZA_NUM)}`;
+            });
+        }
+
+        if (btnRenovar && POLIZA_NUM) {
+            btnRenovar.addEventListener('click', () => {
+                // Ajusta si tu ruta de renovación difiere
+                window.location.href = `${BASE_URL}/polizas/renovar/${encodeURIComponent(POLIZA_NUM)}`;
+            });
+        }
     });
-  }
-
-  if (btnRenovar && POLIZA_NUM) {
-    btnRenovar.addEventListener('click', () => {
-      // Ajusta si tu ruta de renovación difiere
-      window.location.href = `${BASE_URL}/polizas/renovar/${encodeURIComponent(POLIZA_NUM)}`;
-    });
-  }
-});
 </script>
-

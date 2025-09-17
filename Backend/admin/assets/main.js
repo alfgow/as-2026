@@ -115,4 +115,83 @@ document.addEventListener("DOMContentLoaded", function () {
 			);
 		}
 	});
+	function showLoader(msg = "Procesando información...") {
+		const loader = document.getElementById("global-loader");
+		if (!loader) return;
+		const msgEl = loader.querySelector("p");
+		if (msgEl) msgEl.textContent = msg;
+		loader.classList.remove("hidden");
+	}
+
+	function hideLoader() {
+		const loader = document.getElementById("global-loader");
+		if (!loader) return;
+		loader.classList.add("hidden");
+	}
+	// Guardamos el fetch original
+	const _fetch = window.fetch;
+
+	// Sobreescribimos fetch para mostrar/ocultar loader automáticamente
+	window.fetch = async function (resource, options) {
+		try {
+			// Mostrar loader al iniciar cualquier petición
+			showLoader("Procesando información...");
+
+			// Ejecutar la petición real
+			const response = await _fetch(resource, options);
+
+			// Ocultar loader al terminar
+			hideLoader();
+
+			return response;
+		} catch (err) {
+			// Aseguramos ocultar el loader también en caso de error
+			hideLoader();
+			throw err;
+		}
+	};
+});
+document.addEventListener("DOMContentLoaded", () => {
+	// Selecciona todos los forms de cambiar archivo
+	document.querySelectorAll("form[id^='form-cambiar-']").forEach((form) => {
+		form.addEventListener("submit", async function (e) {
+			e.preventDefault(); // 🚫 Evita submit normal
+
+			const formData = new FormData(form);
+
+			try {
+				const response = await fetch(form.action, {
+					method: "POST",
+					body: formData,
+				});
+				const result = await response.json();
+
+				if (result.ok) {
+					Swal.fire({
+						icon: "success",
+						title: "¡Archivo actualizado!",
+						text: "El archivo se reemplazó correctamente.",
+						confirmButtonColor: "#16a34a",
+					}).then(() => {
+						window.location.reload();
+					});
+				} else {
+					Swal.fire({
+						icon: "error",
+						title: "Error",
+						text:
+							result.error || "No se pudo actualizar el archivo.",
+						confirmButtonColor: "#dc2626",
+					});
+				}
+			} catch (err) {
+				Swal.fire({
+					icon: "error",
+					title: "Error",
+					text: "Hubo un problema en la conexión.",
+					confirmButtonColor: "#dc2626",
+				});
+			}
+		});
+	});
 });

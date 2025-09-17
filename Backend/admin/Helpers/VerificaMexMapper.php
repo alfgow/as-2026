@@ -1,7 +1,8 @@
 <?php
+
 namespace App\Helpers;
 
-class VerificaMexMapper 
+class VerificaMexMapper
 {
     /**
      * Procesa un JSON de VerificaMex y devuelve los campos
@@ -40,45 +41,40 @@ class VerificaMexMapper
         // --- 2. Nombre / Identidad ---
         $nombreIne = null;
         if (!empty($json['data']['documentInformation']['documentData'])) {
+            $partes = [];
             foreach ($json['data']['documentInformation']['documentData'] as $dato) {
-                if ($dato['type'] === 'FullName') {
-                    $nombreIne = strtoupper(trim($dato['value']));
-                    break;
+                $tipo = $dato['type'] ?? '';
+                $valor = trim($dato['value'] ?? '');
+                if ($valor === '') continue;
+
+                if (in_array($tipo, ['Surname', 'SecondSurname', 'FatherSurname', 'MotherSurname', 'Name'], true)) {
+                    $partes[] = $valor;
                 }
+            }
+            if (!empty($partes)) {
+                $nombreIne = implode(' ', $partes);
             }
         }
 
         if ($nombreIne && $inquilino) {
-                    // Función helper para normalizar acentos y mayúsculas
-        $normalize = function ($string) {
-    // Pasar a mayúsculas
-    $string = mb_strtoupper($string, 'UTF-8');
+            // Normalización de cadenas (acentos, ñ, mayúsculas, espacios)
+            $normalize = function ($string) {
+                $string = mb_strtoupper($string, 'UTF-8');
+                $string = iconv('UTF-8', 'ASCII//TRANSLIT', $string); // quita acentos y ñ → N
+                $string = str_replace(["´", "‘", "’", "`"], "", $string); // quita comillas raras
+                $string = preg_replace('/[^A-Z ]/', '', $string); // solo letras y espacios
+                $string = preg_replace('/\s+/', ' ', trim($string));
+                return $string;
+            };
 
-    // Remover acentos
-    $string = iconv('UTF-8', 'ASCII//TRANSLIT', $string);
+            $nombreBD = $normalize(
+                ($inquilino['apellidop_inquilino'] ?? '') . ' ' .
+                    ($inquilino['apellidom_inquilino'] ?? '') . ' ' .
+                    ($inquilino['nombre_inquilino'] ?? '')
+            );
+            $nombreIne = $normalize($nombreIne);
 
-    // Normalizar comillas/apóstrofes raros
-    $string = str_replace(["´","‘","’","`"], "'", $string);
-
-    // Quitar comillas/apóstrofes simples también (opcional, si quieres ignorarlos)
-    $string = str_replace("'", "", $string);
-
-    // Quitar espacios extra
-    $string = preg_replace('/\s+/', ' ', trim($string));
-
-    return $string;
-};
-
-
-        $nombreBD  = $normalize(
-            ($inquilino['apellidop_inquilino'] ?? '') . ' ' .
-            ($inquilino['apellidom_inquilino'] ?? '') . ' ' .
-            ($inquilino['nombre_inquilino'] ?? '')
-        );
-        $nombreIne = $normalize($nombreIne);
-
-        $coincide = (strpos($nombreBD, $nombreIne) !== false || strpos($nombreIne, $nombreBD) !== false);
-
+            $coincide = (strpos($nombreBD, $nombreIne) !== false || strpos($nombreIne, $nombreBD) !== false);
 
             $campos['proceso_validacion_id'] = $coincide ? 1 : 0;
             $campos['validacion_id_resumen'] = $coincide
@@ -91,7 +87,6 @@ class VerificaMexMapper
         }
 
         // --- 3. Documento (expiración, número, checks) ---
-        $docResumen = null;
         $expira = null;
         if (!empty($json['data']['documentInformation']['documentData'])) {
             foreach ($json['data']['documentInformation']['documentData'] as $dato) {
@@ -103,9 +98,8 @@ class VerificaMexMapper
         }
 
         if ($expira) {
-            $docResumen = "📑 Documento válido, expira $expira";
             $campos['proceso_validacion_documentos'] = 1;
-            $campos['validacion_documentos_resumen'] = $docResumen;
+            $campos['validacion_documentos_resumen'] = "📑 Documento válido, expira $expira";
             $campos['validacion_documentos_json']    = [
                 'fecha_expiracion' => $expira
             ];

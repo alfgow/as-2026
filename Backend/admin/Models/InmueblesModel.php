@@ -1,15 +1,30 @@
 <?php
+
 namespace App\Models;
 
 require_once __DIR__ . '/../Core/Database.php';
+
 use App\Core\Database;
 use PDO;
 
+require_once __DIR__ . '/../Core/Dynamo.php';
+
+use App\Core\Dynamo;
+use Aws\DynamoDb\DynamoDbClient;
+use Aws\DynamoDb\Marshaler;
+
 class InmuebleModel extends Database
 {
+    private DynamoDbClient $client;
+    private Marshaler $marshaler;
+    private string $table;
+
     public function __construct()
     {
         parent::__construct();
+        $this->client    = Dynamo::client();
+        $this->marshaler = Dynamo::marshaler();
+        $this->table     = Dynamo::table();
     }
 
     /** Listado completo (ojo: sin paginar) */
@@ -112,27 +127,67 @@ class InmuebleModel extends Database
 
     public function crear(array $data): bool
     {
-        $sql = "INSERT INTO inmuebles
-                (id_arrendador, id_asesor, direccion_inmueble, tipo, renta, mantenimiento,
-                 monto_mantenimiento, deposito, estacionamiento, mascotas, comentarios)
-                VALUES
-                (:id_arrendador, :id_asesor, :direccion_inmueble, :tipo, :renta, :mantenimiento,
-                 :monto_mantenimiento, :deposito, :estacionamiento, :mascotas, :comentarios)";
-        $stmt = $this->getConnection()->prepare($sql);
-        return $stmt->execute([
-            ':id_arrendador'       => $data['id_arrendador'],
-            ':id_asesor'           => $data['id_asesor'],
-            ':direccion_inmueble'  => $data['direccion_inmueble'],
-            ':tipo'                => $data['tipo'],
-            ':renta'               => $data['renta'],
-            ':mantenimiento'       => $data['mantenimiento'],
-            ':monto_mantenimiento' => $data['monto_mantenimiento'],
-            ':deposito'            => $data['deposito'],
-            ':estacionamiento'     => (int) !empty($data['estacionamiento']),
-            ':mascotas'            => $data['mascotas'],
-            ':comentarios'         => $data['comentarios'] ?? null,
-        ]);
+        /**
+         * 🚩 ATENCIÓN:
+         * Esta función ya fue actualizada a DynamoDB.
+         * NO volver a modificar para MySQL.
+         */
+        $sk = 'INM#' . uniqid();
+
+        // 1️⃣ Construir item de inmueble
+        $item = [
+            'pk'                 => ['S' => $data['pk']], // ej: ARR#557
+            'sk'                 => ['S' => $sk],
+            'tipo'               => ['S' => $data['tipo']],
+            'direccion_inmueble' => ['S' => $data['direccion_inmueble']],
+            'renta'              => ['N' => (string) $data['renta']],
+            'mantenimiento'      => ['S' => $data['mantenimiento']],
+            'estacionamiento'    => ['N' => (string) $data['estacionamiento']],
+            'mascotas'           => ['S' => strtoupper($data['mascotas'])],
+            'fecha_registro'     => ['S' => date('Y-m-d H:i:s')],
+        ];
+
+        if ($data['monto_mantenimiento'] !== '' && is_numeric($data['monto_mantenimiento'])) {
+            $item['monto_mantenimiento'] = ['N' => (string) $data['monto_mantenimiento']];
+        }
+
+        if (!empty($data['deposito'])) {
+            $item['deposito'] = ['S' => $data['deposito']];
+        }
+
+        if (!empty($data['comentarios'])) {
+            $item['comentarios'] = ['S' => $data['comentarios']];
+        }
+
+        try {
+            // 2️⃣ Guardar inmueble
+            $this->client->putItem([
+                'TableName' => $this->table,
+                'Item'      => $item,
+            ]);
+
+            // 3️⃣ Actualizar arrendador → agregar inmueble a inmuebles_ids
+            $this->client->updateItem([
+                'TableName' => $this->table,
+                'Key' => [
+                    'pk' => ['S' => $data['pk']],      // ARR#557
+                    'sk' => ['S' => 'PROFILE']
+                ],
+                'UpdateExpression' => 'SET inmuebles_ids = list_append(if_not_exists(inmuebles_ids, :empty_list), :new_inm)',
+                'ExpressionAttributeValues' => [
+                    ':new_inm'    => ['L' => [['S' => $sk]]],
+                    ':empty_list' => ['L' => []]
+                ]
+            ]);
+
+            return true;
+        } catch (\Throwable $e) {
+            error_log("❌ Error guardando inmueble en Dynamo: " . $e->getMessage());
+            return false;
+        }
     }
+
+
 
     public function actualizar(int $id, array $data): bool
     {
@@ -166,11 +221,65 @@ class InmuebleModel extends Database
         ]);
     }
 
-    public function eliminar(int $id): bool
+    public function eliminar(string $pk, string $sk): bool
     {
-        $stmt = $this->getConnection()->prepare("DELETE FROM inmuebles WHERE id = :id");
-        return $stmt->execute([':id' => $id]);
+        try {
+            // 1️⃣ Eliminar el item del inmueble
+            $this->client->deleteItem([
+                'TableName' => $this->table,
+                'Key' => [
+                    'pk' => ['S' => $pk],
+                    'sk' => ['S' => $sk],
+                ],
+            ]);
+
+            // 2️⃣ Obtener el PROFILE del arrendador para localizar el índice del inmueble en inmuebles_ids
+            $result = $this->client->getItem([
+                'TableName' => $this->table,
+                'Key' => [
+                    'pk' => ['S' => $pk],
+                    'sk' => ['S' => 'PROFILE'],
+                ],
+                'ProjectionExpression' => 'inmuebles_ids'
+            ]);
+
+            if (!isset($result['Item']['inmuebles_ids']['L'])) {
+                // No hay lista de inmuebles_ids, nada más que hacer
+                return true;
+            }
+
+            $lista = $result['Item']['inmuebles_ids']['L'];
+            $index = null;
+
+            foreach ($lista as $i => $val) {
+                if (isset($val['S']) && $val['S'] === $sk) {
+                    $index = $i;
+                    break;
+                }
+            }
+
+            if ($index === null) {
+                // El inmueble no estaba en la lista
+                return true;
+            }
+
+            // 3️⃣ Eliminar el inmueble del array inmuebles_ids por índice
+            $this->client->updateItem([
+                'TableName' => $this->table,
+                'Key' => [
+                    'pk' => ['S' => $pk],
+                    'sk' => ['S' => 'PROFILE'],
+                ],
+                'UpdateExpression' => "REMOVE inmuebles_ids[$index]"
+            ]);
+
+            return true;
+        } catch (\Throwable $e) {
+            error_log("❌ Error al eliminar inmueble: " . $e->getMessage());
+            return false;
+        }
     }
+
 
     public function obtenerPorArrendador(int $idArrendador): array
     {

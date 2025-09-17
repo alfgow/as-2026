@@ -104,18 +104,29 @@
 		inmuebleSelect?.addEventListener("change", () => {
 			const opt = inmuebleSelect.options[inmuebleSelect.selectedIndex];
 			const renta = opt?.getAttribute("data-monto") || "";
-			if (rentaHidden) rentaHidden.value = renta;
-			if (rentaDisplay)
+
+			// Siempre guardar valor crudo en el hidden
+			if (rentaHidden) {
+				rentaHidden.value = renta; // ej. "19150"
+			}
+
+			// Mostrar formateado solo en display (para el usuario)
+			if (rentaDisplay) {
 				rentaDisplay.value = renta
-					? parseFloat(renta).toLocaleString(undefined, {
+					? Number(renta).toLocaleString("en-US", {
 							minimumFractionDigits: 2,
+							maximumFractionDigits: 2,
 					  })
 					: "";
-			if (tipoPoliza && montoPoliza)
+			}
+
+			// Recalcular monto de póliza en base a la renta cruda
+			if (tipoPoliza && montoPoliza) {
 				montoPoliza.value = calcularPoliza(
 					rentaHidden?.value,
 					tipoPoliza.value
 				);
+			}
 		});
 
 		// Cambiar tipo póliza → recalcular

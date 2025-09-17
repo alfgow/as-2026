@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace App\Controllers;
@@ -7,7 +8,10 @@ require_once __DIR__ . '/../Models/InmueblesModel.php';
 require_once __DIR__ . '/../Models/ArrendadorModel.php';
 require_once __DIR__ . '/../Models/AsesorModel.php';
 require_once __DIR__ . '/../Middleware/AuthMiddleware.php';
+require_once __DIR__ . '/../Helpers/NormalizadoHelper.php';
 
+
+use App\Helpers\NormalizadoHelper;
 use App\Models\InmuebleModel;
 use App\Models\ArrendadorModel;
 use App\Models\AsesorModel;
@@ -41,6 +45,8 @@ class InmuebleController
         $this->arrendadorModel = new ArrendadorModel();
         $this->asesorModel = new AsesorModel();
     }
+
+
 
     /**
      * Listado con búsqueda y paginación básica
@@ -95,13 +101,109 @@ class InmuebleController
      */
     public function crear(): void
     {
-        $arrendadores = $this->arrendadorModel->obtenerTodos();
-        $asesores = $this->asesorModel->all();
+        header('Content-Type: application/json; charset=utf-8');
 
-        $title = 'Nuevo inmueble';
-        $headerTitle = 'Nuevo inmueble';
-        $contentView = __DIR__ . '/../Views/inmuebles/form.php';
-        include __DIR__ . '/../Views/layouts/main.php';
+        try {
+            $idArrendador   = $_POST['id_arrendador'] ?? null;
+            $direccion      = trim($_POST['direccion_inmueble'] ?? '');
+            $tipo           = trim($_POST['tipo'] ?? '');
+            $renta          = trim($_POST['renta'] ?? '');
+            $mantenimiento  = trim($_POST['mantenimiento'] ?? '');
+            $deposito       = trim($_POST['deposito'] ?? '');
+            $estacionamiento = isset($_POST['estacionamiento']) ? (int) $_POST['estacionamiento'] : 0;
+            $mascotas       = trim($_POST['mascotas'] ?? '');
+            $comentarios    = trim($_POST['comentarios'] ?? '');
+
+            if (!$idArrendador || !$direccion || !$tipo || !$renta) {
+                echo json_encode(['ok' => false, 'error' => 'Campos obligatorios faltantes']);
+                return;
+            }
+
+            $ok = $this->model->crear([
+                'id_arrendador'   => $idArrendador,
+                'direccion'       => $direccion,
+                'tipo'            => $tipo,
+                'renta'           => $renta,
+                'mantenimiento'   => $mantenimiento,
+                'deposito'        => $deposito,
+                'estacionamiento' => $estacionamiento,
+                'mascotas'        => $mascotas,
+                'comentarios'     => $comentarios,
+            ]);
+
+            if ($ok) {
+                echo json_encode(['ok' => true]);
+            } else {
+                echo json_encode(['ok' => false, 'error' => 'No se pudo guardar el inmueble']);
+            }
+        } catch (\Throwable $e) {
+            echo json_encode(['ok' => false, 'error' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * 🚩 ATENCIÓN:
+     * Esta función ya fue actualizada a DynamoDB (migración completa).
+     * NO volver a modificar para MySQL.
+     */
+    public function guardarAjax(): void
+    {
+        header('Content-Type: application/json; charset=utf-8');
+
+        try {
+            $pk = $_POST['pk'] ?? null;
+
+            // Aplicamos helper lower a todos los strings
+            $calle    = NormalizadoHelper::lower(trim($_POST['calle'] ?? ''));
+            $numExt   = NormalizadoHelper::lower(trim($_POST['num_exterior'] ?? ''));
+            $numInt   = NormalizadoHelper::lower(trim($_POST['num_interior'] ?? ''));
+            $colonia  = NormalizadoHelper::lower(trim($_POST['colonia'] ?? ''));
+            $alcaldia = NormalizadoHelper::lower(trim($_POST['alcaldia'] ?? ''));
+            $ciudad   = NormalizadoHelper::lower(trim($_POST['ciudad'] ?? ''));
+            $cp       = NormalizadoHelper::lower(trim($_POST['codigo_postal'] ?? ''));
+
+            $direccionInmueble = sprintf(
+                "%s %s%s, col. %s, %s, %s, cp %s",
+                $calle,
+                $numExt,
+                $numInt ? " int. $numInt" : "",
+                $colonia,
+                $alcaldia,
+                $ciudad,
+                $cp
+            );
+
+            $tipo               = NormalizadoHelper::lower(trim($_POST['tipo'] ?? ''));
+            $renta              = NormalizadoHelper::lower(trim($_POST['renta'] ?? ''));
+            $mantenimiento      = NormalizadoHelper::lower(trim($_POST['mantenimiento'] ?? ''));
+            $montoMantenimiento = NormalizadoHelper::lower(trim($_POST['monto_mantenimiento'] ?? ''));
+            $deposito           = NormalizadoHelper::lower(trim($_POST['deposito'] ?? ''));
+            $estacionamiento    = isset($_POST['estacionamiento']) ? (int) $_POST['estacionamiento'] : 0;
+            $mascotas           = NormalizadoHelper::lower(trim($_POST['mascotas'] ?? ''));
+            $comentarios        = NormalizadoHelper::lower(trim($_POST['comentarios'] ?? ''));
+
+            if (!$pk || !$direccionInmueble || !$tipo || !$renta) {
+                echo json_encode(['ok' => false, 'error' => 'Campos obligatorios faltantes']);
+                return;
+            }
+
+            $ok = $this->model->crear([
+                'pk'                  => $pk,
+                'direccion_inmueble'  => $direccionInmueble,
+                'tipo'                => $tipo,
+                'renta'               => $renta,
+                'mantenimiento'       => $mantenimiento,
+                'monto_mantenimiento' => $montoMantenimiento,
+                'deposito'            => $deposito,
+                'estacionamiento'     => $estacionamiento,
+                'mascotas'            => $mascotas,
+                'comentarios'         => $comentarios,
+            ]);
+
+            echo json_encode(['ok' => $ok]);
+        } catch (\Throwable $e) {
+            echo json_encode(['ok' => false, 'error' => $e->getMessage()]);
+        }
     }
 
     /**
@@ -170,7 +272,7 @@ class InmuebleController
         }
 
         try {
-            $data = $this->buildInmuebleDataFromPost(/* isUpdate */ true);
+            $data = $this->buildInmuebleDataFromPost(/* isUpdate */true);
 
             $ok = $this->model->actualizar($id, $data);
             echo json_encode(['ok' => (bool)$ok]);
@@ -181,33 +283,41 @@ class InmuebleController
     }
 
     /**
-     * Eliminar (JSON)
+     * Eliminar inmueble (JSON, Dynamo)
      */
     public function delete(): void
     {
-        header('Content-Type: application/json');
+
+        header('Content-Type: application/json; charset=utf-8');
 
         if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
             http_response_code(405);
-            echo json_encode(['ok' => false, 'mensaje' => 'Método no permitido']);
+            echo json_encode(['ok' => false, 'error' => 'Método no permitido']);
             return;
         }
 
-        $id = isset($_POST['id']) ? (int)$_POST['id'] : 0;
-        if ($id <= 0) {
+        $pk = NormalizadoHelper::lower($_POST['pk'] ?? '');
+        $sk = NormalizadoHelper::lower($_POST['sk'] ?? '');
+
+        if (!$pk || !$sk) {
             http_response_code(400);
-            echo json_encode(['ok' => false, 'mensaje' => 'ID inválido']);
+            echo json_encode(['ok' => false, 'error' => 'Parámetros inválidos']);
             return;
         }
 
         try {
-            $ok = $this->model->eliminar($id);
-            echo json_encode(['ok' => (bool)$ok]);
+            $ok = $this->model->eliminar($pk, $sk);
+            echo json_encode(['ok' => $ok]);
         } catch (\Throwable $e) {
             http_response_code(500);
-            echo json_encode(['ok' => false, 'mensaje' => 'Error al eliminar inmueble', 'error' => $e->getMessage()]);
+            echo json_encode([
+                'ok'    => false,
+                'error' => 'Error al eliminar inmueble: ' . $e->getMessage()
+            ]);
         }
     }
+
+
 
     /**
      * Devuelve inmuebles por arrendador (JSON)
