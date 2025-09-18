@@ -32,80 +32,98 @@ class AsesorController
         include __DIR__ . '/../Views/layouts/main.php';
     }
 
-    /**
-     * Muestra el formulario de creación de un asesor
-     */
-    public function create()
+    public function store(): void
     {
-        $title       = 'Nuevo Asesor';
-        $headerTitle = 'Nuevo Asesor';
-        $contentView = __DIR__ . '/../Views/asesores/create.php';
-        include __DIR__ . '/../Views/layouts/main.php';
-    }
+        $this->ensurePost();
 
-    /**
-     * Guarda un nuevo asesor en la base de datos
-     */
-    public function store()
-    {
-        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+        try {
             $data = $this->sanitizarDatos($_POST);
 
             if (!filter_var($data['email'], FILTER_VALIDATE_EMAIL)) {
-                // Aquí podrías agregar manejo de errores con SweetAlert o similar
-                header('Location: ' . getBaseUrl() . '/asesores');
-                exit;
+                throw new \RuntimeException('El correo electrónico no es válido.');
             }
 
-            $this->model->create($data);
+            $id     = $this->model->create($data);
+            $asesor = $this->model->find($id);
+
+            if ($asesor === null) {
+                throw new \RuntimeException('No se pudo recuperar el asesor recién creado.');
+            }
+
+            $this->jsonResponse([
+                'ok'      => true,
+                'message' => 'Asesor creado correctamente.',
+                'asesor'  => $asesor,
+            ]);
+        } catch (\RuntimeException $e) {
+            $this->jsonResponse([
+                'ok'    => false,
+                'error' => $e->getMessage(),
+            ], 400);
         }
-        header('Location: ' . getBaseUrl() . '/asesores');
-        exit;
     }
 
-    /**
-     * Muestra el formulario de edición de un asesor
-     */
-    public function edit()
+    public function update(): void
     {
-        $id = isset($_GET['id']) ? (int) $_GET['id'] : 0;
-        if ($id <= 0) {
-            header('Location: ' . getBaseUrl() . '/asesores');
-            exit;
-        }
+        $this->ensurePost();
 
-        $asesor = $this->model->find($id);
-        if (!$asesor) {
-            header('Location: ' . getBaseUrl() . '/asesores');
-            exit;
-        }
-
-        $title       = 'Editar Asesor';
-        $headerTitle = 'Editar Asesor';
-        $contentView = __DIR__ . '/../Views/asesores/edit.php';
-        include __DIR__ . '/../Views/layouts/main.php';
-    }
-
-    /**
-     * Actualiza los datos de un asesor existente
-     */
-    public function update()
-    {
-        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+        try {
             $id = isset($_POST['id']) ? (int) $_POST['id'] : 0;
-            if ($id > 0) {
-                $data = $this->sanitizarDatos($_POST);
-
-                if (!filter_var($data['email'], FILTER_VALIDATE_EMAIL)) {
-                    header('Location: ' . getBaseUrl() . '/asesores');
-                    exit;
-                }
-
-                $this->model->update($id, $data);
+            if ($id <= 0) {
+                throw new \RuntimeException('Identificador de asesor inválido.');
             }
+
+            $data = $this->sanitizarDatos($_POST);
+
+            if (!filter_var($data['email'], FILTER_VALIDATE_EMAIL)) {
+                throw new \RuntimeException('El correo electrónico no es válido.');
+            }
+
+            $this->model->update($id, $data);
+            $asesor = $this->model->find($id);
+
+            if ($asesor === null) {
+                throw new \RuntimeException('No se pudo recuperar la información actualizada del asesor.');
+            }
+
+            $this->jsonResponse([
+                'ok'      => true,
+                'message' => 'Asesor actualizado correctamente.',
+                'asesor'  => $asesor,
+            ]);
+        } catch (\RuntimeException $e) {
+            $this->jsonResponse([
+                'ok'    => false,
+                'error' => $e->getMessage(),
+            ], 400);
         }
-        header('Location: ' . getBaseUrl() . '/asesores');
-        exit;
+    }
+
+    public function delete(): void
+    {
+        $this->ensurePost();
+
+        try {
+            $id = isset($_POST['id']) ? (int) $_POST['id'] : 0;
+            if ($id <= 0) {
+                throw new \RuntimeException('Identificador de asesor inválido.');
+            }
+
+            if (!$this->model->delete($id)) {
+                throw new \RuntimeException('El asesor tiene inquilinos asignados, reasigna antes de eliminar.');
+            }
+
+            $this->jsonResponse([
+                'ok'      => true,
+                'message' => 'Asesor eliminado correctamente.',
+                'id'      => $id,
+            ]);
+        } catch (\RuntimeException $e) {
+            $this->jsonResponse([
+                'ok'    => false,
+                'error' => $e->getMessage(),
+            ], 400);
+        }
     }
 
     /**
@@ -117,7 +135,28 @@ class AsesorController
             'nombre_asesor' => trim($input['nombre_asesor'] ?? ''),
             'email'         => trim($input['email'] ?? ''),
             'celular'       => trim($input['celular'] ?? ''),
-            'telefono'      => trim($input['telefono'] ?? '')
+            'telefono'      => trim($input['telefono'] ?? ''),
         ];
+    }
+
+    private function ensurePost(): void
+    {
+        if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
+            $this->jsonResponse([
+                'ok'    => false,
+                'error' => 'Método no permitido.',
+            ], 405);
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     */
+    private function jsonResponse(array $payload, int $status = 200): void
+    {
+        http_response_code($status);
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        exit;
     }
 }
