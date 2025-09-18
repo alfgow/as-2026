@@ -234,6 +234,95 @@ class InquilinoController
     }
 
     /**
+     * Actualiza la información laboral del inquilino.
+     */
+    public function editarTrabajo(): void
+    {
+        header('Content-Type: application/json; charset=utf-8');
+
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            http_response_code(405);
+            echo json_encode(['ok' => false, 'error' => 'Metodo no permitido']);
+            return;
+        }
+
+        $pk = trim($_POST['pk'] ?? '');
+        if ($pk === '') {
+            http_response_code(400);
+            echo json_encode(['ok' => false, 'error' => 'PK requerida']);
+            return;
+        }
+
+        $id = (int)($_POST['id'] ?? 0);
+        if ($id <= 0 && preg_match('/^[a-z]+#(\d+)$/i', $pk, $m)) {
+            $id = (int)$m[1];
+        }
+
+        if ($id <= 0) {
+            http_response_code(400);
+            echo json_encode(['ok' => false, 'error' => 'ID invalido']);
+            return;
+        }
+
+        $empresa = trim((string)($_POST['empresa'] ?? ''));
+        $puesto  = trim((string)($_POST['puesto'] ?? ''));
+
+        if ($empresa === '' || $puesto === '') {
+            http_response_code(400);
+            echo json_encode(['ok' => false, 'error' => 'Empresa y puesto son obligatorios']);
+            return;
+        }
+
+        $parseMonto = static function ($valor): ?float {
+            if ($valor === null) {
+                return null;
+            }
+
+            if (!is_string($valor)) {
+                $valor = (string)$valor;
+            }
+
+            $limpio = preg_replace('/[^0-9.,-]/', '', $valor ?? '');
+            $limpio = str_replace(',', '', (string)$limpio);
+            $limpio = trim((string)$limpio);
+
+            if ($limpio === '' || $limpio === '-') {
+                return null;
+            }
+
+            return (float)$limpio;
+        };
+
+        $trabajo = [
+            'empresa'           => $empresa,
+            'puesto'            => $puesto,
+            'direccion_empresa' => trim((string)($_POST['direccion_empresa'] ?? '')),
+            'telefono_empresa'  => trim((string)($_POST['telefono_empresa'] ?? '')),
+            'antiguedad'        => trim((string)($_POST['antiguedad'] ?? '')),
+            'sueldo'            => $parseMonto($_POST['sueldo'] ?? null),
+            'otrosingresos'     => $parseMonto($_POST['otrosingresos'] ?? null),
+            'nombre_jefe'       => trim((string)($_POST['nombre_jefe'] ?? '')),
+            'tel_jefe'          => trim((string)($_POST['tel_jefe'] ?? '')),
+            'web_empresa'       => trim((string)($_POST['web_empresa'] ?? '')),
+        ];
+
+        try {
+            $ok = $this->model->actualizarTrabajoPorPk($pk, $trabajo);
+
+            echo json_encode([
+                'ok'      => $ok,
+                'mensaje' => $ok ? 'Información laboral actualizada.' : 'No fue posible actualizar la información laboral.',
+            ]);
+        } catch (\Throwable $e) {
+            http_response_code(500);
+            echo json_encode([
+                'ok'    => false,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
      * Muestra el detalle de un inquilino a partir del slug amigable.
      */
     public function subirArchivo(): void
