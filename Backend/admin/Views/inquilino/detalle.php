@@ -1537,23 +1537,6 @@ $selfieUrl    = $selfieUrl ?? null;
                     <?php endif; ?>
                 </span>
             </div>
-            <div>
-                <span class="font-semibold text-fuchsia-100">Celular:</span>
-                <span class="inline-flex items-center gap-2 text-white/90">
-                    <span id="celular-asesor"><?= $a['celular'] ?? 'N/A' ?></span>
-                    <?php if (! empty($a['celular'] ?? "")): ?>
-                        <button type="button" class="ml-1 p-1 rounded-full hover:bg-fuchsia-700/30 transition" onclick="copiarAlPortapapeles('celular-asesor')" title="Copiar Celular">
-                            <svg class="w-4 h-4 text-fuchsia-200" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M6 2h9a2 2 0 012 2v16a2 2 0 01-2 2H6a2 2 0 01-2-2V4a2 2 0 012-2z" />
-                            </svg>
-                        </button>
-                    <?php endif; ?>
-                </span>
-            </div>
-            <div>
-                <span class="font-semibold text-fuchsia-100">Teléfono:</span>
-                <span class="block text-white/90"><?= $a['telefono'] ?? 'N/A' ?></span>
-            </div>
         </div>
 
         <!-- Formulario edición (oculto) -->
@@ -1562,15 +1545,21 @@ $selfieUrl    = $selfieUrl ?? null;
             <input type="hidden" name="id_inquilino" value="<?= $profile['id']; ?>">
             <div class="md:col-span-2">
                 <label class="block font-semibold text-fuchsia-100 mb-2">Selecciona el asesor asignado</label>
-                <select name="id_asesor" required class="w-full bg-white/70 text-black border border-fuchsia-300/40 rounded-lg px-3 py-2 focus:ring-2 focus:ring-fuchsia-400 outline-none">
+                <select name="asesor_pk" required class="w-full bg-white/70 text-black border border-fuchsia-300/40 rounded-lg px-3 py-2 focus:ring-2 focus:ring-fuchsia-400 outline-none">
                     <option value="">Selecciona...</option>
                     <?php foreach ($asesores as $asesor): ?>
-                        <option value="<?= $asesor['id']; ?>" <?php if (! empty($a['id'] ?? "") && $a['id'] == $asesor['id'] ?? "") {
-                                                                    echo 'selected';
-                                                                }
-                                                                ?>>
-                            <?= htmlspecialchars($asesor['nombre_asesor'] ?? "") . ' (' . htmlspecialchars($asesor['email'] ?? "") . ')'; ?>
-                        </option>
+                        <?php
+                        $pkOption = strtolower((string) ($asesor['pk'] ?? ''));
+                        if ($pkOption === '' && !empty($asesor['id'])) {
+                            $pkOption = 'ase#' . (int) $asesor['id'];
+                        }
+                        ?>
+                        <option value="<?= htmlspecialchars($pkOption); ?>" <?php
+                            $pkActual = strtolower((string) ($profile['asesor_pk'] ?? $a['pk'] ?? ''));
+                            if ($pkActual !== '' && $pkOption === $pkActual) {
+                                echo 'selected';
+                            }
+                        ?>><?= htmlspecialchars($asesor['nombre_asesor'] ?? ""); ?></option>
                     <?php endforeach; ?>
                 </select>
             </div>

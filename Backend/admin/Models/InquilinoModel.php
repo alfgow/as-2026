@@ -6,6 +6,7 @@ namespace App\Models;
 
 require_once __DIR__ . '/../Core/Dynamo.php';
 require_once __DIR__ . '/../Helpers/S3Helper.php';
+require_once __DIR__ . '/AsesorModel.php';
 
 use App\Core\Dynamo;
 use App\Helpers\S3Helper;
@@ -1197,6 +1198,81 @@ class InquilinoModel
     }
 
     /**
+     * Sincroniza el asesor asignado al inquilino en DynamoDB.
+     *
+     * @param array<string, mixed> $asesorData
+     * @return array<string, mixed> Datos del asesor persistidos en el perfil del inquilino.
+     */
+    public function cambiarAsesor(int $idInquilino, array $asesorData): array
+    {
+        $pk = $this->resolvePkById($idInquilino);
+        if (!$pk) {
+            throw new \RuntimeException('Inquilino no encontrado.');
+        }
+
+        $profile = $this->fetchItem($pk, 'profile');
+        if (!$profile) {
+            throw new \RuntimeException('Perfil del inquilino no disponible.');
+        }
+
+        $nuevoId = (int) ($asesorData['id'] ?? 0);
+        if ($nuevoId <= 0) {
+            throw new \RuntimeException('Asesor inválido.');
+        }
+
+        $nuevoPk = sprintf('ase#%d', $nuevoId);
+        $asesorPk = strtolower((string) ($asesorData['pk'] ?? ''));
+        if ($asesorPk === '' || !preg_match('/^ase#\d+$/', $asesorPk)) {
+            $asesorPk = $nuevoPk;
+        }
+
+        $asesorPayload = [
+            'id'            => $nuevoId,
+            'pk'            => $asesorPk,
+            'nombre_asesor' => (string) ($asesorData['nombre_asesor'] ?? ''),
+            'email'         => (string) ($asesorData['email'] ?? ''),
+        ];
+
+        $prevAsesorId = null;
+        if (isset($profile['asesor_id']) && (int)$profile['asesor_id'] > 0) {
+            $prevAsesorId = (int)$profile['asesor_id'];
+        } elseif (!empty($profile['asesor']['id'])) {
+            $prevAsesorId = (int)$profile['asesor']['id'];
+        } elseif (!empty($profile['asesor_pk']) && preg_match('/^ase#(\d+)$/i', (string)$profile['asesor_pk'], $m)) {
+            $prevAsesorId = (int)$m[1];
+        }
+
+        $prevAsesorPk = $prevAsesorId ? sprintf('ase#%d', $prevAsesorId) : null;
+
+        $this->client->updateItem([
+            'TableName' => $this->table,
+            'Key'       => [
+                'pk' => ['S' => $pk],
+                'sk' => ['S' => 'profile'],
+            ],
+            'UpdateExpression'          => 'SET asesor_id = :asesor_id, asesor_pk = :asesor_pk, asesor = :asesor',
+            'ExpressionAttributeValues' => [
+                ':asesor_id' => ['N' => (string) $nuevoId],
+                ':asesor_pk' => ['S' => $asesorPk],
+                ':asesor'    => $this->marshaler->marshalValue($asesorPayload),
+            ],
+        ]);
+
+        $asesorModel = new AsesorModel();
+        $asesorModel->agregarInquilino($nuevoId, $pk);
+
+        if ($prevAsesorPk !== null && $prevAsesorPk !== $nuevoPk) {
+            try {
+                $asesorModel->removerInquilino((int) $prevAsesorId, $pk);
+            } catch (\Throwable $e) {
+                error_log('⚠️ No se pudo remover al inquilino del asesor anterior: ' . $e->getMessage());
+            }
+        }
+
+        return $asesorPayload;
+    }
+
+    /**
      * Obtiene el sueldo declarado en el perfil del inquilino (si existe).
      */
     public function obtenerSueldoDeclarado(int $idInquilino): ?float
@@ -1319,7 +1395,7 @@ class InquilinoModel
                 'id'      => $row['id'],
                 'nombre'  => $row['nombre'],
                 'email'   => $row['email'],
-                'telefono'=> $row['celular'],
+                'celular' => $row['celular'],
                 'tipo'    => $row['tipo'] ?? 'inquilino',
             ];
         }, $rows);

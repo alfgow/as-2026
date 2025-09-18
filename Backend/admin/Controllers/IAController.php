@@ -234,7 +234,12 @@ class IAController
                 $idInquilino = (int)$r['id'];
 
                 // --- Info base del inquilino ---
-                $info = "Sí, tenemos registrado a {$r['nombre']} con correo {$r['email']} y teléfono {$r['telefono']}.";
+                $celular = $r['celular'] ?? '';
+                $info = "Sí, tenemos registrado a {$r['nombre']} con correo {$r['email']}";
+                if ($celular !== '') {
+                    $info .= " y celular {$celular}";
+                }
+                $info .= '.';
 
                 // --- Pólizas vigentes ---
                 $db  = (new \App\Core\Database())->getDB();
