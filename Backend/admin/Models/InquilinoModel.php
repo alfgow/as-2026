@@ -960,6 +960,71 @@ class InquilinoModel
     }
 
     /**
+     * Actualiza el historial de vivienda almacenado en el profile.
+     */
+    public function actualizarHistorialViviendaPorPk(string $pk, array $historial): bool
+    {
+        $pk = trim($pk);
+        if ($pk === '') {
+            return false;
+        }
+
+        $payload = [];
+        foreach ($historial as $campo => $valor) {
+            if (!is_string($campo)) {
+                continue;
+            }
+
+            if ($campo === 'monto_renta_actual') {
+                if ($valor === null || $valor === '') {
+                    $payload[$campo] = null;
+                } elseif (is_numeric($valor)) {
+                    $payload[$campo] = (float)$valor;
+                } else {
+                    if (!is_string($valor)) {
+                        $valor = (string)$valor;
+                    }
+                    $limpio = preg_replace('/[^0-9.,-]/', '', $valor);
+                    $limpio = str_replace(',', '', (string)$limpio);
+                    $limpio = trim((string)$limpio);
+                    $payload[$campo] = $limpio === '' || $limpio === '-' ? null : (float)$limpio;
+                }
+                continue;
+            }
+
+            if ($valor === null) {
+                $payload[$campo] = null;
+                continue;
+            }
+
+            if (!is_string($valor)) {
+                $valor = (string)$valor;
+            }
+
+            $valor = trim($valor);
+            $payload[$campo] = $valor === '' ? null : $valor;
+        }
+
+        if (!$payload) {
+            return false;
+        }
+
+        $this->client->updateItem([
+            'TableName' => $this->table,
+            'Key'       => [
+                'pk' => ['S' => $pk],
+                'sk' => ['S' => 'profile'],
+            ],
+            'UpdateExpression'          => 'SET historial_vivienda = :historial',
+            'ExpressionAttributeValues' => [
+                ':historial' => $this->marshaler->marshalValue($payload),
+            ],
+        ]);
+
+        return true;
+    }
+
+    /**
      * Obtiene el snapshot de validaciones normalizado.
      */
     public function obtenerValidaciones(int $idInquilino): array
