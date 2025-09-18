@@ -6,6 +6,7 @@ namespace App\Controllers;
 
 require_once __DIR__ . '/../Middleware/AuthMiddleware.php';
 require_once __DIR__ . '/../Models/InquilinoModel.php';
+require_once __DIR__ . '/../Models/AsesorModel.php';
 require_once __DIR__ . '/../Helpers/NormalizadoHelper.php';
 require_once __DIR__ . '/../Helpers/S3Helper.php';
 require_once __DIR__ . '/../Helpers/SlugHelper.php';
@@ -14,18 +15,21 @@ use App\Helpers\NormalizadoHelper;
 use App\Helpers\S3Helper;
 use App\Helpers\SlugHelper;
 use App\Middleware\AuthMiddleware;
+use App\Models\AsesorModel;
 use App\Models\InquilinoModel;
 
 class InquilinoController
 {
     /** @var InquilinoModel */
     private $model;
+    private AsesorModel $asesorModel;
 
     public function __construct()
     {
         // Verificación de sesión en cada request del controlador
         AuthMiddleware::verificarSesion();
         $this->model = new InquilinoModel();
+        $this->asesorModel = new AsesorModel();
     }
 
     /**
@@ -944,6 +948,19 @@ class InquilinoController
         $validaciones = $inquilino['validaciones'] ?? [];
         $polizas = $inquilino['polizas'] ?? [];
 
+        $asesorActual = $this->resolverAsesorDesdeProfile($profile);
+        if ($asesorActual !== null) {
+            $profile['asesor']    = $asesorActual;
+            $profile['asesor_id'] = $asesorActual['id'] ?? ($profile['asesor_id'] ?? null);
+            if (!isset($profile['asesor_pk']) && isset($asesorActual['pk'])) {
+                $profile['asesor_pk'] = $asesorActual['pk'];
+            }
+        } else {
+            $profile['asesor'] = [];
+        }
+
+        $asesores = $this->asesorModel->all();
+
         $s3 = new S3Helper('inquilinos');
         foreach ($archivos as &$archivo) {
             if (!empty($archivo['s3_key'])) {
@@ -969,5 +986,88 @@ class InquilinoController
         $contentView = __DIR__ . '/../Views/inquilino/detalle.php';
 
         include __DIR__ . '/../Views/layouts/main.php';
+    }
+
+    /**
+     * @param array<string, mixed> $profile
+     * @return array<string, mixed>|null
+     */
+    private function resolverAsesorDesdeProfile(array $profile): ?array
+    {
+        $asesor = $profile['asesor'] ?? null;
+        if (is_array($asesor) && !empty($asesor)) {
+            if (!isset($asesor['id']) && isset($asesor['pk']) && preg_match('/^ASE#(\d+)$/i', (string) $asesor['pk'], $m)) {
+                $asesor['id'] = (int) $m[1];
+            }
+            if (!isset($asesor['pk']) && isset($asesor['id'])) {
+                $asesor['pk'] = sprintf('ASE#%d', (int) $asesor['id']);
+            }
+            return $asesor;
+        }
+
+        $asesorId = null;
+        if (isset($profile['asesor_id']) && (int) $profile['asesor_id'] > 0) {
+            $asesorId = (int) $profile['asesor_id'];
+        } elseif (!empty($profile['asesor_pk']) && preg_match('/^ASE#(\d+)$/i', (string) $profile['asesor_pk'], $m)) {
+            $asesorId = (int) $m[1];
+        }
+
+        if (!$asesorId) {
+            return null;
+        }
+
+        $asesorData = $this->asesorModel->find($asesorId);
+        if ($asesorData === null) {
+            return null;
+        }
+
+        if (!isset($asesorData['pk'])) {
+            $asesorData['pk'] = sprintf('ASE#%d', (int) ($asesorData['id'] ?? $asesorId));
+        }
+
+        return $asesorData;
+    }
+
+    public function editarAsesor(): void
+    {
+        header('Content-Type: application/json; charset=utf-8');
+
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            http_response_code(405);
+            echo json_encode(['ok' => false, 'error' => 'Método no permitido']);
+            return;
+        }
+
+        $idInquilino = (int) ($_POST['id_inquilino'] ?? 0);
+        $idAsesor    = (int) ($_POST['id_asesor'] ?? 0);
+
+        if ($idInquilino <= 0 || $idAsesor <= 0) {
+            http_response_code(400);
+            echo json_encode(['ok' => false, 'error' => 'Parámetros inválidos']);
+            return;
+        }
+
+        try {
+            $asesor = $this->asesorModel->find($idAsesor);
+            if (!$asesor) {
+                http_response_code(404);
+                echo json_encode(['ok' => false, 'error' => 'Asesor no encontrado']);
+                return;
+            }
+
+            $payload = $this->model->cambiarAsesor($idInquilino, $asesor);
+
+            echo json_encode([
+                'ok'      => true,
+                'mensaje' => 'Asesor actualizado.',
+                'asesor'  => $payload,
+            ]);
+        } catch (\Throwable $e) {
+            http_response_code(500);
+            echo json_encode([
+                'ok'    => false,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 }
