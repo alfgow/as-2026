@@ -279,6 +279,12 @@ class InquilinoValidacionAWSController
         }
     }
 
+    public function obtenerArchivosPorSlug(string $slug): void
+    {
+        $_GET['slug'] = $slug;
+        $this->obtenerArchivos();
+    }
+
     private function isCURP(string $s): bool
     {
         return preg_match(

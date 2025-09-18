@@ -12,43 +12,25 @@
 
 	// Guardar pago inicial en backend
 	async function savePagoInicial(checked) {
-		const resumen = checked
-			? "Se reportó pago inicial"
-			: "Se retiró el reporte de pago inicial";
-		const jsonPayload = JSON.stringify({
-			proceso_pago_inicial: checked ? 1 : 0,
-			resumen,
-			fecha_registro: new Date().toISOString(),
-		});
-
-		const fd = new FormData();
-		fd.append("id_inquilino", String(idInq));
-		fd.append("proceso_pago_inicial", checked ? "1" : "0");
-		fd.append("pago_inicial", jsonPayload);
-
-		const r = await fetch(`${adminBase}/inquilino/editar-validaciones`, {
-			method: "POST",
-			body: fd,
-			credentials: "include",
-		});
-		const j = await r.json();
-		if (!j?.ok) throw new Error(j?.error || "No se pudo guardar cambios");
-		return true;
+		const toggle = document.getElementById("toggle-pago_inicial");
+		if (!toggle) return;
+		toggle.checked = !!checked;
+		await window.saveSwitch('pago_inicial');
 	}
 
 	// Attach listener al switch
 	function attachPagoInicialAutosave() {
-		const chk = document.getElementById("toggle-pago");
-		if (!chk) return;
+		const chk = document.getElementById("toggle-pago_inicial");
+		if (!chk || chk.getAttribute("onchange")) return;
 
 		chk.addEventListener("change", async (e) => {
 			const checked = !!e.target.checked;
-			setText("#toggle-pago-label", "Guardando…");
+			setText("#toggle-pago_inicial-label", "Guardando…");
 			setText("#pago-status-msg", "");
 
 			try {
 				await savePagoInicial(checked);
-				setText("#toggle-pago-label", checked ? "OK" : "");
+				setText("#toggle-pago_inicial-label", checked ? "Confirmado" : "Pendiente");
 				setText(
 					"#pago-status-msg",
 					checked
@@ -61,7 +43,7 @@
 			} catch (err) {
 				// revertir el switch
 				e.target.checked = !checked;
-				setText("#toggle-pago-label", e.target.checked ? "OK" : "");
+				setText("#toggle-pago_inicial-label", e.target.checked ? "Confirmado" : "Pendiente");
 				setText(
 					"#pago-status-msg",
 					"Error al guardar. Intenta de nuevo."

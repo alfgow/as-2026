@@ -1,3 +1,5 @@
 # Credenciales locales (no versionar)
 admin/config/credentials.local.php
 admin/migration/
+codex-playground/
+.vscode/

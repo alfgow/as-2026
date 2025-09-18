@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 // admin/Controllers/ValidacionIdentidadController.php
@@ -81,8 +82,8 @@ class ValidacionIdentidadController
 
         // 4) Variables de layout / vista
         $nombreCompleto = trim(($inquilino['nombre_inquilino'] ?? '') . ' ' .
-                               ($inquilino['apellidop_inquilino'] ?? '') . ' ' .
-                               ($inquilino['apellidom_inquilino'] ?? ''));
+            ($inquilino['apellidop_inquilino'] ?? '') . ' ' .
+            ($inquilino['apellidom_inquilino'] ?? ''));
         $title       = 'Validar Identidad - ' . trim($nombreCompleto);
         $headerTitle = 'Validación de Identidad';
 
@@ -143,6 +144,7 @@ class ValidacionIdentidadController
      */
     public function resultado(string $slug): void
     {
+        $s3    = new S3Helper('inquilinos');
         if ($slug === '') {
             http_response_code(404);
             echo 'Inquilino no encontrado';
@@ -158,18 +160,29 @@ class ValidacionIdentidadController
             exit;
         }
 
-        $nombreCompleto = trim(($inquilino['nombre_inquilino'] ?? '') . ' ' .
-                               ($inquilino['apellidop_inquilino'] ?? '') . ' ' .
-                               ($inquilino['apellidom_inquilino'] ?? ''));
-        $title       = 'Resultado Validación - ' . trim($nombreCompleto);
+        $nombreCompleto = trim(
+            ($inquilino['nombre_inquilino'] ?? '') . ' ' .
+                ($inquilino['apellidop_inquilino'] ?? '') . ' ' .
+                ($inquilino['apellidom_inquilino'] ?? '')
+        );
+
+        $title       = 'Resultado Validación - ' . $nombreCompleto;
         $headerTitle = 'Resultado de Validación';
 
-        // Variables para la vista blanca de resultados (según tu requerimiento del 02-ago)
-        $slug      = $slug;
-        $inquilino = $inquilino;
+        // ✅ Generar presigned URLs para los archivos
+        $archivos = $inquilino['archivos'] ?? [];
+        if (!empty($archivos)) {
+            foreach ($archivos as &$archivo) {
+                if (!empty($archivo['s3_key'])) {
+                    $archivo['url'] = $s3->getPresignedUrl($archivo['s3_key']);
+                }
+            }
+            unset($archivo);
+            $inquilino['archivos'] = $archivos;
+        }
 
-        // Render
+        // Render directo (sin layout main)
         $contentView = __DIR__ . '/../Views/inquilino/validacion_identidad_resultado.php';
-        include __DIR__ . '/../Views/layouts/main.php';
+        include $contentView;
     }
 }

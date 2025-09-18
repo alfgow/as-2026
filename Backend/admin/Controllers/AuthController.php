@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Controllers;
 
 require_once __DIR__ . '/../Helpers/url.php';
@@ -65,7 +66,6 @@ class AuthController
         $user     = trim($_POST['user'] ?? '');
         $password = trim($_POST['password'] ?? '');
 
-
         if ($user === '' || $password === '') {
             $this->showLoginForm('Usuario y contraseña requeridos.');
             return;
@@ -74,7 +74,7 @@ class AuthController
         $userModel = new UserModel();
         $loginUser = $userModel->findByUser($user);
 
-        if ($loginUser && password_verify($password, $loginUser['password'])) {
+        if ($loginUser && !empty($loginUser['password']) && password_verify($password, $loginUser['password'])) {
             // 🔒 importante en login
             session_regenerate_id(true);
 
@@ -84,6 +84,7 @@ class AuthController
                 'usuario'       => $loginUser['usuario'],
                 'tipo'          => $loginUser['tipo_usuario'],
                 'corto_usuario' => $loginUser['corto_usuario'],
+                'email'         => $loginUser['mail_usuario'] ?? '',
             ];
             $_SESSION['flash'] = '¡Bienvenido, ' . htmlspecialchars($loginUser['nombre_usuario']) . '!';
 

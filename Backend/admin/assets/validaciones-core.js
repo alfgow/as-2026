@@ -37,6 +37,19 @@ const setText = (sel, txt) => {
 };
 const pct = (n) => Math.max(0, Math.min(100, Math.round(n)));
 
+const globalLoader = document.getElementById('global-loader');
+
+function vhShowLoader() {
+	if (globalLoader) globalLoader.classList.remove('hidden');
+}
+
+function vhHideLoader() {
+	if (globalLoader) globalLoader.classList.add('hidden');
+}
+
+window.vhShowLoader = vhShowLoader;
+window.vhHideLoader = vhHideLoader;
+
 function vhIcon(v) {
 	const n = Number(v);
 	if (n === 1) return "✅";
@@ -96,6 +109,30 @@ async function loadStatus() {
 	setPill("ingresos", sem.ingresos);
 	setPill("pago", sem.pago_inicial);
 	setPill("demandas", sem.demandas);
+
+	const toggleMap = {
+		archivos: "archivos",
+		rostro: "rostro",
+		identidad: "identidad",
+		verificamex: "verificamex",
+		ingresos: "ingresos",
+		pago_inicial: "pago_inicial",
+		demandas: "demandas",
+	};
+
+	Object.entries(toggleMap).forEach(([domKey, semKey]) => {
+		if (typeof sem[semKey] === "undefined") return;
+		const value = Number(sem[semKey]);
+		const chk = document.getElementById(`toggle-${domKey}`);
+		if (chk) chk.checked = value === 1;
+		const label = document.getElementById(`toggle-${domKey}-label`);
+		if (label) {
+			label.textContent =
+				value === 1 ? "Confirmado" : value === 0 ? "No OK" : "Pendiente";
+		}
+	});
+
+	actualizarStatusAutomatico(sem);
 
 	// 🔎 Categorías actualizadas (incluye verificamex)
 	// Construir categorías dinámicas según backend
@@ -162,6 +199,8 @@ async function loadStatus() {
 		updateChipsRostro(window.__VH_DETALLES__, R);
 	if (typeof updateChipsIdentidad === "function")
 		updateChipsIdentidad(identidadInfo, R);
+
+	return { semaforos: sem, resumenes: R };
 }
 
 // =====================
@@ -298,75 +337,16 @@ window.recalc = async function (check) {
 	await loadStatus();
 };
 
-window.savePagoInicial = async function () {
-	const chk = document.getElementById("toggle-pago");
-	const fd = new FormData();
-	fd.append("id_inquilino", String(VH_CTX.idInq));
-	fd.append("proceso_pago_inicial", chk?.checked ? "1" : "0");
-	fd.append(
-		"pago_inicial_resumen",
-		chk?.checked ? "Pago inicial confirmado" : "Pago inicial no confirmado"
-	);
-	const r = await fetch(`${VH_CTX.adminBase}/inquilino/editar-validaciones`, {
-		method: "POST",
-		body: fd,
-		credentials: "include",
-	});
-	const j = await r.json();
-	if (!j?.ok) throw new Error(j?.error || "No se pudo guardar");
-	await loadStatus();
+window.savePagoInicial = function () {
+	return window.saveSwitch('pago_inicial');
 };
 
-window.saveArchivos = async function () {
-	const chk = document.getElementById("toggle-archivos");
-	const fd = new FormData();
-	fd.append("id_inquilino", String(VH_CTX.idInq));
-
-	// ✅ ON = 1 (activo), OFF = 2 (pendiente)
-	const estado = chk.checked ? 1 : 2;
-	fd.append("proceso_validacion_archivos", estado.toString());
-
-	fd.append(
-		"validacion_archivos_resumen",
-		chk.checked
-			? "Validación de archivos completada manualmente"
-			: "Validación de archivos pendiente"
-	);
-
-	try {
-		const r = await fetch(
-			`${VH_CTX.adminBase}/inquilino/editar-validaciones`,
-			{
-				method: "POST",
-				body: fd,
-				credentials: "include",
-			}
-		);
-
-		const j = await r.json();
-
-		if (!j?.ok) {
-			console.error(
-				"Error:",
-				j?.error || "No se pudo guardar validación de archivos"
-			);
-			// Revertir el cambio visual si falla
-			chk.checked = !chk.checked;
-			alert("Error al guardar: " + (j?.error || "Intente nuevamente"));
-			return;
-		}
-
-		console.log("Estado guardado correctamente:", estado);
-		await loadStatus(); // refresca chips y progreso
-	} catch (error) {
-		console.error("Error en la solicitud:", error);
-		// Revertir el cambio visual si falla
-		chk.checked = !chk.checked;
-		alert("Error de conexión. Intente nuevamente.");
-	}
+window.saveArchivos = function () {
+	return window.saveSwitch('archivos');
 };
 window.saveSwitch = async function (campo) {
 	const chk = document.getElementById(`toggle-${campo}`);
+	if (!chk) return;
 	const fd = new FormData();
 	fd.append("id_inquilino", String(VH_CTX.idInq));
 
@@ -387,7 +367,8 @@ window.saveSwitch = async function (campo) {
 		return;
 	}
 
-	fd.append(col, chk?.checked ? "1" : "2");
+	const estado = chk.checked ? "1" : "2";
+	fd.append(col, estado);
 
 	// 👇 Ajustar nombre del resumen según campo
 	let resumenKey;
@@ -410,30 +391,94 @@ window.saveSwitch = async function (campo) {
 			: `Validación de ${campo} pendiente`
 	);
 
-	const r = await fetch(`${VH_CTX.adminBase}/inquilino/editar-validaciones`, {
-		method: "POST",
-		body: fd,
-		credentials: "include",
-	});
-	const j = await r.json();
-	if (!j?.ok)
-		throw new Error(
-			j?.error || `No se pudo guardar validación de ${campo}`
-		);
-	await loadStatus();
+	const payload = {
+		origen: "manual",
+		estado:
+			estado === "1"
+				? "confirmado"
+				: (estado === "0" ? "no_ok" : "pendiente"),
+		timestamp: new Date().toISOString(),
+		campo,
+	};
+
+	fd.append(`${col}_json`, JSON.stringify(payload));
+
+	try {
+		vhShowLoader();
+		const r = await fetch(`${VH_CTX.adminBase}/inquilino/editar-validaciones`, {
+			method: "POST",
+			body: fd,
+			credentials: "include",
+		});
+		const j = await r.json().catch(() => ({}));
+		vhHideLoader();
+		if (!r.ok || !j?.ok) {
+			throw new Error(
+				j?.error || `No se pudo guardar validación de ${campo}`
+			);
+		}
+		const status = await loadStatus();
+		actualizarStatusAutomatico(status?.semaforos || {});
+	} catch (error) {
+		console.error(error);
+		vhHideLoader();
+		chk.checked = !chk.checked;
+		alert(error.message || `No se pudo guardar validación de ${campo}`);
+	}
 };
 
-window.runIngresosProceso = async function (tipo) {
-	// tipo puede ser 'ingresos_list' o 'ingresos_ocr'
-	Swal.fire({
-		title: "Procesando...",
-		text: "Estamos validando los ingresos, por favor espera.",
-		allowOutsideClick: false,
-		didOpen: () => {
-			Swal.showLoading();
-		},
+function actualizarStatusAutomatico(sem = {}) {
+	const keys = [
+		'archivos',
+		'rostro',
+		'identidad',
+		'verificamex',
+		'ingresos',
+		'pago_inicial',
+		'demandas',
+	];
+	let verdes = 0;
+	keys.forEach((k) => {
+		if (Number(sem[k]) === 1) verdes++;
 	});
 
+	let nuevoStatus = null;
+	if (verdes >= 6) nuevoStatus = '2'; // Aprobado
+	else if (verdes >= 1) nuevoStatus = '3'; // En proceso
+	else nuevoStatus = '1';
+
+	const select = document.getElementById('select-status');
+	if (!select) return;
+
+	if (select.value === nuevoStatus) return;
+	select.value = nuevoStatus;
+	actualizarStatusBackend(nuevoStatus);
+}
+
+async function actualizarStatusBackend(status) {
+	try {
+		vhShowLoader();
+		const fd = new FormData();
+		fd.append('id_inquilino', String(VH_CTX.idInq));
+		fd.append('status', status);
+		const res = await fetch(`${VH_CTX.adminBase}/inquilino/editar-status`, {
+			method: 'POST',
+			body: fd,
+			credentials: 'include',
+		});
+		const j = await res.json().catch(() => ({}));
+		vhHideLoader();
+		if (!res.ok || !j?.ok) {
+			throw new Error(j?.error || 'No se pudo actualizar status');
+		}
+	} catch (err) {
+		vhHideLoader();
+		console.error(err);
+	}
+}
+
+window.runIngresosProceso = async function (tipo) {
+	vhShowLoader();
 	try {
 		const url = `${VH_CTX.adminBase}/inquilino/${encodeURIComponent(
 			VH_CTX.slug
@@ -448,25 +493,12 @@ window.runIngresosProceso = async function (tipo) {
 			renderIngresos(j.resultado);
 		}
 
-		Swal.fire({
-			icon: "success",
-			title: "Ingresos procesados",
-			text:
-				j.mensaje ||
-				"La validación de ingresos se completó correctamente.",
-			timer: 3000,
-			showConfirmButton: false,
-		});
-
-		// refrescamos estado
 		await loadStatus();
 	} catch (e) {
 		console.error(e);
-		Swal.fire({
-			icon: "error",
-			title: "Error",
-			text: e.message || "No fue posible validar los ingresos.",
-		});
+		alert(e.message || "No fue posible validar los ingresos.");
+	} finally {
+		vhHideLoader();
 	}
 };
 function renderIngresos(resultado) {
@@ -504,39 +536,10 @@ document.addEventListener("DOMContentLoaded", () => {
 	selStatus.addEventListener("change", async () => {
 		const nuevoStatus = selStatus.value;
 		try {
-			const fd = new FormData();
-			fd.append("id_inquilino", String(VH_CTX.idInq));
-			fd.append("status", nuevoStatus);
-
-			const res = await fetch(
-				`${VH_CTX.adminBase}/inquilino/editar-status`,
-				{
-					method: "POST",
-					body: fd,
-					credentials: "include",
-				}
-			);
-
-			const j = await res.json();
-			if (j.ok) {
-				Swal.fire({
-					icon: "success",
-					title: "Estatus actualizado",
-					text: "El estatus del inquilino se guardó correctamente",
-					timer: 2000,
-					showConfirmButton: false,
-				});
-				await loadStatus(); // refresca barra y chips
-			} else {
-				Swal.fire(
-					"Error",
-					j.mensaje || "No se pudo actualizar el estatus",
-					"error"
-				);
-			}
+			await actualizarStatusBackend(nuevoStatus);
 		} catch (e) {
 			console.error(e);
-			Swal.fire("Error", "Error de conexión con el servidor", "error");
+			alert(e.message || "Error al actualizar el status");
 		}
 	});
 });
