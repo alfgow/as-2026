@@ -323,6 +323,82 @@ class InquilinoController
     }
 
     /**
+     * Actualiza la información del inmueble en garantía registrado para el fiador.
+     */
+    public function editarFiador(): void
+    {
+        header('Content-Type: application/json; charset=utf-8');
+
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            http_response_code(405);
+            echo json_encode(['ok' => false, 'error' => 'Metodo no permitido']);
+            return;
+        }
+
+        $pk = trim($_POST['pk'] ?? '');
+        if ($pk === '') {
+            http_response_code(400);
+            echo json_encode(['ok' => false, 'error' => 'PK requerida']);
+            return;
+        }
+
+        $id = (int)($_POST['id'] ?? 0);
+        if ($id <= 0 && preg_match('/^[a-z]+#(\d+)$/i', $pk, $m)) {
+            $id = (int)$m[1];
+        }
+
+        if ($id <= 0) {
+            http_response_code(400);
+            echo json_encode(['ok' => false, 'error' => 'ID invalido']);
+            return;
+        }
+
+        $fiador = [
+            'calle_inmueble'   => trim((string)($_POST['calle_inmueble'] ?? '')),
+            'num_ext_inmueble' => trim((string)($_POST['num_ext_inmueble'] ?? '')),
+            'num_int_inmueble' => trim((string)($_POST['num_int_inmueble'] ?? '')),
+            'colonia_inmueble' => trim((string)($_POST['colonia_inmueble'] ?? '')),
+            'alcaldia_inmueble'=> trim((string)($_POST['alcaldia_inmueble'] ?? '')),
+            'estado_inmueble'  => trim((string)($_POST['estado_inmueble'] ?? '')),
+            'numero_escritura' => trim((string)($_POST['numero_escritura'] ?? '')),
+            'numero_notario'   => trim((string)($_POST['numero_notario'] ?? '')),
+            'estado_notario'   => trim((string)($_POST['estado_notario'] ?? '')),
+            'folio_real'       => trim((string)($_POST['folio_real'] ?? '')),
+        ];
+
+        $camposRequeridos = [
+            'calle_inmueble',
+            'num_ext_inmueble',
+            'colonia_inmueble',
+            'alcaldia_inmueble',
+            'estado_inmueble',
+        ];
+
+        foreach ($camposRequeridos as $campo) {
+            if ($fiador[$campo] === '') {
+                http_response_code(400);
+                echo json_encode(['ok' => false, 'error' => 'Completa todos los campos obligatorios del inmueble']);
+                return;
+            }
+        }
+
+        try {
+            $ok = $this->model->actualizarFiadorPorPk($pk, $fiador);
+
+            echo json_encode([
+                'ok'      => $ok,
+                'mensaje' => $ok ? 'Datos del fiador actualizados.' : 'No fue posible actualizar la información del fiador.',
+            ]);
+        } catch (\Throwable $e) {
+            http_response_code(500);
+            echo json_encode([
+                'ok'    => false,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
      * Muestra el detalle de un inquilino a partir del slug amigable.
      */
     public function subirArchivo(): void

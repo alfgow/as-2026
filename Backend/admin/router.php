@@ -396,6 +396,12 @@ switch (true) {
         exit;
         break;
 
+    case $uri === '/inquilino/editar_fiador' && $_SERVER['REQUEST_METHOD'] === 'POST':
+        require __DIR__ . '/Controllers/InquilinoController.php';
+        (new \App\Controllers\InquilinoController())->editarFiador();
+        exit;
+        break;
+
     case $uri === '/financieros' || $uri === '/financieros/index':
         require __DIR__ . '/Controllers/FinancieroController.php';
         (new \App\Controllers\FinancieroController())->index();
