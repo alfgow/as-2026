@@ -399,6 +399,83 @@ class InquilinoController
     }
 
     /**
+     * Actualiza el historial de vivienda del inquilino.
+     */
+    public function editarHistorialVivienda(): void
+    {
+        header('Content-Type: application/json; charset=utf-8');
+
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            http_response_code(405);
+            echo json_encode(['ok' => false, 'error' => 'Metodo no permitido']);
+            return;
+        }
+
+        $pk = trim((string)($_POST['pk'] ?? ''));
+        if ($pk === '') {
+            http_response_code(400);
+            echo json_encode(['ok' => false, 'error' => 'PK requerida']);
+            return;
+        }
+
+        $id = (int)($_POST['id'] ?? 0);
+        if ($id <= 0 && preg_match('/^[a-z]+#(\d+)$/i', $pk, $m)) {
+            $id = (int)$m[1];
+        }
+
+        if ($id <= 0) {
+            http_response_code(400);
+            echo json_encode(['ok' => false, 'error' => 'ID invalido']);
+            return;
+        }
+
+        $parseMonto = static function ($valor): ?float {
+            if ($valor === null) {
+                return null;
+            }
+
+            if (!is_string($valor)) {
+                $valor = (string)$valor;
+            }
+
+            $limpio = preg_replace('/[^0-9.,-]/', '', $valor ?? '');
+            $limpio = str_replace(',', '', (string)$limpio);
+            $limpio = trim((string)$limpio);
+
+            if ($limpio === '' || $limpio === '-') {
+                return null;
+            }
+
+            return (float)$limpio;
+        };
+
+        $historial = [
+            'vive_actualmente'      => NormalizadoHelper::lower(trim((string)($_POST['vive_actualmente'] ?? ''))),
+            'renta_actualmente'     => NormalizadoHelper::lower(trim((string)($_POST['renta_actualmente'] ?? ''))),
+            'arrendador_actual'     => NormalizadoHelper::lower(trim((string)($_POST['arrendador_actual'] ?? ''))),
+            'cel_arrendador_actual' => trim((string)($_POST['cel_arrendador_actual'] ?? '')),
+            'monto_renta_actual'    => $parseMonto($_POST['monto_renta_actual'] ?? null),
+            'tiempo_habitacion_actual' => NormalizadoHelper::lower(trim((string)($_POST['tiempo_habitacion_actual'] ?? ''))),
+            'motivo_arrendamiento'  => NormalizadoHelper::lower(trim((string)($_POST['motivo_arrendamiento'] ?? ''))),
+        ];
+
+        try {
+            $ok = $this->model->actualizarHistorialViviendaPorPk($pk, $historial);
+
+            echo json_encode([
+                'ok'      => $ok,
+                'mensaje' => $ok ? 'Historial de vivienda actualizado.' : 'No fue posible actualizar el historial de vivienda.',
+            ]);
+        } catch (\Throwable $e) {
+            http_response_code(500);
+            echo json_encode([
+                'ok'    => false,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
      * Muestra el detalle de un inquilino a partir del slug amigable.
      */
     public function subirArchivo(): void

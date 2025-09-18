@@ -705,8 +705,9 @@ $selfieUrl    = $selfieUrl ?? null;
                 </div>
                 <!-- Formulario de edición (oculto al inicio) -->
                 <form id="form-editar-historial" class="hidden mt-8 space-y-6" autocomplete="off" onsubmit="guardarEdicionHistorial(event)">
-                    <input type="hidden" name="id" value="<?= $vivienda['id']; ?>">
-                    <input type="hidden" name="id_inquilino" value="<?= $vivienda['id_inquilino']; ?>">
+                    <input type="hidden" name="id_inquilino" value="<?= (int)($profile['id'] ?? 0); ?>">
+                    <input type="hidden" name="pk" value="<?= htmlspecialchars($profile['pk'] ?? ''); ?>">
+                    <input type="hidden" name="id" value="<?= (int)($profile['id'] ?? 0); ?>">
                     <div class="grid md:grid-cols-2 gap-6">
                         <div>
                             <label class="block text-yellow-200 font-semibold mb-1">¿Vive actualmente en este domicilio?</label>
