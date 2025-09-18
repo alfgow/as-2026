@@ -868,6 +868,50 @@ class InquilinoModel
     }
 
     /**
+     * Actualiza la información laboral almacenada en el profile.
+     */
+    public function actualizarTrabajoPorPk(string $pk, array $trabajo): bool
+    {
+        $pk = trim($pk);
+        if ($pk === '') {
+            return false;
+        }
+
+        $payload = [];
+        foreach ($trabajo as $campo => $valor) {
+            if (!is_string($campo)) {
+                continue;
+            }
+
+            if (is_string($valor)) {
+                $payload[$campo] = $valor;
+            } elseif (is_int($valor) || is_float($valor)) {
+                $payload[$campo] = (float)$valor;
+            } elseif ($valor === null) {
+                $payload[$campo] = null;
+            }
+        }
+
+        if (!$payload) {
+            return false;
+        }
+
+        $this->client->updateItem([
+            'TableName' => $this->table,
+            'Key'       => [
+                'pk' => ['S' => $pk],
+                'sk' => ['S' => 'profile'],
+            ],
+            'UpdateExpression'          => 'SET trabajo = :trabajo',
+            'ExpressionAttributeValues' => [
+                ':trabajo' => $this->marshaler->marshalValue($payload),
+            ],
+        ]);
+
+        return true;
+    }
+
+    /**
      * Obtiene el snapshot de validaciones normalizado.
      */
     public function obtenerValidaciones(int $idInquilino): array
