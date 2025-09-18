@@ -47,13 +47,35 @@ class NormalizadoHelper
      * Resultado:
      *   arr#557_edgardomontesinosurdapilleta/identificacion_frontal_edgardomontesinosurdapilleta.jpg
      */
-    public static function generarS3Key(string $tipoPerfil, int $id, string $nombre, string $tipoArchivo, string $ext): string
-    {
-        $nombreNorm = self::normalizarNombre($nombre);
-        $tipoArchivo = strtolower(str_replace(' ', '_', $tipoArchivo));
-        $ext = strtolower($ext);
+    public static function generarS3Key(
+        string $tipoPerfil,
+        int $id,
+        string $nombre,
+        string $tipoArchivo,
+        string $ext,
+        ?string $uniqueSuffix = null
+    ): string {
+        $nombreNorm = self::normalizarNombre($nombre) ?: 'inquilino';
 
-        return "{$tipoPerfil}#{$id}_{$nombreNorm}/{$tipoArchivo}_{$nombreNorm}.{$ext}";
+        $tipoArchivo = strtolower(str_replace(' ', '_', $tipoArchivo));
+        $tipoArchivo = preg_replace('/[^a-z0-9_]/', '', $tipoArchivo) ?: 'archivo';
+
+        $ext = strtolower($ext);
+        $ext = preg_replace('/[^a-z0-9]/', '', $ext) ?: 'dat';
+
+        $folder = sprintf('%s#%d_%s', $tipoPerfil, $id, $nombreNorm);
+
+        $fileBase = sprintf('%s_%s', $tipoArchivo, $nombreNorm);
+
+        if ($uniqueSuffix) {
+            $suffix = strtolower($uniqueSuffix);
+            $suffix = preg_replace('/[^a-z0-9_-]/', '', $suffix);
+            if ($suffix !== '') {
+                $fileBase .= '_' . $suffix;
+            }
+        }
+
+        return sprintf('%s/%s.%s', $folder, $fileBase, $ext);
     }
     /**
      * Normaliza texto a minúsculas seguras.

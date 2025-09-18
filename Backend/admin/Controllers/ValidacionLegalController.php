@@ -4,9 +4,11 @@ namespace App\Controllers;
 
 require_once __DIR__ . '/../Models/InquilinoModel.php';
 require_once __DIR__ . '/../Models/ValidacionLegalModel.php';
+require_once __DIR__ . '/../Helpers/S3Helper.php';
 
 use App\Models\InquilinoModel;
 use App\Models\ValidacionLegalModel;
+use App\Helpers\S3Helper;
 
 class ValidacionLegalController
 {
@@ -126,9 +128,48 @@ class ValidacionLegalController
      */
     public function historial(int $idInquilino): void
     {
-
         try {
-            $historial = $this->model->obtenerHistorialPorInquilino($idInquilino);
+            $inqModel  = new InquilinoModel();
+            $inquilino = $inqModel->obtenerPorId($idInquilino);
+
+            if (!$inquilino) {
+                http_response_code(404);
+                include __DIR__ . '/../Views/404.php';
+                return;
+            }
+
+            $validaciones = $inqModel->obtenerValidaciones($idInquilino);
+            $archivos     = $inqModel->obtenerArchivos($idInquilino);
+
+            $s3 = new S3Helper('inquilinos');
+            if (!empty($archivos)) {
+                foreach ($archivos as &$archivo) {
+                    if (!empty($archivo['s3_key'])) {
+                        $archivo['url'] = $s3->getPresignedUrl($archivo['s3_key']);
+                    }
+                }
+                unset($archivo);
+            }
+
+            $categorias = [];
+            if (!empty($archivos)) {
+                foreach ($archivos as $archivo) {
+                    $tipo = strtolower((string)($archivo['tipo'] ?? ''));
+                    if ($tipo === '') {
+                        $tipo = 'otros';
+                    }
+                    $categorias[$tipo][] = $archivo;
+                }
+            }
+            $historial    = $this->model->obtenerHistorialPorInquilino($idInquilino);
+
+            $admin_base_url = $_ENV['ADMIN_BASE_URL']
+                ?? getenv('ADMIN_BASE_URL')
+                ?? '/as-2026/Backend/admin';
+
+            if (!is_string($admin_base_url) || trim($admin_base_url) === '') {
+                $admin_base_url = '/as-2026/Backend/admin';
+            }
 
             $title = "Validaciones del inquilino";
             $headerTitle = "Validaciones del inquilino #{$idInquilino}";

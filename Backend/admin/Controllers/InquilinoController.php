@@ -236,6 +236,451 @@ class InquilinoController
     /**
      * Muestra el detalle de un inquilino a partir del slug amigable.
      */
+    public function subirArchivo(): void
+    {
+        header('Content-Type: application/json; charset=utf-8');
+
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            http_response_code(405);
+            echo json_encode(['ok' => false, 'error' => 'Metodo no permitido']);
+            return;
+        }
+
+        $idInquilino = (int)($_POST['id_inquilino'] ?? 0);
+        $tipoArchivo = trim((string)($_POST['tipo'] ?? ''));
+        $categoria = trim((string)($_POST['categoria'] ?? '')) ?: null;
+
+        if ($idInquilino <= 0 || $tipoArchivo === '' || empty($_FILES['archivo'])) {
+            http_response_code(400);
+            echo json_encode(['ok' => false, 'error' => 'Datos incompletos']);
+            return;
+        }
+
+        try {
+            $archivo = $this->manejarSubidaArchivo($idInquilino, $tipoArchivo, $_FILES['archivo'], $categoria);
+
+            echo json_encode([
+                'ok'      => true,
+                'archivo' => $archivo,
+            ]);
+        } catch (\Throwable $e) {
+            http_response_code(500);
+            echo json_encode(['ok' => false, 'error' => $e->getMessage()]);
+        }
+    }
+
+    public function reemplazarArchivo(): void
+    {
+        header('Content-Type: application/json; charset=utf-8');
+
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            http_response_code(405);
+            echo json_encode(['ok' => false, 'error' => 'Metodo no permitido']);
+            return;
+        }
+
+        $idInquilino = (int)($_POST['id_inquilino'] ?? 0);
+        $tipoArchivo = trim((string)($_POST['tipo'] ?? ''));
+        $archivoId   = trim((string)($_POST['archivo_id'] ?? ''));
+        $categoria   = trim((string)($_POST['categoria'] ?? '')) ?: null;
+
+        if ($idInquilino <= 0 || $tipoArchivo === '' || $archivoId === '' || empty($_FILES['archivo'])) {
+            http_response_code(400);
+            echo json_encode(['ok' => false, 'error' => 'Datos incompletos']);
+            return;
+        }
+
+        try {
+            $archivoActual = $this->model->obtenerArchivo($idInquilino, $archivoId);
+            if (!$archivoActual) {
+                http_response_code(404);
+                echo json_encode(['ok' => false, 'error' => 'Archivo no encontrado']);
+                return;
+            }
+
+            $s3 = new S3Helper('inquilinos');
+
+            $this->model->eliminarArchivo($idInquilino, $archivoId);
+
+            if (!empty($archivoActual['s3_key'])) {
+                $s3->deleteFile((string)$archivoActual['s3_key']);
+            }
+
+            $archivo = $this->manejarSubidaArchivo($idInquilino, $tipoArchivo, $_FILES['archivo'], $categoria, $s3);
+
+            echo json_encode([
+                'ok'      => true,
+                'archivo' => $archivo,
+            ]);
+        } catch (\Throwable $e) {
+            http_response_code(500);
+            echo json_encode(['ok' => false, 'error' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Valida y sube un archivo a S3, registrándolo en Dynamo.
+     */
+    private function manejarSubidaArchivo(
+        int $idInquilino,
+        string $tipoArchivo,
+        array $archivo,
+        ?string $categoria = null,
+        ?S3Helper $s3 = null
+    ): array {
+        $tipoArchivo = strtolower(trim($tipoArchivo));
+        $tipoArchivo = preg_replace('/[^a-z0-9_\-]/', '_', $tipoArchivo) ?: 'archivo';
+
+        if (empty($archivo['tmp_name']) || !is_uploaded_file($archivo['tmp_name'])) {
+            throw new \RuntimeException('Archivo no recibido');
+        }
+
+        $mime = '';
+        if (function_exists('mime_content_type')) {
+            $mime = (string)@mime_content_type($archivo['tmp_name']);
+        }
+        if ($mime === '') {
+            $mime = (string)($archivo['type'] ?? '');
+        }
+        $mime = strtolower($mime);
+
+        $permitidos = [
+            'image/jpeg',
+            'image/jpg',
+            'image/png',
+            'image/webp',
+            'application/pdf',
+        ];
+
+        if (!in_array($mime, $permitidos, true)) {
+            throw new \RuntimeException('Tipo de archivo no permitido');
+        }
+
+        $inquilino = $this->model->obtenerPorId($idInquilino);
+        if (!$inquilino) {
+            throw new \RuntimeException('Inquilino no encontrado');
+        }
+
+        $pk = (string)($inquilino['pk'] ?? $inquilino['profile']['pk'] ?? '');
+        if ($pk === '') {
+            throw new \RuntimeException('PK no disponible para el inquilino');
+        }
+
+        [$prefix, $idStr] = explode('#', $pk . '#', 2);
+        $prefix = strtolower($prefix ?: 'inq');
+
+        $idReal = (int)($inquilino['id'] ?? 0);
+        if ($idReal <= 0) {
+            $idReal = $idInquilino > 0 ? $idInquilino : (int)$idStr;
+        }
+
+        $nombreCompleto = trim((string)($inquilino['nombre'] ?? ''));
+        if ($nombreCompleto === '') {
+            $nombreCompleto = trim(
+                ($inquilino['nombre_inquilino'] ?? '') . ' ' .
+                ($inquilino['apellidop_inquilino'] ?? '') . ' ' .
+                ($inquilino['apellidom_inquilino'] ?? '')
+            );
+        }
+        if ($nombreCompleto === '') {
+            $nombreCompleto = $pk;
+        }
+
+        $ext = strtolower(pathinfo($archivo['name'] ?? '', PATHINFO_EXTENSION));
+        if ($ext === '') {
+            $ext = $this->extensionDesdeMime($mime);
+        }
+        if ($ext === '') {
+            throw new \RuntimeException('Extensión de archivo no reconocida');
+        }
+
+        $token = strtolower(bin2hex(random_bytes(6)));
+
+        $s3Key = NormalizadoHelper::generarS3Key(
+            $prefix,
+            $idReal,
+            $nombreCompleto,
+            $tipoArchivo,
+            $ext,
+            $token
+        );
+
+        $s3 = $s3 ?? new S3Helper('inquilinos');
+
+        if (!$s3->uploadFileWithKey($archivo, $s3Key)) {
+            throw new \RuntimeException('Error al subir archivo a S3');
+        }
+
+        $meta = [
+            'mime_type'     => $mime,
+            'size'          => (int)($archivo['size'] ?? 0),
+            'original_name' => (string)($archivo['name'] ?? ''),
+        ];
+
+        if ($categoria) {
+            $meta['categoria'] = $categoria;
+        }
+
+        $registro = $this->model->registrarArchivo($idInquilino, $tipoArchivo, $s3Key, $meta, $token);
+        $registro['url'] = $s3->getPresignedUrl($s3Key);
+
+        return $registro;
+    }
+
+    public function eliminarArchivo(): void
+    {
+        header('Content-Type: application/json; charset=utf-8');
+
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            http_response_code(405);
+            echo json_encode(['ok' => false, 'error' => 'Metodo no permitido']);
+            return;
+        }
+
+        $idInquilino = (int)($_POST['id_inquilino'] ?? 0);
+        $archivoId   = trim((string)($_POST['archivo_id'] ?? ''));
+
+        if ($idInquilino <= 0 || $archivoId === '') {
+            http_response_code(400);
+            echo json_encode(['ok' => false, 'error' => 'Datos incompletos']);
+            return;
+        }
+
+        try {
+            $archivo = $this->model->obtenerArchivo($idInquilino, $archivoId);
+            if (!$archivo) {
+                http_response_code(404);
+                echo json_encode(['ok' => false, 'error' => 'Archivo no encontrado']);
+                return;
+            }
+
+            $s3 = new S3Helper('inquilinos');
+
+            $this->model->eliminarArchivo($idInquilino, $archivoId);
+
+            if (!empty($archivo['s3_key'])) {
+                $s3->deleteFile((string)$archivo['s3_key']);
+            }
+
+            echo json_encode(['ok' => true]);
+        } catch (\Throwable $e) {
+            http_response_code(500);
+            echo json_encode(['ok' => false, 'error' => $e->getMessage()]);
+        }
+    }
+
+    public function editarValidaciones(): void
+    {
+        header('Content-Type: application/json; charset=utf-8');
+
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            http_response_code(405);
+            echo json_encode(['ok' => false, 'error' => 'Metodo no permitido']);
+            return;
+        }
+
+        $idInquilino = (int)($_POST['id_inquilino'] ?? 0);
+        if ($idInquilino <= 0) {
+            http_response_code(400);
+            echo json_encode(['ok' => false, 'error' => 'id_inquilino requerido']);
+            return;
+        }
+
+        $campos = [
+            'proceso_validacion_archivos'    => 'archivos',
+            'proceso_validacion_rostro'      => 'rostro',
+            'proceso_validacion_id'          => 'identidad',
+            'proceso_validacion_documentos'  => 'documentos',
+            'proceso_validacion_ingresos'    => 'ingresos',
+            'proceso_pago_inicial'           => 'pago_inicial',
+            'proceso_inv_demandas'           => 'demandas',
+            'proceso_validacion_verificamex' => 'verificamex',
+        ];
+
+        $actualizados = [];
+
+        foreach ($campos as $campo => $tipo) {
+            if (!array_key_exists($campo, $_POST)) {
+                continue;
+            }
+
+            $estado = (int)$_POST[$campo];
+            if (!in_array($estado, [0, 1, 2], true)) {
+                $estado = 2;
+            }
+
+            $resumenKey = str_replace('proceso_', '', $campo) . '_resumen';
+            $resumen = $_POST[$resumenKey] ?? null;
+
+            $jsonKey = $campo . '_json';
+            $payload = [];
+            if (isset($_POST[$jsonKey])) {
+                $decoded = json_decode((string)$_POST[$jsonKey], true);
+                if (json_last_error() === JSON_ERROR_NONE) {
+                    $payload = $decoded;
+                } else {
+                    $payload = ['raw' => (string)$_POST[$jsonKey]];
+                }
+            }
+
+            if (empty($payload) || !is_array($payload)) {
+                $payload = [];
+            }
+
+            $payload['timestamp'] = $payload['timestamp'] ?? date('c');
+            if (!isset($payload['estado'])) {
+                $payload['estado'] = match ($estado) {
+                    1       => 'confirmado',
+                    0       => 'no_ok',
+                    default => 'pendiente',
+                };
+            }
+
+            if (!isset($payload['origen'])) {
+                $payload['origen'] = 'manual';
+            }
+
+            if (!isset($payload['usuario']) && isset($_SESSION['user'])) {
+                $payload['usuario'] = $_SESSION['user']['email']
+                    ?? $_SESSION['user']['usuario']
+                    ?? $_SESSION['user']['nombre']
+                    ?? null;
+            }
+
+            $descripciones = [
+                'archivos'     => 'Validación de archivos',
+                'rostro'       => 'Validación de rostro',
+                'identidad'    => 'Validación de identidad',
+                'documentos'   => 'Validación de documentos',
+                'ingresos'     => 'Validación de ingresos',
+                'pago_inicial' => 'Pago inicial',
+                'demandas'     => 'Investigación de demandas',
+                'verificamex'  => 'Validación VerificaMex',
+            ];
+
+            if ($resumen === null) {
+                $baseTexto = $descripciones[$tipo] ?? ('Validación de ' . str_replace('_', ' ', $tipo));
+                $resumen = $estado === 1
+                    ? $baseTexto . ' confirmada manualmente'
+                    : $baseTexto . ' pendiente';
+            }
+
+            try {
+                $ok = false;
+                switch ($campo) {
+                    case 'proceso_validacion_archivos':
+                        $ok = $this->model->guardarValidacionArchivos($idInquilino, $estado, $payload, $resumen);
+                        $actualizados[] = $tipo;
+                        break;
+                    case 'proceso_validacion_rostro':
+                        $ok = $this->model->guardarValidacionRostro($idInquilino, $estado, $payload, $resumen);
+                        $actualizados[] = $tipo;
+                        break;
+                    case 'proceso_validacion_id':
+                        $ok = $this->model->guardarValidacionIdentidad($idInquilino, $payload, $resumen, $estado);
+                        $actualizados[] = $tipo;
+                        break;
+                    case 'proceso_validacion_documentos':
+                        $ok = $this->model->guardarValidacionDocumentos($idInquilino, $estado, $payload, $resumen);
+                        $actualizados[] = $tipo;
+                        break;
+                    case 'proceso_validacion_ingresos':
+                        $ok = $this->model->guardarValidacionIngresosSimple($idInquilino, $estado, $payload, $resumen);
+                        $actualizados[] = $tipo;
+                        break;
+                    case 'proceso_pago_inicial':
+                        $ok = $this->model->guardarPagoInicial($idInquilino, $estado, $payload, $resumen);
+                        $actualizados[] = $tipo;
+                        break;
+                    case 'proceso_inv_demandas':
+                        $ok = $this->model->guardarInvestigacionDemandas($idInquilino, $estado, $payload, $resumen);
+                        $actualizados[] = $tipo;
+                        break;
+                    case 'proceso_validacion_verificamex':
+                        $textoResumen = $resumen ?? ($estado === 1
+                            ? 'Validación VerificaMex confirmada manualmente'
+                            : 'Validación VerificaMex pendiente');
+                        $ok = $this->model->guardarValidacionVerificaMex($idInquilino, $estado, $payload, $textoResumen);
+                        $actualizados[] = $tipo;
+                        break;
+                }
+
+                if (!$ok) {
+                    throw new \RuntimeException('No se pudo guardar el estado de ' . $campo);
+                }
+            } catch (\Throwable $e) {
+                http_response_code(500);
+                echo json_encode(['ok' => false, 'error' => $e->getMessage()]);
+                return;
+            }
+        }
+
+        if (!$actualizados) {
+            echo json_encode(['ok' => false, 'error' => 'Sin cambios por guardar']);
+            return;
+        }
+
+        echo json_encode(['ok' => true, 'actualizados' => $actualizados]);
+    }
+
+    public function editarStatus(): void
+    {
+        header('Content-Type: application/json; charset=utf-8');
+
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            http_response_code(405);
+            echo json_encode(['ok' => false, 'error' => 'Metodo no permitido']);
+            return;
+        }
+
+        $idInquilino = (int)($_POST['id_inquilino'] ?? 0);
+        $status = trim((string)($_POST['status'] ?? ''));
+
+        if ($idInquilino <= 0 || $status === '') {
+            http_response_code(400);
+            echo json_encode(['ok' => false, 'error' => 'Datos incompletos']);
+            return;
+        }
+
+        if (!in_array($status, ['1', '2', '3', '4'], true)) {
+            $status = '1';
+        }
+
+        try {
+            $ok = $this->model->actualizarStatus($idInquilino, $status);
+            if (!$ok) {
+                http_response_code(500);
+                echo json_encode(['ok' => false, 'error' => 'No se pudo actualizar el status']);
+                return;
+            }
+
+            echo json_encode(['ok' => true, 'status' => $status]);
+        } catch (\Throwable $e) {
+            http_response_code(500);
+            echo json_encode(['ok' => false, 'error' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Determina extensión en base al mime type recibido.
+     */
+    private function extensionDesdeMime(string $mime): string
+    {
+        switch ($mime) {
+            case 'image/jpeg':
+            case 'image/jpg':
+                return 'jpg';
+            case 'image/png':
+                return 'png';
+            case 'image/webp':
+                return 'webp';
+            case 'application/pdf':
+                return 'pdf';
+            default:
+                return '';
+        }
+    }
+
     public function mostrar(string $slug): void
     {
         $slug = trim($slug);

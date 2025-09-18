@@ -1,4 +1,7 @@
 <?php
+
+use App\Helpers\TextHelper;
+
 $h       = fn($s) => htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
 $nombreCompleto = trim(
     ($inquilino['nombre_inquilino'] ?? '') . ' ' .
@@ -8,7 +11,10 @@ $nombreCompleto = trim(
 $nombre = $h($nombreCompleto ?: 'Nombre Apellido');
 $slug    = $h($inquilino['slug'] ?? 'slug-ejemplo');
 $idInq   = (int)($inquilino['id'] ?? 0);
-$ADMIN_BASE = $admin_base_url ?? '';
+$ADMIN_BASE = $admin_base_url ?? '/as-2026/Backend/admin';
+if (!is_string($ADMIN_BASE) || trim($ADMIN_BASE) === '') {
+    $ADMIN_BASE = '/as-2026/Backend/admin';
+}
 $idInquilino = (int)($inquilino['id'] ?? $idInquilino ?? 0);
 $apP         = $inquilino['apellidop_inquilino'] ?? '';
 $apM         = $inquilino['apellidom_inquilino'] ?? '';
@@ -17,6 +23,89 @@ $rfc         = $inquilino['rfc'] ?? null;
 $slug        = $inquilino['slug'] ?? ($slug ?? null);
 $tipoId = strtolower(trim($inquilino['tipo_id'] ?? ''));
 $tiposIne = ['ine', 'ife', 'ine/ife'];
+
+$byType = [];
+foreach ($archivos ?? [] as $archivoItem) {
+    $tipoArchivo = strtolower((string)($archivoItem['tipo'] ?? ''));
+    if ($tipoArchivo === '') {
+        continue;
+    }
+    $byType[$tipoArchivo][] = $archivoItem;
+}
+
+function archivoPrimer(array $list = null): ?array
+{
+    if (!$list) {
+        return null;
+    }
+    return $list[0] ?? null;
+}
+
+$selfie         = archivoPrimer($byType['selfie'] ?? []);
+$ineFrontal     = archivoPrimer($byType['ine_frontal'] ?? []);
+$ineReverso     = archivoPrimer($byType['ine_reverso'] ?? []);
+$pasaporte      = archivoPrimer($byType['pasaporte'] ?? []);
+$formaMigratoria = archivoPrimer($byType['forma_migratoria'] ?? []);
+$comprobantes   = $byType['comprobante_ingreso'] ?? [];
+function archivoId(?array $archivo): string
+{
+    if (!$archivo) {
+        return '';
+    }
+    return (string)($archivo['id'] ?? $archivo['sk'] ?? '');
+}
+
+function archivo_label(array $archivo = null, string $fallback = 'Archivo'): string
+{
+    if (!$archivo) {
+        return $fallback;
+    }
+    return $archivo['nombre_original'] ?? $fallback;
+}
+
+function estadoLabel(int $estado): string
+{
+    return match ($estado) {
+        1       => 'Confirmado',
+        0       => 'No OK',
+        default => 'Pendiente',
+    };
+}
+
+$estadoValidaciones = [
+    'archivos'      => (int)($validaciones['archivos']['proceso'] ?? 2),
+    'rostro'        => (int)($validaciones['rostro']['proceso'] ?? 2),
+    'identidad'     => (int)($validaciones['identidad']['proceso'] ?? 2),
+    'documentos'    => (int)($validaciones['documentos']['proceso'] ?? 2),
+    'ingresos'      => (int)($validaciones['ingresos']['proceso'] ?? 2),
+    'pago_inicial'  => (int)($validaciones['pago_inicial']['proceso'] ?? 2),
+    'demandas'      => (int)($validaciones['demandas']['proceso'] ?? 2),
+    'verificamex'   => (int)($validaciones['verificamex']['proceso'] ?? 2),
+];
+
+$tipoIdLower = strtolower((string)($inquilino['tipo_id'] ?? ''));
+$isIne       = str_contains($tipoIdLower, 'ine') || str_contains($tipoIdLower, 'ife');
+$isPassport  = str_contains($tipoIdLower, 'pasaporte') || str_contains($tipoIdLower, 'passport');
+$isFm        = str_contains($tipoIdLower, 'fm') || str_contains($tipoIdLower, 'forma');
+
+$visibleIne = $isIne || (!$isPassport && !$isFm) || $ineFrontal || $ineReverso;
+$visiblePassport = (!$isIne && ($isPassport || $pasaporte));
+$visibleFm = (!$isIne && ($isFm || $formaMigratoria));
+
+function renderArchivoTag(string $key, string $label, bool $visible, bool $hasFile): void
+{
+    if (!$visible) {
+        return;
+    }
+
+    $base = 'rounded-full px-3 py-1 text-xs font-semibold transition-colors border';
+    $class = $hasFile
+        ? $base . ' border-emerald-400/40 bg-emerald-400/15 text-emerald-100'
+        : $base . ' border-rose-400/30 bg-rose-400/10 text-rose-200';
+
+    echo '<span data-key="' . htmlspecialchars($key) . '" class="' . $class . '">' . htmlspecialchars($label) . '</span>';
+}
+
 function chipColor($valor)
 {
     return match ((int)$valor) {
@@ -54,7 +143,7 @@ function chipColor($valor)
 
         <!-- Card superior (nombre + estatus validaciones) -->
         <div class="rounded-2xl border border-white/10 bg-white/5 p-6 shadow-xl backdrop-blur flex flex-col items-center justify-center text-center">
-            <div class="text-xl font-bold tracking-tight" id="vh-nombre"><?= $nombre ?></div>
+            <div class="text-xl font-bold tracking-tight" id="vh-nombre"><?= TextHelper::titleCase($nombre) ?></div>
             <!-- Select estilizado -->
             <select id="select-status"
                 class="my-4 ml-2 rounded-lg border border-white/10 bg-gray-800 text-slate-200 px-3 py-1 text-sm font-medium
@@ -95,12 +184,14 @@ function chipColor($valor)
 
                 <!-- Chips -->
                 <div id="chips-archivos" class="flex flex-wrap justify-center sm:justify-start gap-2 mb-4">
-                    <span data-key="selfie" class="rounded-full border border-rose-400/30 bg-rose-400/15 px-3 py-1 text-xs">Selfie</span>
-                    <span data-key="ine_frontal" class="rounded-full border border-rose-400/30 bg-rose-400/15 px-3 py-1 text-xs">INE - frontal</span>
-                    <span data-key="ine_reverso" class="rounded-full border border-rose-400/30 bg-rose-400/15 px-3 py-1 text-xs">INE - reverso</span>
-                    <span data-key="pasaporte" class="rounded-full border border-rose-400/30 bg-rose-400/15 px-3 py-1 text-xs">Pasaporte</span>
-                    <span data-key="fm" class="rounded-full border border-rose-400/30 bg-rose-400/15 px-3 py-1 text-xs">FM2/FM3</span>
-                    <span data-key="comprobante_ingreso" class="rounded-full border border-rose-400/30 bg-rose-400/15 px-3 py-1 text-xs">Comprobantes</span>
+                    <?php
+                    renderArchivoTag('selfie', 'Selfie', true, (bool)$selfie);
+                    renderArchivoTag('ine_frontal', 'INE - frontal', $visibleIne, (bool)$ineFrontal);
+                    renderArchivoTag('ine_reverso', 'INE - reverso', $visibleIne, (bool)$ineReverso);
+                    renderArchivoTag('pasaporte', 'Pasaporte', $visiblePassport, (bool)$pasaporte);
+                    renderArchivoTag('fm', 'FM2/FM3', $visibleFm, (bool)$formaMigratoria);
+                    renderArchivoTag('comprobante_ingreso', 'Comprobantes', true, count($comprobantes) > 0);
+                    ?>
                 </div>
 
                 <!-- Switch Archivos -->
@@ -112,14 +203,14 @@ function chipColor($valor)
                             type="checkbox"
                             class="sr-only peer"
                             onchange="window.saveSwitch('archivos')"
-                            <?= ((int)($validaciones['proceso_validacion_archivos'] ?? 2) === 1) ? 'checked' : '' ?> />
+                            <?= $estadoValidaciones['archivos'] === 1 ? 'checked' : '' ?> />
                         <!-- Track -->
                         <div class="w-11 h-6 bg-gray-600 rounded-full peer-checked:bg-emerald-500 transition"></div>
                         <!-- Knob -->
                         <div class="absolute left-0.5 top-0.5 h-5 w-5 bg-white rounded-full transition-transform peer-checked:translate-x-5"></div>
                     </label>
                     <em id="toggle-archivos-label" class="not-italic text-xs text-slate-400 peer-checked:text-emerald-400">
-                        <?= ((int)($validaciones['proceso_validacion_archivos'] ?? 2) === 1) ? 'Confirmado' : 'Pendiente' ?>
+                        <?= estadoLabel($estadoValidaciones['archivos']) ?>
                     </em>
                 </div>
 
@@ -138,7 +229,7 @@ function chipColor($valor)
                             type="checkbox"
                             class="peer sr-only"
                             onchange="window.saveSwitch('pago_inicial')"
-                            <?= ((int)($validaciones['proceso_pago_inicial'] ?? 2) === 1) ? 'checked' : '' ?> />
+                            <?= $estadoValidaciones['pago_inicial'] === 1 ? 'checked' : '' ?> />
                         <!-- track -->
                         <div
                             class="relative h-7 w-12 rounded-full border border-white/10 bg-white/10 shadow-inner
@@ -152,8 +243,8 @@ function chipColor($valor)
                                 peer-checked:after:translate-x-5 peer-checked:after:bg-white">
                         </div>
                     </label>
-                    <em id="toggle-pago-label" class="not-italic text-xs text-slate-400 peer-checked:text-emerald-400">
-                        <?= ((int)($validaciones['proceso_pago_inicial'] ?? 2) === 1) ? 'Confirmado' : 'Pendiente' ?>
+                    <em id="toggle-pago_inicial-label" class="not-italic text-xs text-slate-400 peer-checked:text-emerald-400">
+                        <?= estadoLabel($estadoValidaciones['pago_inicial']) ?>
                     </em>
                 </div>
 
@@ -199,7 +290,7 @@ function chipColor($valor)
                             type="checkbox"
                             class="sr-only peer"
                             onchange="window.saveSwitch('ingresos')"
-                            <?= ((int)($validaciones['proceso_validacion_ingresos'] ?? 2) === 1) ? 'checked' : '' ?> />
+                            <?= $estadoValidaciones['ingresos'] === 1 ? 'checked' : '' ?> />
                         <!-- Track -->
                         <div class="w-11 h-6 bg-gray-600 rounded-full peer-checked:bg-emerald-500 transition"></div>
                         <!-- Knob -->
@@ -207,7 +298,7 @@ function chipColor($valor)
                     </label>
                     <em id="toggle-ingresos-label"
                         class="not-italic text-xs text-slate-400 peer-checked:text-emerald-400">
-                        <?= ((int)($validaciones['proceso_validacion_ingresos'] ?? 2) === 1) ? 'Confirmado' : 'Pendiente' ?>
+                        <?= estadoLabel($estadoValidaciones['ingresos']) ?>
                     </em>
                 </div>
 
@@ -246,14 +337,14 @@ function chipColor($valor)
                             type="checkbox"
                             class="sr-only peer"
                             onchange="window.saveSwitch('verificamex')"
-                            <?= ((int)($validaciones['proceso_validacion_verificamex'] ?? 2) === 1) ? 'checked' : '' ?> />
+                            <?= $estadoValidaciones['verificamex'] === 1 ? 'checked' : '' ?> />
                         <!-- Track -->
                         <div class="w-11 h-6 bg-gray-600 rounded-full peer-checked:bg-emerald-500 transition"></div>
                         <!-- Knob -->
                         <div class="absolute left-0.5 top-0.5 h-5 w-5 bg-white rounded-full transition-transform peer-checked:translate-x-5"></div>
                     </label>
                     <em id="toggle-verificamex-label" class="not-italic text-xs text-slate-400 peer-checked:text-emerald-400">
-                        <?= ((int)($validaciones['proceso_validacion_verificamex'] ?? 2) === 1) ? 'Confirmado' : 'Pendiente' ?>
+                        <?= estadoLabel($estadoValidaciones['verificamex']) ?>
                     </em>
                 </div>
 
@@ -282,16 +373,30 @@ function chipColor($valor)
             <div class="w-full max-w-full overflow-hidden rounded-2xl border border-white/10 bg-white/5 p-4 shadow-xl backdrop-blur" data-cat="rostro">
                 <h3 class="text-base font-semibold">Rostro</h3>
                 <div id="chips-rostro" class="mt-2 flex flex-wrap justify-center sm:justify-start gap-2 text-center">
-                    <?php
-                    $proceso_validacion_rostro = (int)($validaciones['proceso_validacion_rostro'] ?? 2);
-                    ?>
-                    <span class="px-2 py-1 rounded-full text-xs font-semibold <?= chipColor($validaciones['proceso_validacion_rostro'] ?? 2) ?>">
+                    <?php $proceso_validacion_rostro = $estadoValidaciones['rostro']; ?>
+                    <span class="px-2 py-1 rounded-full text-xs font-semibold <?= chipColor($proceso_validacion_rostro) ?>">
                         <?= $proceso_validacion_rostro === 1 ? '✅ OK' : ($proceso_validacion_rostro === 0 ? '❌ NO_OK' : '⏳ PENDIENTE') ?>
                     </span>
 
                     <p id="txt-rostro" class="mt-2 max-h-24 overflow-y-auto pr-1 text-sm text-slate-300 break-words w-full">
                         🚫No hay información, actualiza el perfil del inquilino🚫.
                     </p>
+                </div>
+                <div class="mt-2 flex items-center gap-2 justify-start">
+                    <span class="text-sm text-slate-300">Confirmar rostro</span>
+                    <label class="inline-flex items-center cursor-pointer relative">
+                        <input
+                            id="toggle-rostro"
+                            type="checkbox"
+                            class="sr-only peer"
+                            onchange="window.saveSwitch('rostro')"
+                            <?= $estadoValidaciones['rostro'] === 1 ? 'checked' : '' ?> />
+                        <div class="w-11 h-6 bg-gray-600 rounded-full peer-checked:bg-emerald-500 transition"></div>
+                        <div class="absolute left-0.5 top-0.5 h-5 w-5 bg-white rounded-full transition-transform peer-checked:translate-x-5"></div>
+                    </label>
+                    <em id="toggle-rostro-label" class="not-italic text-xs text-slate-400 peer-checked:text-emerald-400">
+                        <?= estadoLabel($estadoValidaciones['rostro']) ?>
+                    </em>
                 </div>
                 <div class="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
                     <button class="vh-detalle rounded-xl border border-white/10 bg-white/10 px-4 py-2 text-sm font-semibold hover:bg-white/15" data-cat="rostro">
@@ -314,15 +419,29 @@ function chipColor($valor)
                 <h3 class="text-base font-semibold">Identidad</h3>
 
                 <div id="chips-identidad" class="mt-2 flex flex-wrap justify-center sm:justify-start gap-2 text-center">
-                    <?php
-                    $proceso_validacion_id = (int)($validaciones['proceso_validacion_id'] ?? 2);
-                    ?>
-                    <span class="px-2 py-1 rounded-full text-xs font-semibold <?= chipColor($validaciones['proceso_validacion_id'] ?? 2) ?>">
+                    <?php $proceso_validacion_id = $estadoValidaciones['identidad']; ?>
+                    <span class="px-2 py-1 rounded-full text-xs font-semibold <?= chipColor($proceso_validacion_id) ?>">
                         <?= $proceso_validacion_id === 1 ? '✅ OK' : ($proceso_validacion_id === 0 ? '❌ NO_OK' : '⏳ PENDIENTE') ?>
                     </span>
                     <p id="txt-identidad" class="vh-scroll mt-2 pr-2 text-sm text-slate-300 break-words w-full">
                         🚫No hay información, actualiza el perfil del inquilino🚫.
                     </p>
+                </div>
+                <div class="mt-2 flex items-center gap-2 justify-start">
+                    <span class="text-sm text-slate-300">Confirmar identidad</span>
+                    <label class="inline-flex items-center cursor-pointer relative">
+                        <input
+                            id="toggle-identidad"
+                            type="checkbox"
+                            class="sr-only peer"
+                            onchange="window.saveSwitch('identidad')"
+                            <?= $estadoValidaciones['identidad'] === 1 ? 'checked' : '' ?> />
+                        <div class="w-11 h-6 bg-gray-600 rounded-full peer-checked:bg-emerald-500 transition"></div>
+                        <div class="absolute left-0.5 top-0.5 h-5 w-5 bg-white rounded-full transition-transform peer-checked:translate-x-5"></div>
+                    </label>
+                    <em id="toggle-identidad-label" class="not-italic text-xs text-slate-400 peer-checked:text-emerald-400">
+                        <?= estadoLabel($estadoValidaciones['identidad']) ?>
+                    </em>
                 </div>
 
                 <div class="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -380,7 +499,7 @@ function chipColor($valor)
                             <input id="toggle-demandas" type="checkbox"
                                 class="sr-only peer"
                                 data-id="<?= htmlspecialchars($inquilino['id'] ?? 0) ?>"
-                                <?= ($procesoDemandas ?? 2) == 1 ? 'checked' : '' ?>>
+                                <?= $estadoValidaciones['demandas'] === 1 ? 'checked' : '' ?>>
 
                             <!-- Fondo del switch -->
                             <div class="w-14 h-8 bg-gray-600 rounded-full peer-checked:bg-green-500 transition-colors"></div>
@@ -492,65 +611,101 @@ function chipColor($valor)
             <h3 class="text-base font-semibold">Archivos (previsualización)</h3>
 
             <div class="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                <!-- Selfie -->
-                <div class="flex flex-col gap-2">
-                    <div class="grid h-44 place-items-center overflow-hidden rounded-xl border border-white/10 bg-white/5">
-                        <img id="prev-selfie" class="h-full w-full object-cover" src="https://picsum.photos/seed/selfie/600/400" alt="Selfie">
+                <?php
+                $renderImage = function (?array $archivo, string $label, string $tipo) {
+                    $url = $archivo['url'] ?? null;
+                    $title = $archivo['nombre_original'] ?? $label;
+                    $archivoId = archivoId($archivo);
+                    $hasFile = (bool)$url;
+                ?>
+                    <div class="archivo-card flex flex-col gap-2" data-tipo="<?= htmlspecialchars($tipo) ?>"
+                        data-archivo-id="<?= htmlspecialchars($archivoId) ?>"
+                        data-accept="image/*" data-label="<?= htmlspecialchars($label) ?>">
+                        <div class="relative h-48 overflow-hidden rounded-2xl border border-white/10 bg-white/5">
+                            <?php if ($hasFile): ?>
+                                <img src="<?= htmlspecialchars($url) ?>" alt="<?= htmlspecialchars($label) ?>"
+                                    class="h-full w-full object-contain bg-black/40 cursor-zoom-in"
+                                    onclick="openArchivoModal('image', '<?= htmlspecialchars($url) ?>', '<?= htmlspecialchars($title) ?>')">
+                            <?php else: ?>
+                                <div class="flex h-full items-center justify-center text-sm text-slate-400">Sin archivo</div>
+                            <?php endif; ?>
+                        </div>
+                        <div class="flex items-center justify-between text-sm">
+                            <span><?= htmlspecialchars($label) ?></span>
+                            <div class="flex items-center gap-2">
+                                <button type="button" data-action="replace"
+                                    class="rounded-xl border border-white/10 bg-white/10 px-3 py-1.5 font-semibold <?= $hasFile ? '' : '' ?>">
+                                    <?= $hasFile ? 'Reemplazar' : 'Subir' ?>
+                                </button>
+                                <?php if ($hasFile): ?>
+                                    <button type="button" data-action="delete"
+                                        class="rounded-xl border border-rose-500/40 bg-rose-500/10 px-3 py-1.5 font-semibold text-rose-200 hover:bg-rose-500/20">
+                                        Eliminar
+                                    </button>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                        <input type="file" class="hidden archivo-input" accept="image/*">
                     </div>
-                    <div class="flex items-center justify-between text-sm">
-                        <span>Selfie</span><button class="rounded-xl border border-white/10 bg-white/10 px-3 py-1.5 font-semibold opacity-50">Reemplazar</button>
-                    </div>
-                </div>
+                <?php };
 
-                <!-- INE frontal -->
-                <div class="flex flex-col gap-2">
-                    <div class="grid h-44 place-items-center overflow-hidden rounded-xl border border-white/10 bg-white/5">
-                        <img id="prev-ine-front" class="h-full w-full object-cover" src="https://picsum.photos/seed/inef/600/400" alt="INE frontal">
+                $renderPdf = function (?array $archivo, string $label, string $tipo, string $emptyLabel = 'Subir') {
+                    $url = $archivo['url'] ?? null;
+                    $title = $archivo['nombre_original'] ?? $label;
+                    $hasFile = (bool) $url;
+                    $actionLabel = $hasFile ? 'Reemplazar' : $emptyLabel;
+                    $archivoId = archivoId($archivo);
+                ?>
+                    <div class="archivo-card flex flex-col gap-2" data-tipo="<?= htmlspecialchars($tipo) ?>"
+                        data-archivo-id="<?= htmlspecialchars($archivoId) ?>" data-accept="application/pdf" data-label="<?= htmlspecialchars($label) ?>">
+                        <div class="grid h-48 place-items-center rounded-2xl border border-white/10 bg-white/5 text-slate-300">
+                            <?php if ($hasFile): ?>
+                                <button type="button"
+                                    class="flex flex-col items-center gap-2 text-slate-200 hover:text-white"
+                                    onclick="openArchivoModal('pdf', '<?= htmlspecialchars($url) ?>', '<?= htmlspecialchars($title) ?>')">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M14.5 2.25H9.5L4.5 6.75v10.5c0 1.242 1.008 2.25 2.25 2.25h10.5c1.242 0 2.25-1.008 2.25-2.25V6.75l-5-4.5z" />
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 14h6m-6-3h6M9.75 2.25v4.5h4.5v-4.5" />
+                                    </svg>
+                                    <span class="text-sm">Ver PDF</span>
+                                </button>
+                            <?php else: ?>
+                                <span class="text-sm">PDF</span>
+                            <?php endif; ?>
+                        </div>
+                        <div class="flex items-center justify-between text-sm">
+                            <span><?= htmlspecialchars($label) ?></span>
+                            <div class="flex items-center gap-2">
+                                <button type="button" data-action="replace"
+                                    class="rounded-xl border border-white/10 bg-white/10 px-3 py-1.5 font-semibold <?= $hasFile ? '' : '' ?>">
+                                    <?= htmlspecialchars($actionLabel) ?>
+                                </button>
+                                <?php if ($hasFile): ?>
+                                    <button type="button" data-action="delete"
+                                        class="rounded-xl border border-rose-500/40 bg-rose-500/10 px-3 py-1.5 font-semibold text-rose-200 hover:bg-rose-500/20">
+                                        Eliminar
+                                    </button>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                        <input type="file" class="hidden archivo-input" accept="application/pdf">
                     </div>
-                    <div class="flex items-center justify-between text-sm">
-                        <span>INE — frontal</span><button class="rounded-xl border border-white/10 bg-white/10 px-3 py-1.5 font-semibold opacity-50">Reemplazar</button>
-                    </div>
-                </div>
+                <?php };
 
-                <!-- INE reverso -->
-                <div class="flex flex-col gap-2">
-                    <div class="grid h-44 place-items-center overflow-hidden rounded-xl border border-white/10 bg-white/5">
-                        <img id="prev-ine-back" class="h-full w-full object-cover" src="https://picsum.photos/seed/iner/600/400" alt="INE reverso">
-                    </div>
-                    <div class="flex items-center justify-between text-sm">
-                        <span>INE — reverso</span><button class="rounded-xl border border-white/10 bg-white/10 px-3 py-1.5 font-semibold opacity-50">Reemplazar</button>
-                    </div>
-                </div>
+                $renderImage($selfie, 'Selfie', 'selfie');
+                $renderImage($ineFrontal, 'INE — frontal', 'ine_frontal');
+                $renderImage($ineReverso, 'INE — reverso', 'ine_reverso');
 
-                <!-- Comprobante 1 -->
-                <div class="flex flex-col gap-2">
-                    <div id="prev-comp-1" class="grid h-44 place-items-center rounded-xl border border-white/10 bg-white/5 text-slate-400">PDF</div>
-                    <div class="flex items-center justify-between text-sm">
-                        <span>Comprobante 1</span><button class="rounded-xl border border-white/10 bg-white/10 px-3 py-1.5 font-semibold opacity-50">Subir</button>
-                    </div>
-                </div>
-
-                <!-- Comprobante 2 -->
-                <div class="flex flex-col gap-2">
-                    <div id="prev-comp-2" class="grid h-44 place-items-center rounded-xl border border-white/10 bg-white/5 text-slate-400">PDF</div>
-                    <div class="flex items-center justify-between text-sm">
-                        <span>Comprobante 2</span><button class="rounded-xl border border-white/10 bg-white/10 px-3 py-1.5 font-semibold opacity-50">Subir</button>
-                    </div>
-                </div>
-
-                <!-- Comprobante 3 -->
-                <div class="flex flex-col gap-2">
-                    <div id="prev-comp-3" class="grid h-44 place-items-center rounded-xl border border-rose-400/30 bg-rose-400/10 text-slate-300">PDF</div>
-                    <div class="flex items-center justify-between text-sm">
-                        <span>Comprobante 3</span><button class="rounded-xl border border-rose-400/30 bg-rose-400/15 px-3 py-1.5 font-semibold opacity-50">Falta</button>
-                    </div>
-                </div>
+                $renderPdf($comprobantes[0] ?? null, 'Comprobante 1', 'comprobante_ingreso');
+                $renderPdf($comprobantes[1] ?? null, 'Comprobante 2', 'comprobante_ingreso');
+                $renderPdf($comprobantes[2] ?? null, 'Comprobante 3', 'comprobante_ingreso', 'Falta');
+                ?>
             </div>
         </div>
     </section>
 
     <section class="my-12 flex justify-center">
-        <a href="<?= $baseUrl ?>/inquilino/<?= htmlspecialchars($inquilino['slug']) ?>/resultados"
+        <a href="<?= $baseUrl ?>/inquilino/<?= htmlspecialchars($inquilino['slug']) ?>/validar-identidad/resultado"
             target="_blank"
             class="px-6 py-3 bg-lime-400 text-black font-semibold rounded-xl shadow-lg 
               hover:bg-lime-700 hover:text-white transition text-lg">
@@ -559,6 +714,22 @@ function chipColor($valor)
     </section>
 
 
+
+    <!-- Modal JSON: bottom-sheet móvil, centrado desktop -->
+    <div id="archivo-preview-modal" class="fixed inset-0 z-50 hidden bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="relative w-full max-w-5xl bg-slate-900/95 border border-indigo-400/20 rounded-2xl shadow-2xl overflow-hidden flex flex-col">
+            <button type="button" id="archivo-preview-close" class="absolute top-3 right-3 p-2 rounded-full bg-black/40 hover:bg-indigo-500/40 transition" aria-label="Cerrar">
+                <svg class="w-5 h-5 text-slate-200" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
+            <div class="flex-1 flex items-center justify-center bg-black/30 p-4">
+                <img id="archivo-preview-img" class="max-h-[75vh] max-w-full hidden object-contain rounded-xl" alt="Previsualización">
+                <iframe id="archivo-preview-pdf" class="w-full h-[75vh] hidden rounded-xl border-none bg-black" src=""></iframe>
+            </div>
+            <div id="archivo-preview-caption" class="px-4 py-3 text-sm text-slate-200 border-t border-indigo-400/10"></div>
+        </div>
+    </div>
 
     <!-- Modal JSON: bottom-sheet móvil, centrado desktop -->
     <div id="vh-modal"
@@ -626,3 +797,214 @@ function chipColor($valor)
     <script src="<?= $baseUrl ?>/assets/validaciones-modal.js"></script>
     <script src="<?= $baseUrl ?>/assets/validaciones-botones.js"></script>
     <script src="<?= $baseUrl ?>/assets/validaciones-demandas.js"></script>
+    <script>
+        (function() {
+            const modal = document.getElementById('archivo-preview-modal');
+            const img = document.getElementById('archivo-preview-img');
+            const pdf = document.getElementById('archivo-preview-pdf');
+            const caption = document.getElementById('archivo-preview-caption');
+            const closeBtn = document.getElementById('archivo-preview-close');
+
+            function resetPreview() {
+                if (img) {
+                    img.classList.add('hidden');
+                    img.removeAttribute('src');
+                }
+                if (pdf) {
+                    pdf.classList.add('hidden');
+                    pdf.removeAttribute('src');
+                }
+                if (caption) {
+                    caption.textContent = '';
+                }
+            }
+
+            function closeModal() {
+                if (!modal) return;
+                resetPreview();
+                modal.classList.add('hidden');
+            }
+
+            window.closeArchivoModal = closeModal;
+
+            window.openArchivoModal = function(tipo, url, titulo) {
+                if (!modal || !url) {
+                    return;
+                }
+                resetPreview();
+
+                if (tipo === 'pdf') {
+                    if (pdf) {
+                        pdf.src = url;
+                        pdf.classList.remove('hidden');
+                    }
+                } else if (img) {
+                    img.src = url;
+                    img.classList.remove('hidden');
+                }
+
+                if (caption) {
+                    caption.textContent = titulo || '';
+                }
+
+                modal.classList.remove('hidden');
+            };
+
+            closeBtn?.addEventListener('click', closeModal);
+            modal?.addEventListener('click', function(event) {
+                if (event.target === modal) {
+                    closeModal();
+                }
+            });
+
+            function showLoading(msg) {
+                Swal.fire({
+                    title: msg || 'Procesando...',
+                    allowOutsideClick: false,
+                    allowEscapeKey: false,
+                    didOpen: () => Swal.showLoading(),
+                    background: '#18181b',
+                    color: '#fff'
+                });
+            }
+
+            function showSuccess(msg) {
+                Swal.fire({
+                    icon: 'success',
+                    title: msg || '¡Listo!',
+                    timer: 1400,
+                    showConfirmButton: false,
+                    background: '#18181b',
+                    color: '#fff'
+                });
+            }
+
+            function showError(msg) {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Error',
+                    text: msg || 'Ocurrió un error',
+                    confirmButtonColor: '#de6868',
+                    background: '#18181b',
+                    color: '#fff'
+                });
+            }
+
+            async function subirArchivo(card, file) {
+                const tipo = card.dataset.tipo;
+                if (!tipo) {
+                    showError('Tipo de archivo no definido');
+                    return;
+                }
+
+                const fd = new FormData();
+                fd.append('id_inquilino', window.ID_INQ || 0);
+                fd.append('tipo', tipo);
+                fd.append('archivo', file);
+
+                const archivoId = card.dataset.archivoId || '';
+                let endpoint = '/inquilino/subir-archivo';
+                if (archivoId) {
+                    fd.append('archivo_id', archivoId);
+                    endpoint = '/inquilino/reemplazar_archivo';
+                }
+
+                try {
+                    showLoading('Subiendo archivo...');
+                    const resp = await fetch((window.ADMIN_BASE || '') + endpoint, {
+                        method: 'POST',
+                        body: fd
+                    });
+                    const data = await resp.json().catch(() => ({}));
+                    Swal.close();
+                    if (!resp.ok || !data.ok) {
+                        throw new Error(data.error || data.mensaje || `HTTP ${resp.status}`);
+                    }
+                    showSuccess('Archivo actualizado');
+                    setTimeout(() => window.location.reload(), 900);
+                } catch (err) {
+                    Swal.close();
+                    showError(err.message);
+                }
+            }
+
+            async function eliminarArchivo(card) {
+                const archivoId = card.dataset.archivoId || '';
+                if (!archivoId) {
+                    showError('No hay archivo para eliminar');
+                    return;
+                }
+
+                const confirm = await Swal.fire({
+                    title: '¿Eliminar archivo?',
+                    text: 'Esta acción no se puede deshacer.',
+                    icon: 'warning',
+                    showCancelButton: true,
+                    confirmButtonText: 'Sí, eliminar',
+                    cancelButtonText: 'Cancelar',
+                    background: '#18181b',
+                    color: '#fff',
+                    confirmButtonColor: '#ef4444',
+                    cancelButtonColor: '#4b5563'
+                });
+
+                if (!confirm.isConfirmed) {
+                    return;
+                }
+
+                const fd = new FormData();
+                fd.append('id_inquilino', window.ID_INQ || 0);
+                fd.append('archivo_id', archivoId);
+
+                try {
+                    showLoading('Eliminando archivo...');
+                    const resp = await fetch((window.ADMIN_BASE || '') + '/inquilino/eliminar_archivo', {
+                        method: 'POST',
+                        body: fd
+                    });
+                    const data = await resp.json().catch(() => ({}));
+                    Swal.close();
+                    if (!resp.ok || !data.ok) {
+                        throw new Error(data.error || data.mensaje || `HTTP ${resp.status}`);
+                    }
+                    showSuccess('Archivo eliminado');
+                    setTimeout(() => window.location.reload(), 900);
+                } catch (err) {
+                    Swal.close();
+                    showError(err.message);
+                }
+            }
+
+            function bindArchivoCards() {
+                const cards = document.querySelectorAll('.archivo-card');
+                cards.forEach((card) => {
+                    const replaceBtn = card.querySelector('[data-action="replace"]');
+                    const deleteBtn = card.querySelector('[data-action="delete"]');
+                    const input = card.querySelector('.archivo-input');
+                    const accept = card.dataset.accept || '';
+
+                    if (input && accept) {
+                        input.setAttribute('accept', accept);
+                    }
+
+                    replaceBtn?.addEventListener('click', () => {
+                        if (!input) return;
+                        input.value = '';
+                        input.click();
+                    });
+
+                    input?.addEventListener('change', () => {
+                        if (!input.files || !input.files.length) return;
+                        const file = input.files[0];
+                        subirArchivo(card, file);
+                    });
+
+                    deleteBtn?.addEventListener('click', () => {
+                        eliminarArchivo(card);
+                    });
+                });
+            }
+
+            bindArchivoCards();
+        })();
+    </script>

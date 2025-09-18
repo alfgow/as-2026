@@ -302,6 +302,183 @@ class InquilinoModel
     }
 
     /**
+     * Expose PK resolution for controllers/services.
+     */
+    public function getPkById(int $id): ?string
+    {
+        return $this->resolvePkById($id);
+    }
+
+    /**
+     * Registers an uploaded file and appends it to archivos_ids.
+     *
+     * @return array Datos del archivo recién almacenado.
+     */
+    public function registrarArchivo(
+        int $idInquilino,
+        string $tipo,
+        string $s3Key,
+        array $meta = [],
+        ?string $forcedSuffix = null
+    ): array {
+        $pk = $this->resolvePkById($idInquilino);
+        if (!$pk) {
+            throw new \RuntimeException('PK no encontrado para el inquilino.');
+        }
+
+        [$prefix] = explode('#', $pk . '#');
+        $prefix = strtolower($prefix ?: 'inq');
+
+        $suffix = $forcedSuffix !== null
+            ? strtolower(preg_replace('/[^a-z0-9]/', '', $forcedSuffix))
+            : strtolower(bin2hex(random_bytes(6)));
+
+        if ($suffix === '') {
+            $suffix = strtolower(bin2hex(random_bytes(6)));
+        }
+
+        $sk = sprintf('%sfile#%s', $prefix, $suffix);
+        $now = date('c');
+
+        $item = [
+            'pk'            => $pk,
+            'sk'            => $sk,
+            'tipo'          => strtolower(trim($tipo)),
+            's3_key'        => $s3Key,
+            'uploaded_at'   => $now,
+        ];
+
+        if (!empty($meta['mime_type'])) {
+            $item['mime_type'] = strtolower((string)$meta['mime_type']);
+        }
+        if (!empty($meta['size'])) {
+            $item['size'] = (int)$meta['size'];
+        }
+        if (!empty($meta['original_name'])) {
+            $item['nombre_original'] = (string)$meta['original_name'];
+        }
+        if (!empty($meta['categoria'])) {
+            $item['categoria'] = strtolower((string)$meta['categoria']);
+        }
+
+        $item = array_filter($item, static fn($v) => $v !== null && $v !== '', ARRAY_FILTER_USE_BOTH);
+
+        $this->client->putItem([
+            'TableName' => $this->table,
+            'Item'      => $this->marshaler->marshalItem($item),
+        ]);
+
+        $this->client->updateItem([
+            'TableName' => $this->table,
+            'Key'       => [
+                'pk' => ['S' => $pk],
+                'sk' => ['S' => 'profile'],
+            ],
+            'UpdateExpression'          => 'SET archivos_ids = list_append(if_not_exists(archivos_ids, :empty), :nuevo)',
+            'ExpressionAttributeValues' => [
+                ':empty' => ['L' => []],
+                ':nuevo' => ['L' => [['S' => $sk]]],
+            ],
+        ]);
+
+        $item['pk'] = $pk;
+        $item['sk'] = $sk;
+        $item['id'] = $sk;
+
+        return $item;
+    }
+
+    /**
+     * Recupera un archivo puntual por su SK.
+     */
+    public function obtenerArchivo(int $idInquilino, string $archivoId): ?array
+    {
+        $pk = $this->resolvePkById($idInquilino);
+        if (!$pk) {
+            return null;
+        }
+
+        $archivoId = trim($archivoId);
+        if ($archivoId === '') {
+            return null;
+        }
+
+        $res = $this->client->getItem([
+            'TableName' => $this->table,
+            'Key'       => [
+                'pk' => ['S' => $pk],
+                'sk' => ['S' => $archivoId],
+            ],
+        ]);
+
+        if (empty($res['Item'])) {
+            return null;
+        }
+
+        return $this->marshaler->unmarshalItem($res['Item']);
+    }
+
+    /**
+     * Elimina un archivo (item + referencia en profile).
+     */
+    public function eliminarArchivo(int $idInquilino, string $archivoId): bool
+    {
+        $pk = $this->resolvePkById($idInquilino);
+        if (!$pk) {
+            return false;
+        }
+
+        $archivoId = trim($archivoId);
+        if ($archivoId === '') {
+            return false;
+        }
+
+        $this->client->deleteItem([
+            'TableName' => $this->table,
+            'Key'       => [
+                'pk' => ['S' => $pk],
+                'sk' => ['S' => $archivoId],
+            ],
+        ]);
+
+        $profile = $this->fetchItem($pk);
+        $currentIds = [];
+        if (!empty($profile['archivos_ids']) && is_array($profile['archivos_ids'])) {
+            foreach ($profile['archivos_ids'] as $id) {
+                $id = (string)$id;
+                if ($id !== '' && $id !== $archivoId) {
+                    $currentIds[] = $id;
+                }
+            }
+        }
+
+        if ($currentIds) {
+            $this->client->updateItem([
+                'TableName' => $this->table,
+                'Key'       => [
+                    'pk' => ['S' => $pk],
+                    'sk' => ['S' => 'profile'],
+                ],
+                'UpdateExpression'          => 'SET archivos_ids = :ids',
+                'ExpressionAttributeValues' => [
+                    ':ids' => $this->marshaler->marshalValue($currentIds),
+                ],
+            ]);
+        } else {
+            $this->client->updateItem([
+                'TableName' => $this->table,
+                'Key'       => [
+                    'pk' => ['S' => $pk],
+                    'sk' => ['S' => 'profile'],
+                ],
+                'UpdateExpression' => 'REMOVE archivos_ids',
+            ]);
+        }
+
+        return true;
+    }
+
+    /**
      * Buscar inquilinos/obligados/fiadores por nombre, email o celular
      * Incluye archivos, validaciones, pólizas y selfie_url
      */
@@ -830,6 +1007,34 @@ class InquilinoModel
                 ],
             ]);
         }
+
+        return true;
+    }
+
+    public function actualizarStatus(int $idInquilino, string $status): bool
+    {
+        $pk = $this->resolvePkById($idInquilino);
+        if (!$pk) {
+            return false;
+        }
+
+        $status = trim($status);
+        if ($status === '') {
+            return false;
+        }
+
+        $this->client->updateItem([
+            'TableName' => $this->table,
+            'Key'       => [
+                'pk' => ['S' => $pk],
+                'sk' => ['S' => 'profile'],
+            ],
+            'UpdateExpression'          => 'SET #status = :status',
+            'ExpressionAttributeNames'  => ['#status' => 'status'],
+            'ExpressionAttributeValues' => [
+                ':status' => ['S' => $status],
+            ],
+        ]);
 
         return true;
     }

@@ -100,6 +100,12 @@ switch (true) {
         exit;
         break;
 
+    case preg_match('#^/inquilino/([^/]+)/archivos-presignados$#i', $uri, $matches) && $_SERVER['REQUEST_METHOD'] === 'GET':
+        require __DIR__ . '/Controllers/InquilinoValidacionAWSController.php';
+        (new \App\Controllers\InquilinoValidacionAWSController())->obtenerArchivosPorSlug($matches[1]);
+        exit;
+        break;
+
 
 
     // GET /inquilino/{slug}/archivos-presignados
@@ -446,6 +452,41 @@ switch (true) {
 
 
     // Reemplazo de archivo (AJAX POST)
+    case $uri === '/inquilino/subir-archivo' && $_SERVER['REQUEST_METHOD'] === 'POST':
+        require __DIR__ . '/Controllers/InquilinoController.php';
+        (new \App\Controllers\InquilinoController())->subirArchivo();
+        exit;
+        break;
+
+    case $uri === '/inquilino/reemplazar_archivo' && $_SERVER['REQUEST_METHOD'] === 'POST':
+        require __DIR__ . '/Controllers/InquilinoController.php';
+        (new \App\Controllers\InquilinoController())->reemplazarArchivo();
+        exit;
+        break;
+
+    case $uri === '/inquilino/eliminar_archivo' && $_SERVER['REQUEST_METHOD'] === 'POST':
+        require __DIR__ . '/Controllers/InquilinoController.php';
+        (new \App\Controllers\InquilinoController())->eliminarArchivo();
+        exit;
+        break;
+
+    case $uri === '/inquilino/editar-validaciones' && $_SERVER['REQUEST_METHOD'] === 'POST':
+        require __DIR__ . '/Controllers/InquilinoController.php';
+        (new \App\Controllers\InquilinoController())->editarValidaciones();
+        exit;
+        break;
+
+    case $uri === '/inquilino/editar-status' && $_SERVER['REQUEST_METHOD'] === 'POST':
+        require __DIR__ . '/Controllers/InquilinoController.php';
+        (new \App\Controllers\InquilinoController())->editarStatus();
+        exit;
+        break;
+
+    case preg_match('#^/inquilino/([^/]+)/validaciones$#i', $uri, $matches) && $_SERVER['REQUEST_METHOD'] === 'GET':
+        require __DIR__ . '/Controllers/ValidacionLegalController.php';
+        (new \App\Controllers\ValidacionLegalController())->historialPorSlug($matches[1]);
+        exit;
+        break;
 
     // Validación manual con AWS (inicial, sin llamadas a AWS aún)
     case preg_match('#^/inquilino/([a-z0-9\-]+)/validar$#', $uri, $matches) && $_SERVER['REQUEST_METHOD'] === 'POST':

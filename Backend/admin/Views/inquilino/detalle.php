@@ -70,6 +70,14 @@ $selfieUrl    = $selfieUrl ?? null;
                         </svg>
                         <span>Validaciones</span>
                     </a>
+
+                    <button type="button" id="btn-ver-db"
+                        class="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-full w-full md:w-auto text-white shadow-lg text-sm text-center bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 transition-transform duration-200 hover:scale-[1.02]">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h7" />
+                        </svg>
+                        <span>Ver DB</span>
+                    </button>
                 </div>
                 <!-- === /FRANJA DE ACCIONES === -->
 
@@ -788,7 +796,7 @@ $selfieUrl    = $selfieUrl ?? null;
                             </button>
                             <input type="file" id="dz-selfie" class="hidden"
                                 accept="image/*"
-                                data-id="<?= !empty($selfie['id']) ? htmlspecialchars($selfie['id']) : '' ?>"
+                                data-id="<?= htmlspecialchars($selfie['id'] ?? $selfie['sk'] ?? '') ?>"
                                 data-inquilino="<?= (int)$profile['id'] ?>"
                                 data-nombre="<?= htmlspecialchars($nombreInquilino) ?>"
                                 onchange="handleSelfieSelect(this)">
@@ -846,7 +854,7 @@ $selfieUrl    = $selfieUrl ?? null;
                                 </button>
                                 <input type="file" id="dz-ine-frente" class="hidden"
                                     accept="image/*"
-                                    data-id="<?= !empty($ineFrente['id']) ? htmlspecialchars($ineFrente['id']) : '' ?>"
+                                    data-id="<?= htmlspecialchars($ineFrente['id'] ?? $ineFrente['sk'] ?? '') ?>"
                                     data-inquilino="<?= (int)$profile['id'] ?>"
                                     data-nombre="<?= htmlspecialchars($nombreInquilino) ?>"
                                     onchange="handleIneFrontalSelect(this)">
@@ -896,7 +904,7 @@ $selfieUrl    = $selfieUrl ?? null;
                                 </button>
                                 <input type="file" id="dz-ine-reverso" class="hidden"
                                     accept="image/*"
-                                    data-id="<?= !empty($ineReverso['id']) ? htmlspecialchars($ineReverso['id']) : '' ?>"
+                                    data-id="<?= htmlspecialchars($ineReverso['id'] ?? $ineReverso['sk'] ?? '') ?>"
                                     data-inquilino="<?= (int)$profile['id'] ?>"
                                     data-nombre="<?= htmlspecialchars($nombreInquilino) ?>"
                                     onchange="handleIneReversoSelect(this)">
@@ -951,7 +959,7 @@ $selfieUrl    = $selfieUrl ?? null;
                                 </button>
                                 <input type="file" id="dz-pasaporte" class="hidden"
                                     accept="image/*"
-                                    data-id="<?= !empty($pasaporte['id']) ? htmlspecialchars($pasaporte['id']) : '' ?>"
+                                    data-id="<?= htmlspecialchars($pasaporte['id'] ?? $pasaporte['sk'] ?? '') ?>"
                                     data-inquilino="<?= (int)$profile['id'] ?>"
                                     data-nombre="<?= htmlspecialchars($nombreInquilino) ?>"
                                     onchange="handlePasaporteSelect(this)">
@@ -1007,7 +1015,7 @@ $selfieUrl    = $selfieUrl ?? null;
                                 </button>
                                 <input type="file" id="dz-forma-frontal" class="hidden"
                                     accept="image/*"
-                                    data-id="<?= !empty($formaFrente['id']) ? htmlspecialchars($formaFrente['id']) : '' ?>"
+                                    data-id="<?= htmlspecialchars($formaFrente['id'] ?? $formaFrente['sk'] ?? '') ?>"
                                     data-inquilino="<?= (int)$profile['id'] ?>"
                                     data-nombre="<?= htmlspecialchars($nombreInquilino) ?>"
                                     onchange="handleFormaFrontalSelect(this)">
@@ -1057,7 +1065,7 @@ $selfieUrl    = $selfieUrl ?? null;
                                 </button>
                                 <input type="file" id="dz-forma-reverso" class="hidden"
                                     accept="image/*"
-                                    data-id="<?= !empty($formaReverso['id']) ? htmlspecialchars($formaReverso['id']) : '' ?>"
+                                    data-id="<?= htmlspecialchars($formaReverso['id'] ?? $formaReverso['sk'] ?? '') ?>"
                                     data-inquilino="<?= (int)$profile['id'] ?>"
                                     data-nombre="<?= htmlspecialchars($nombreInquilino) ?>"
                                     onchange="handleFormaReversoSelect(this)">
@@ -1131,7 +1139,7 @@ $selfieUrl    = $selfieUrl ?? null;
                             </button>
                             <input type="file" id="dz-comp-ingreso-1" class="hidden"
                                 accept="application/pdf"
-                                data-id="<?= !empty($comp1['id']) ? htmlspecialchars($comp1['id']) : '' ?>"
+                                data-id="<?= htmlspecialchars($comp1['id'] ?? $comp1['sk'] ?? '') ?>"
                                 data-inquilino="<?= (int)$profile['id'] ?>"
                                 data-nombre="<?= htmlspecialchars($nombreInquilino) ?>"
                                 onchange="handleCompIngreso1Select(this)">
@@ -1197,7 +1205,7 @@ $selfieUrl    = $selfieUrl ?? null;
                             </button>
                             <input type="file" id="dz-comp-ingreso-2" class="hidden"
                                 accept="application/pdf"
-                                data-id="<?= !empty($comp2['id']) ? htmlspecialchars($comp2['id']) : '' ?>"
+                                data-id="<?= htmlspecialchars($comp2['id'] ?? $comp2['sk'] ?? '') ?>"
                                 data-inquilino="<?= (int)$profile['id'] ?>"
                                 data-nombre="<?= htmlspecialchars($nombreInquilino) ?>"
                                 onchange="handleCompIngreso2Select(this)">
@@ -1263,7 +1271,7 @@ $selfieUrl    = $selfieUrl ?? null;
                             </button>
                             <input type="file" id="dz-comp-ingreso-3" class="hidden"
                                 accept="application/pdf"
-                                data-id="<?= !empty($comp3['id']) ? htmlspecialchars($comp3['id']) : '' ?>"
+                                data-id="<?= htmlspecialchars($comp3['id'] ?? $comp3['sk'] ?? '') ?>"
                                 data-inquilino="<?= (int)$profile['id'] ?>"
                                 data-nombre="<?= htmlspecialchars($nombreInquilino) ?>"
                                 data-slot="3"
@@ -1316,7 +1324,7 @@ $selfieUrl    = $selfieUrl ?? null;
                             </button>
                             <input type="file" id="dz-validacion-ingresos" class="hidden"
                                 accept="image/*"
-                                data-id="<?= !empty($valIng['id']) ? htmlspecialchars($valIng['id']) : '' ?>"
+                                data-id="<?= htmlspecialchars($valIng['id'] ?? $valIng['sk'] ?? '') ?>"
                                 data-inquilino="<?= (int)$profile['id'] ?>"
                                 data-nombre="<?= htmlspecialchars($nombreInquilino) ?>"
                                 onchange="handleValidacionIngresosSelect(this)">
@@ -1383,7 +1391,7 @@ $selfieUrl    = $selfieUrl ?? null;
                                 </button>
                                 <input type="file" id="dz-escritura" class="hidden"
                                     accept="application/pdf"
-                                    data-id="<?= !empty($escritura['id']) ? htmlspecialchars($escritura['id']) : '' ?>"
+                                    data-id="<?= htmlspecialchars($escritura['id'] ?? $escritura['sk'] ?? '') ?>"
                                     data-inquilino="<?= (int)$profile['id'] ?>"
                                     data-nombre="<?= htmlspecialchars($nombreInquilino) ?>"
                                     onchange="handleEscrituraSelect(this)">
@@ -1579,6 +1587,44 @@ $selfieUrl    = $selfieUrl ?? null;
     </div>
 </div>
 
+<?php
+$dbDumpPayload = [
+    'profile'      => $profile,
+    'archivos'     => $archivos,
+    'validaciones' => $validaciones,
+    'polizas'      => $polizas,
+    'selfie_url'   => $selfieUrl,
+    'slug'         => $slug,
+];
+
+$dbDumpJs = json_encode($dbDumpPayload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+?>
+
+<!-- MODAL VER DB -->
+<div id="modal-db" class="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md hidden">
+    <div class="relative w-full max-w-4xl h-[80vh] bg-gray-900/95 rounded-2xl shadow-2xl border border-emerald-400/30 p-6 flex flex-col">
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-lg font-semibold text-emerald-200">Registro completo (Dynamo)</h2>
+            <div class="flex items-center gap-2">
+                <button type="button" id="copy-modal-db"
+                    class="px-3 py-1.5 rounded-full bg-emerald-500/20 hover:bg-emerald-500/30 text-sm text-emerald-100 font-medium transition"
+                    aria-label="Copiar JSON">
+                    Copiar JSON
+                </button>
+                <button type="button" id="close-modal-db"
+                    class="p-2 rounded-full hover:bg-emerald-500/20 transition" aria-label="Cerrar">
+                    <svg class="w-6 h-6 text-emerald-200" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
+            </div>
+        </div>
+        <div class="flex-1 overflow-auto bg-black/40 border border-emerald-400/10 rounded-xl p-4 text-sm text-emerald-100">
+            <pre id="db-json" class="whitespace-pre-wrap break-words font-mono"></pre>
+        </div>
+    </div>
+</div>
+
 <!-- MODAL PARA VER IMAGEN EN GRANDE -->
 <div id="modal-img" class="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md hidden">
     <div class="relative max-w-3xl w-[90vw] flex flex-col items-center">
@@ -1622,3 +1668,95 @@ $selfieUrl    = $selfieUrl ?? null;
 <script src="<?= $baseUrl ?>/assets/inquilinoEscritura.js"></script>
 <script src="<?= $baseUrl ?>/assets/inquilinoOtros.js"></script>
 <script src="<?= $baseUrl ?>/assets/inquilinoImgValidacionIngresos.js"></script>
+<script>
+    window.INQ_DB_DUMP = <?= $dbDumpJs ?: '{}' ?>;
+
+    (function () {
+        const btn = document.getElementById('btn-ver-db');
+        const modal = document.getElementById('modal-db');
+        const pre = document.getElementById('db-json');
+        const close = document.getElementById('close-modal-db');
+        const copy = document.getElementById('copy-modal-db');
+        let lastJson = '{}';
+
+        function abrirModalDb() {
+            if (!modal || !pre) return;
+            let contenido = '{}';
+            try {
+                contenido = JSON.stringify(window.INQ_DB_DUMP || {}, null, 2);
+            } catch (err) {
+                try {
+                    contenido = JSON.stringify(JSON.parse(String(window.INQ_DB_DUMP || '{}')), null, 2);
+                } catch (inner) {
+                    contenido = String(window.INQ_DB_DUMP || '{}');
+                }
+            }
+            pre.textContent = contenido;
+            lastJson = contenido;
+            modal.classList.remove('hidden');
+        }
+
+        function cerrarModalDb() {
+            modal?.classList.add('hidden');
+        }
+
+        btn?.addEventListener('click', abrirModalDb);
+        close?.addEventListener('click', cerrarModalDb);
+        modal?.addEventListener('click', function (event) {
+            if (event.target === modal) {
+                cerrarModalDb();
+            }
+        });
+
+        async function copiarJson() {
+            const texto = lastJson || JSON.stringify(window.INQ_DB_DUMP || {}, null, 2);
+            try {
+                if (navigator.clipboard?.writeText) {
+                    await navigator.clipboard.writeText(texto);
+                } else {
+                    const ta = document.createElement('textarea');
+                    ta.value = texto;
+                    ta.setAttribute('readonly', '');
+                    ta.style.position = 'absolute';
+                    ta.style.left = '-9999px';
+                    document.body.appendChild(ta);
+                    ta.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(ta);
+                }
+                if (window.Swal) {
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'Copiado',
+                        text: 'El JSON se copió al portapapeles.',
+                        timer: 1400,
+                        showConfirmButton: false,
+                        background: '#0f172a',
+                        color: '#e2e8f0'
+                    });
+                } else if (copy) {
+                    const original = copy.textContent;
+                    copy.textContent = 'Copiado';
+                    setTimeout(() => {
+                        copy.textContent = original ?? 'Copiar JSON';
+                    }, 1500);
+                }
+            } catch (err) {
+                console.error('copy error', err);
+                if (window.Swal) {
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'No se pudo copiar',
+                        text: err?.message || 'Intenta manualmente.',
+                        background: '#0f172a',
+                        color: '#e2e8f0'
+                    });
+                }
+            }
+        }
+
+        copy?.addEventListener('click', copiarJson);
+
+        window.cerrarModalDb = cerrarModalDb;
+    })();
+</script>
