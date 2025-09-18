@@ -612,6 +612,8 @@ $selfieUrl    = $selfieUrl ?? null;
                     autocomplete="off"
                     onsubmit="guardarEdicionFiador(event)">
                     <input type="hidden" name="id_inquilino" value="<?= $profile['id']; ?>">
+                    <input type="hidden" name="pk" value="<?= htmlspecialchars($profile['pk'] ?? ''); ?>">
+                    <input type="hidden" name="id" value="<?= (int)($profile['id'] ?? 0); ?>">
                     <div class="grid md:grid-cols-2 gap-6">
                         <!-- [ ... campos como los tienes ... ] -->
                         <div>

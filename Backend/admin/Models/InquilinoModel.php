@@ -912,6 +912,54 @@ class InquilinoModel
     }
 
     /**
+     * Actualiza la información del inmueble en garantía asociada al fiador.
+     */
+    public function actualizarFiadorPorPk(string $pk, array $fiador): bool
+    {
+        $pk = trim($pk);
+        if ($pk === '') {
+            return false;
+        }
+
+        $payload = [];
+        foreach ($fiador as $campo => $valor) {
+            if (!is_string($campo)) {
+                continue;
+            }
+
+            if (!is_string($valor)) {
+                $valor = $valor === null ? null : (string)$valor;
+            }
+
+            if ($valor === null) {
+                $payload[$campo] = null;
+                continue;
+            }
+
+            $valor = trim($valor);
+            $payload[$campo] = $valor === '' ? null : $valor;
+        }
+
+        if (!$payload) {
+            return false;
+        }
+
+        $this->client->updateItem([
+            'TableName' => $this->table,
+            'Key'       => [
+                'pk' => ['S' => $pk],
+                'sk' => ['S' => 'profile'],
+            ],
+            'UpdateExpression'          => 'SET fiador = :fiador',
+            'ExpressionAttributeValues' => [
+                ':fiador' => $this->marshaler->marshalValue($payload),
+            ],
+        ]);
+
+        return true;
+    }
+
+    /**
      * Obtiene el snapshot de validaciones normalizado.
      */
     public function obtenerValidaciones(int $idInquilino): array
