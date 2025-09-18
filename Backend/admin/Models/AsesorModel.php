@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace App\Models;
@@ -28,7 +29,7 @@ use RuntimeException;
  */
 class AsesorModel
 {
-    private const PK_PREFIX  = 'ASE#';
+    private const PK_PREFIX  = 'ase#';
     private const COUNTER_PK = 'meta#asesor';
     private const COUNTER_SK = 'counter';
     private const PROFILE_SK = 'profile';

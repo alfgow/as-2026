@@ -1,5 +1,7 @@
 <?php
+
 /** @var array<int, array<string, mixed>> $asesores */
+
 ?>
 <div class="space-y-6">
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -10,16 +12,14 @@
         <button
             id="btn-open-create"
             type="button"
-            class="inline-flex items-center justify-center px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shadow-lg transition"
-        >
+            class="inline-flex items-center justify-center px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shadow-lg transition">
             + Nuevo Asesor
         </button>
     </div>
 
     <div
         id="asesores-empty"
-        class="<?php echo empty($asesores) ? '' : 'hidden'; ?> rounded-2xl border border-indigo-700/40 bg-indigo-900/30 text-indigo-100 text-center py-12"
-    >
+        class="<?php echo empty($asesores) ? '' : 'hidden'; ?> rounded-2xl border border-indigo-700/40 bg-indigo-900/30 text-indigo-100 text-center py-12">
         <p class="text-lg font-semibold">Aún no hay asesores registrados.</p>
         <p class="text-sm mt-1 text-indigo-100/70">Utiliza el botón "+ Nuevo Asesor" para comenzar.</p>
     </div>
@@ -30,8 +30,7 @@
 <div
     id="asesor-modal"
     class="fixed inset-0 bg-black/50 backdrop-blur-sm hidden items-center justify-center z-40 px-4"
-    aria-hidden="true"
->
+    aria-hidden="true">
     <div class="bg-[#1b1f34] w-full max-w-xl rounded-2xl shadow-2xl border border-indigo-900/40 overflow-hidden">
         <div class="flex items-center justify-between px-6 py-4 bg-indigo-900/40 border-b border-indigo-800/40">
             <h2 id="asesor-modal-title" class="text-lg font-semibold text-white">Nuevo Asesor</h2>
@@ -49,8 +48,7 @@
                     type="text"
                     name="nombre_asesor"
                     required
-                    class="w-full rounded-lg px-4 py-3 bg-[#232336] text-indigo-100 border border-indigo-800 placeholder-indigo-400 focus:ring-2 focus:ring-indigo-600 focus:outline-none"
-                />
+                    class="w-full rounded-lg px-4 py-3 bg-[#232336] text-indigo-100 border border-indigo-800 placeholder-indigo-400 focus:ring-2 focus:ring-indigo-600 focus:outline-none" />
             </div>
             <div>
                 <label for="asesor-email" class="block text-sm font-semibold text-indigo-200 mb-1">Email *</label>
@@ -59,8 +57,7 @@
                     type="email"
                     name="email"
                     required
-                    class="w-full rounded-lg px-4 py-3 bg-[#232336] text-indigo-100 border border-indigo-800 placeholder-indigo-400 focus:ring-2 focus:ring-indigo-600 focus:outline-none"
-                />
+                    class="w-full rounded-lg px-4 py-3 bg-[#232336] text-indigo-100 border border-indigo-800 placeholder-indigo-400 focus:ring-2 focus:ring-indigo-600 focus:outline-none" />
             </div>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
@@ -69,8 +66,7 @@
                         id="asesor-celular"
                         type="text"
                         name="celular"
-                        class="w-full rounded-lg px-4 py-3 bg-[#232336] text-indigo-100 border border-indigo-800 placeholder-indigo-400 focus:ring-2 focus:ring-indigo-600 focus:outline-none"
-                    />
+                        class="w-full rounded-lg px-4 py-3 bg-[#232336] text-indigo-100 border border-indigo-800 placeholder-indigo-400 focus:ring-2 focus:ring-indigo-600 focus:outline-none" />
                 </div>
                 <div>
                     <label for="asesor-telefono" class="block text-sm font-semibold text-indigo-200 mb-1">Teléfono</label>
@@ -78,22 +74,19 @@
                         id="asesor-telefono"
                         type="text"
                         name="telefono"
-                        class="w-full rounded-lg px-4 py-3 bg-[#232336] text-indigo-100 border border-indigo-800 placeholder-indigo-400 focus:ring-2 focus:ring-indigo-600 focus:outline-none"
-                    />
+                        class="w-full rounded-lg px-4 py-3 bg-[#232336] text-indigo-100 border border-indigo-800 placeholder-indigo-400 focus:ring-2 focus:ring-indigo-600 focus:outline-none" />
                 </div>
             </div>
             <div class="flex justify-end gap-3 pt-2">
                 <button
                     type="button"
                     id="asesor-cancelar"
-                    class="px-5 py-2 rounded-lg border border-indigo-600 text-indigo-200 hover:bg-indigo-600/20 transition"
-                >
+                    class="px-5 py-2 rounded-lg border border-indigo-600 text-indigo-200 hover:bg-indigo-600/20 transition">
                     Cancelar
                 </button>
                 <button
                     type="submit"
-                    class="px-6 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shadow-lg transition"
-                >
+                    class="px-6 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shadow-lg transition">
                     Guardar
                 </button>
             </div>
