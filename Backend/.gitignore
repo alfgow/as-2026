@@ -3,3 +3,66 @@ admin/config/credentials.local.php
 admin/migration/
 codex-playground/
 .vscode/
+
+# --- Sistema base ---
+/vendor/
+/node_modules/
+/.env
+.env.local
+.env.*.local
+
+# --- Archivos temporales ---
+*.log
+*.cache
+*.lock
+*.tmp
+*.swp
+*.swo
+*.bak
+*.DS_Store
+Thumbs.db
+
+# --- Configuración de IDE ---
+.vscode/
+.idea/
+*.code-workspace
+
+# --- Docker / contenedores ---
+/docker-compose.override.yml
+/.docker
+/.dockerignore
+*.pid
+
+# --- Codex / playgrounds / experimentos ---
+codex-playground/
+playground/
+tmp/
+sandbox/
+
+# --- Archivos de compilación o binarios ---
+*.so
+*.out
+*.exe
+*.dll
+*.class
+*.jar
+
+# --- PHPUnit / coverage ---
+/phpunit.xml
+/phpunit.xml.dist
+/coverage/
+/.phpunit.result.cache
+
+# --- Composer ---
+/composer.lock
+/composer.phar
+
+# --- AWS SDK / Credenciales ---
+/aws-sdk-php/
+config/awsconfig.php
+config/s3config.php
+
+# --- Cachés de PHP ---
+/Backend/storage/cache/
+/Backend/storage/logs/
+/Backend/storage/framework/sessions/
