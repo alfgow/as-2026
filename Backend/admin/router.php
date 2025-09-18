@@ -150,13 +150,6 @@ switch (true) {
         exit;
         break;
 
-    // Asesores - formulario nuevo
-    case $uri === '/asesores/create':
-        require __DIR__ . '/Controllers/AsesorController.php';
-        (new \App\Controllers\AsesorController())->create();
-        exit;
-        break;
-
     // Asesores - almacenar
     case $uri === '/asesores/store':
         require __DIR__ . '/Controllers/AsesorController.php';
@@ -164,17 +157,17 @@ switch (true) {
         exit;
         break;
 
-    // Asesores - editar
-    case preg_match('#^/asesores/edit$#', $uri):
-        require __DIR__ . '/Controllers/AsesorController.php';
-        (new \App\Controllers\AsesorController())->edit();
-        exit;
-        break;
-
     // Asesores - actualizar
     case $uri === '/asesores/update':
         require __DIR__ . '/Controllers/AsesorController.php';
         (new \App\Controllers\AsesorController())->update();
+        exit;
+        break;
+
+    // Asesores - eliminar
+    case $uri === '/asesores/delete':
+        require __DIR__ . '/Controllers/AsesorController.php';
+        (new \App\Controllers\AsesorController())->delete();
         exit;
         break;
 
