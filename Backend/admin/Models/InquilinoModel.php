@@ -46,6 +46,64 @@ class InquilinoModel
     }
 
     /**
+     * @return array<string, int>
+     */
+    public function contarPorAsesores(array $asesorPks): array
+    {
+        if (empty($asesorPks)) {
+            return [];
+        }
+
+        $normalizedPks = array_values(array_unique(array_map('strtolower', $asesorPks)));
+        $counts        = array_fill_keys($normalizedPks, 0);
+        $lastKey = null;
+
+        do {
+            $params = [
+                'TableName'                 => $this->table,
+                'FilterExpression'          => 'sk = :sk AND (attribute_exists(asesor_pk) OR attribute_exists(asesor) OR attribute_exists(asesor_id)) AND (begins_with(pk, :inq) OR begins_with(pk, :obl) OR begins_with(pk, :fia))',
+                'ExpressionAttributeValues' => [
+                    ':sk'  => ['S' => 'profile'],
+                    ':inq' => ['S' => 'inq#'],
+                    ':obl' => ['S' => 'obl#'],
+                    ':fia' => ['S' => 'fia#'],
+                ],
+            ];
+
+            if ($lastKey) {
+                $params['ExclusiveStartKey'] = $lastKey;
+            }
+
+            $result = $this->client->scan($params);
+            foreach ($result['Items'] ?? [] as $item) {
+                $profile  = $this->marshaler->unmarshalItem($item);
+                $asesorPk = '';
+
+                if (!empty($profile['asesor_pk'])) {
+                    $asesorPk = strtolower((string) $profile['asesor_pk']);
+                } elseif (!empty($profile['asesor']['pk'])) {
+                    $asesorPk = strtolower((string) $profile['asesor']['pk']);
+                } elseif (!empty($profile['asesor']) && is_string($profile['asesor'])) {
+                    $candidate = strtolower((string) $profile['asesor']);
+                    if (preg_match('/^ase#\d+$/', $candidate) === 1) {
+                        $asesorPk = $candidate;
+                    }
+                } elseif (!empty($profile['asesor_id'])) {
+                    $asesorPk = sprintf('ase#%d', (int) $profile['asesor_id']);
+                }
+
+                if ($asesorPk !== '' && array_key_exists($asesorPk, $counts)) {
+                    $counts[$asesorPk]++;
+                }
+            }
+
+            $lastKey = $result['LastEvaluatedKey'] ?? null;
+        } while ($lastKey);
+
+        return $counts;
+    }
+
+    /**
      * Construye el PK completo a partir de un prefijo y un identificador entero.
      */
     private function buildPk(string $prefix, int $id): string
@@ -1220,7 +1278,7 @@ class InquilinoModel
             throw new \RuntimeException('Asesor inválido.');
         }
 
-        $nuevoPk = sprintf('ASE#%d', $nuevoId);
+        $nuevoPk = sprintf('ase#%d', $nuevoId);
 
         $asesorPayload = [
             'id'            => $nuevoId,
@@ -1228,7 +1286,6 @@ class InquilinoModel
             'nombre_asesor' => (string) ($asesorData['nombre_asesor'] ?? ''),
             'email'         => (string) ($asesorData['email'] ?? ''),
             'celular'       => (string) ($asesorData['celular'] ?? ''),
-            'telefono'      => (string) ($asesorData['telefono'] ?? ''),
         ];
 
         $prevAsesorId = null;
@@ -1236,11 +1293,11 @@ class InquilinoModel
             $prevAsesorId = (int)$profile['asesor_id'];
         } elseif (!empty($profile['asesor']['id'])) {
             $prevAsesorId = (int)$profile['asesor']['id'];
-        } elseif (!empty($profile['asesor_pk']) && preg_match('/^ASE#(\d+)$/i', (string)$profile['asesor_pk'], $m)) {
+        } elseif (!empty($profile['asesor_pk']) && preg_match('/^ase#(\d+)$/i', (string)$profile['asesor_pk'], $m)) {
             $prevAsesorId = (int)$m[1];
         }
 
-        $prevAsesorPk = $prevAsesorId ? sprintf('ASE#%d', $prevAsesorId) : null;
+        $prevAsesorPk = $prevAsesorId ? sprintf('ase#%d', $prevAsesorId) : null;
 
         $this->client->updateItem([
             'TableName' => $this->table,
@@ -1393,7 +1450,7 @@ class InquilinoModel
                 'id'      => $row['id'],
                 'nombre'  => $row['nombre'],
                 'email'   => $row['email'],
-                'telefono'=> $row['celular'],
+                'celular' => $row['celular'] ?? '',
                 'tipo'    => $row['tipo'] ?? 'inquilino',
             ];
         }, $rows);

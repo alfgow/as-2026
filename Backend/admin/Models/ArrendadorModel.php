@@ -305,7 +305,7 @@ class ArrendadorModel
             'ExpressionAttributeValues' => [
                 ':pk'     => ['S' => 'arr#'],
                 ':sk'     => ['S' => 'profile'],
-                ':asesor' => ['S' => $asesorId] // Ej: ASE#1
+                ':asesor' => ['S' => $asesorId] // Ej: ase#1
             ]
         ]);
 
@@ -321,6 +321,50 @@ class ArrendadorModel
         );
 
         return $arrendadores;
+    }
+
+    /**
+     * @param array<int, string> $asesorPks
+     * @return array<string, int>
+     */
+    public function contarPorAsesores(array $asesorPks): array
+    {
+        if (empty($asesorPks)) {
+            return [];
+        }
+
+        $normalizedPks = array_values(array_unique(array_map('strtolower', $asesorPks)));
+        $counts        = array_fill_keys($normalizedPks, 0);
+        $lastKey = null;
+
+        do {
+            $params = [
+                'TableName'                 => $this->table,
+                'FilterExpression'          => 'begins_with(pk, :pk) AND sk = :sk AND attribute_exists(asesor)',
+                'ExpressionAttributeValues' => [
+                    ':pk' => ['S' => 'arr#'],
+                    ':sk' => ['S' => 'profile'],
+                ],
+            ];
+
+            if ($lastKey) {
+                $params['ExclusiveStartKey'] = $lastKey;
+            }
+
+            $result = $this->client->scan($params);
+            foreach ($result['Items'] ?? [] as $item) {
+                $data      = $this->marshaler->unmarshalItem($item);
+                $asesorKey = strtolower((string) ($data['asesor'] ?? ''));
+
+                if ($asesorKey !== '' && array_key_exists($asesorKey, $counts)) {
+                    $counts[$asesorKey]++;
+                }
+            }
+
+            $lastKey = $result['LastEvaluatedKey'] ?? null;
+        } while ($lastKey);
+
+        return $counts;
     }
 
     /**

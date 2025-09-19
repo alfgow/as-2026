@@ -2,7 +2,11 @@
 namespace App\Controllers;
 
 require_once __DIR__ . '/../Models/AsesorModel.php';
+require_once __DIR__ . '/../Models/InquilinoModel.php';
+require_once __DIR__ . '/../Models/ArrendadorModel.php';
 use App\Models\AsesorModel;
+use App\Models\InquilinoModel;
+use App\Models\ArrendadorModel;
 
 require_once __DIR__ . '/../Middleware/AuthMiddleware.php';
 use App\Middleware\AuthMiddleware;
@@ -25,7 +29,7 @@ class AsesorController
      */
     public function index()
     {
-        $asesores    = $this->model->all();
+        $asesores    = $this->enrichAsignaciones($this->model->all());
         $title       = 'Asesores - AS';
         $headerTitle = 'Asesores Inmobiliarios';
         $contentView = __DIR__ . '/../Views/asesores/index.php';
@@ -49,6 +53,8 @@ class AsesorController
             if ($asesor === null) {
                 throw new \RuntimeException('No se pudo recuperar el asesor recién creado.');
             }
+
+            [$asesor] = $this->enrichAsignaciones([$asesor]);
 
             $this->jsonResponse([
                 'ok'      => true,
@@ -85,6 +91,8 @@ class AsesorController
             if ($asesor === null) {
                 throw new \RuntimeException('No se pudo recuperar la información actualizada del asesor.');
             }
+
+            [$asesor] = $this->enrichAsignaciones([$asesor]);
 
             $this->jsonResponse([
                 'ok'      => true,
@@ -135,7 +143,6 @@ class AsesorController
             'nombre_asesor' => trim($input['nombre_asesor'] ?? ''),
             'email'         => trim($input['email'] ?? ''),
             'celular'       => trim($input['celular'] ?? ''),
-            'telefono'      => trim($input['telefono'] ?? ''),
         ];
     }
 
@@ -158,5 +165,65 @@ class AsesorController
         header('Content-Type: application/json; charset=utf-8');
         echo json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         exit;
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $asesores
+     * @return array<int, array<string, mixed>>
+     */
+    private function enrichAsignaciones(array $asesores): array
+    {
+        if (empty($asesores)) {
+            return $asesores;
+        }
+
+        $normalized = [];
+        $pks        = [];
+
+        foreach ($asesores as $index => $asesor) {
+            $id = isset($asesor['id']) ? (int) $asesor['id'] : 0;
+            $pk = (string) ($asesor['pk'] ?? '');
+
+            if ($pk !== '') {
+                $pk = strtolower($pk);
+            }
+
+            if ($pk === '' && $id > 0) {
+                $pk = sprintf('ase#%d', $id);
+            }
+
+            $asesor['pk']                 = $pk;
+            $asesor['inquilinos_total']   = (int) ($asesor['inquilinos_total'] ?? 0);
+            $asesor['arrendadores_total'] = (int) ($asesor['arrendadores_total'] ?? 0);
+            $normalized[$index]           = $asesor;
+
+            if ($pk !== '') {
+                $pks[$pk] = $pk;
+            }
+        }
+
+        if (empty($pks)) {
+            return array_values($normalized);
+        }
+
+        $inquilinoModel  = new InquilinoModel();
+        $arrendadorModel = new ArrendadorModel();
+        $pkList          = array_values($pks);
+
+        $inquilinos   = $inquilinoModel->contarPorAsesores($pkList);
+        $arrendadores = $arrendadorModel->contarPorAsesores($pkList);
+
+        foreach ($normalized as &$asesor) {
+            $pk = (string) ($asesor['pk'] ?? '');
+            if ($pk === '') {
+                continue;
+            }
+
+            $asesor['inquilinos_total']   = (int) ($inquilinos[$pk] ?? 0);
+            $asesor['arrendadores_total'] = (int) ($arrendadores[$pk] ?? 0);
+        }
+        unset($asesor);
+
+        return array_values($normalized);
     }
 }

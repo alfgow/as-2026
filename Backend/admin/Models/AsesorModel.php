@@ -15,7 +15,7 @@ use RuntimeException;
 /**
  * Modelo de Asesores basado en DynamoDB.
  *
- * pk: ASE#<id>
+ * pk: ase#<id>
  * sk: profile
  *
  * Atributos principales
@@ -23,7 +23,6 @@ use RuntimeException;
  * - nombre_asesor (S)
  * - email (S)
  * - celular (S, opcional)
- * - telefono (S, opcional)
  * - fecha_registro (S, ISO8601)
  * - inquilinos_id (SS) → lista de PKs de inquilinos asociados
  */
@@ -60,8 +59,12 @@ class AsesorModel
     {
         if (isset($item['id'])) {
             $item['id'] = (int) $item['id'];
-        } elseif (!empty($item['pk']) && preg_match('/^ASE#(\d+)$/i', (string) $item['pk'], $matches)) {
+        } elseif (!empty($item['pk']) && preg_match('/^ase#(\d+)$/i', (string) $item['pk'], $matches)) {
             $item['id'] = (int) $matches[1];
+        }
+
+        if (empty($item['pk']) && isset($item['id']) && (int) $item['id'] > 0) {
+            $item['pk'] = $this->buildPk((int) $item['id']);
         }
 
         if (!empty($item['inquilinos_id']) && is_array($item['inquilinos_id'])) {
@@ -71,6 +74,92 @@ class AsesorModel
         }
 
         return $item;
+    }
+
+    private function highestExistingId(): int
+    {
+        $maxId = 0;
+        $lastKey = null;
+
+        do {
+            $params = [
+                'TableName'                 => $this->table,
+                'FilterExpression'          => 'begins_with(pk, :pk) AND sk = :sk',
+                'ExpressionAttributeValues' => [
+                    ':pk' => ['S' => self::PK_PREFIX],
+                    ':sk' => ['S' => self::PROFILE_SK],
+                ],
+            ];
+
+            if ($lastKey) {
+                $params['ExclusiveStartKey'] = $lastKey;
+            }
+
+            $result = $this->client->scan($params);
+            foreach ($result['Items'] ?? [] as $item) {
+                $asesor = $this->normalizeAsesor($this->marshaler->unmarshalItem($item));
+                $maxId  = max($maxId, (int) ($asesor['id'] ?? 0));
+            }
+
+            $lastKey = $result['LastEvaluatedKey'] ?? null;
+        } while ($lastKey);
+
+        return $maxId;
+    }
+
+    private function ensureCounterAtLeast(int $id): void
+    {
+        try {
+            $this->client->updateItem([
+                'TableName' => $this->table,
+                'Key'       => [
+                    'pk' => ['S' => self::COUNTER_PK],
+                    'sk' => ['S' => self::COUNTER_SK],
+                ],
+                'UpdateExpression'          => 'SET last_id = :last',
+                'ConditionExpression'       => 'attribute_not_exists(last_id) OR last_id < :last',
+                'ExpressionAttributeValues' => [
+                    ':last' => ['N' => (string) $id],
+                ],
+            ]);
+        } catch (DynamoDbException $e) {
+            if ($e->getAwsErrorCode() !== 'ConditionalCheckFailedException') {
+                throw new RuntimeException('No se pudo actualizar el contador de asesores: ' . $e->getMessage(), 0, $e);
+            }
+        }
+    }
+
+    private function persistAsesor(int $id, string $nombre, string $email, string $cel): bool
+    {
+        $pk = $this->buildPk($id);
+        $item = [
+            'pk'             => ['S' => $pk],
+            'sk'             => ['S' => self::PROFILE_SK],
+            'id'             => ['N' => (string) $id],
+            'nombre_asesor'  => ['S' => $nombre],
+            'email'          => ['S' => $email],
+            'fecha_registro' => ['S' => date('c')],
+        ];
+
+        if ($cel !== '') {
+            $item['celular'] = ['S' => $cel];
+        }
+
+        try {
+            $this->client->putItem([
+                'TableName'           => $this->table,
+                'Item'                => $item,
+                'ConditionExpression' => 'attribute_not_exists(pk) AND attribute_not_exists(sk)',
+            ]);
+
+            return true;
+        } catch (DynamoDbException $e) {
+            if ($e->getAwsErrorCode() === 'ConditionalCheckFailedException') {
+                return false;
+            }
+
+            throw new RuntimeException('No se pudo guardar el asesor: ' . $e->getMessage(), 0, $e);
+        }
     }
 
     private function nextId(): int
@@ -167,7 +256,7 @@ class AsesorModel
         $filtered = array_values(array_filter(
             $asesores,
             static function (array $asesor) use ($needle): bool {
-                foreach (['nombre_asesor', 'email', 'celular', 'telefono'] as $field) {
+                foreach (['nombre_asesor', 'email', 'celular'] as $field) {
                     $value = mb_strtolower((string) ($asesor[$field] ?? ''), 'UTF-8');
                     if ($value !== '' && mb_strpos($value, $needle, 0, 'UTF-8') !== false) {
                         return true;
@@ -193,8 +282,6 @@ class AsesorModel
         $nombre = trim((string) ($data['nombre_asesor'] ?? ''));
         $email  = trim((string) ($data['email'] ?? ''));
         $cel    = trim((string) ($data['celular'] ?? ''));
-        $tel    = trim((string) ($data['telefono'] ?? ''));
-
         if ($nombre === '' || $email === '') {
             throw new RuntimeException('Nombre y email son obligatorios.');
         }
@@ -203,36 +290,32 @@ class AsesorModel
             throw new RuntimeException('El nombre del asesor ya existe.');
         }
 
-        $id = $this->nextId();
-        $pk = $this->buildPk($id);
+        for ($attempt = 0; $attempt < 5; $attempt++) {
+            $id = $this->nextId();
 
-        $item = [
-            'pk'             => ['S' => $pk],
-            'sk'             => ['S' => self::PROFILE_SK],
-            'id'             => ['N' => (string) $id],
-            'nombre_asesor'  => ['S' => $nombre],
-            'email'          => ['S' => $email],
-            'fecha_registro' => ['S' => date('c')],
-        ];
+            if ($this->find($id) !== null) {
+                continue;
+            }
 
-        if ($cel !== '') {
-            $item['celular'] = ['S' => $cel];
-        }
-        if ($tel !== '') {
-            $item['telefono'] = ['S' => $tel];
+            if ($this->persistAsesor($id, $nombre, $email, $cel)) {
+                return $id;
+            }
         }
 
-        try {
-            $this->client->putItem([
-                'TableName'           => $this->table,
-                'Item'                => $item,
-                'ConditionExpression' => 'attribute_not_exists(pk)',
-            ]);
-        } catch (DynamoDbException $e) {
-            throw new RuntimeException('No se pudo guardar el asesor: ' . $e->getMessage(), 0, $e);
+        $fallbackStart = $this->highestExistingId() + 1;
+        for ($offset = 0; $offset < 10; $offset++) {
+            $candidateId = $fallbackStart + $offset;
+            if ($this->find($candidateId) !== null) {
+                continue;
+            }
+
+            if ($this->persistAsesor($candidateId, $nombre, $email, $cel)) {
+                $this->ensureCounterAtLeast($candidateId);
+                return $candidateId;
+            }
         }
 
-        return $id;
+        throw new RuntimeException('No se pudo generar un identificador único para el asesor.');
     }
 
     /**
@@ -243,8 +326,6 @@ class AsesorModel
         $nombre = trim((string) ($data['nombre_asesor'] ?? ''));
         $email  = trim((string) ($data['email'] ?? ''));
         $cel    = trim((string) ($data['celular'] ?? ''));
-        $tel    = trim((string) ($data['telefono'] ?? ''));
-
         if ($nombre === '' || $email === '') {
             throw new RuntimeException('Nombre y email son obligatorios.');
         }
@@ -254,7 +335,7 @@ class AsesorModel
         }
 
         $setParts = ['#nombre = :nombre', '#email = :email'];
-        $remove   = [];
+        $remove   = ['#telefono'];
         $values   = [
             ':nombre' => ['S' => $nombre],
             ':email'  => ['S' => $email],
@@ -262,6 +343,7 @@ class AsesorModel
         $names    = [
             '#nombre' => 'nombre_asesor',
             '#email'  => 'email',
+            '#telefono' => 'telefono',
         ];
 
         if ($cel !== '') {
@@ -271,15 +353,6 @@ class AsesorModel
         } else {
             $remove[]           = '#celular';
             $names['#celular']  = 'celular';
-        }
-
-        if ($tel !== '') {
-            $setParts[]          = '#telefono = :telefono';
-            $values[':telefono'] = ['S' => $tel];
-            $names['#telefono']  = 'telefono';
-        } else {
-            $remove[]            = '#telefono';
-            $names['#telefono']  = 'telefono';
         }
 
         $expressions = [];

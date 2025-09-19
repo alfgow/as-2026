@@ -59,23 +59,13 @@
                     required
                     class="w-full rounded-lg px-4 py-3 bg-[#232336] text-indigo-100 border border-indigo-800 placeholder-indigo-400 focus:ring-2 focus:ring-indigo-600 focus:outline-none" />
             </div>
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                    <label for="asesor-celular" class="block text-sm font-semibold text-indigo-200 mb-1">Celular</label>
-                    <input
-                        id="asesor-celular"
-                        type="text"
-                        name="celular"
-                        class="w-full rounded-lg px-4 py-3 bg-[#232336] text-indigo-100 border border-indigo-800 placeholder-indigo-400 focus:ring-2 focus:ring-indigo-600 focus:outline-none" />
-                </div>
-                <div>
-                    <label for="asesor-telefono" class="block text-sm font-semibold text-indigo-200 mb-1">Teléfono</label>
-                    <input
-                        id="asesor-telefono"
-                        type="text"
-                        name="telefono"
-                        class="w-full rounded-lg px-4 py-3 bg-[#232336] text-indigo-100 border border-indigo-800 placeholder-indigo-400 focus:ring-2 focus:ring-indigo-600 focus:outline-none" />
-                </div>
+            <div>
+                <label for="asesor-celular" class="block text-sm font-semibold text-indigo-200 mb-1">Celular</label>
+                <input
+                    id="asesor-celular"
+                    type="text"
+                    name="celular"
+                    class="w-full rounded-lg px-4 py-3 bg-[#232336] text-indigo-100 border border-indigo-800 placeholder-indigo-400 focus:ring-2 focus:ring-indigo-600 focus:outline-none" />
             </div>
             <div class="flex justify-end gap-3 pt-2">
                 <button
@@ -126,8 +116,13 @@
             const name = escapeHtml(asesor.nombre_asesor || 'Sin nombre');
             const email = escapeHtml(asesor.email || '');
             const celular = escapeHtml(asesor.celular || '—');
-            const telefono = escapeHtml(asesor.telefono || '—');
-            const inquilinos = Array.isArray(asesor.inquilinos_id) ? asesor.inquilinos_id.length : 0;
+            const inquilinos = Number(
+                asesor.inquilinos_total ?? (Array.isArray(asesor.inquilinos_id) ? asesor.inquilinos_id.length : 0)
+            ) || 0;
+            const arrendadores = Number(asesor.arrendadores_total ?? 0) || 0;
+            const inquilinosLabel = inquilinos === 1 ? '1 inquilino asignado' : `${inquilinos} inquilinos asignados`;
+            const arrendadoresLabel =
+                arrendadores === 1 ? '1 arrendador asignado' : `${arrendadores} arrendadores asignados`;
 
             return `
                 <article class="bg-[#1f2340] rounded-2xl border border-indigo-900/40 shadow-lg p-6 flex flex-col gap-4" data-id="${asesor.id}">
@@ -136,7 +131,6 @@
                             <h3 class="text-xl font-bold text-white mb-1">${name}</h3>
                             <p class="text-sm text-indigo-200">${email}</p>
                             <p class="text-xs text-indigo-200/70 mt-1">Celular: ${celular}</p>
-                            <p class="text-xs text-indigo-200/70">Teléfono: ${telefono}</p>
                         </div>
                         <div class="flex flex-col gap-2">
                             <button
@@ -154,7 +148,8 @@
                         </div>
                     </div>
                     <div class="text-xs text-indigo-200/60 border-t border-indigo-900/60 pt-3">
-                        ${inquilinos === 1 ? '1 inquilino asignado' : `${inquilinos} inquilinos asignados`}
+                        <p>${inquilinosLabel}</p>
+                        <p class="mt-1">${arrendadoresLabel}</p>
                     </div>
                 </article>
             `;
@@ -168,9 +163,7 @@
         const nombre = document.getElementById('asesor-nombre');
         const email = document.getElementById('asesor-email');
         const celular = document.getElementById('asesor-celular');
-        const telefono = document.getElementById('asesor-telefono');
-
-        if (!modal || !title || !idField || !nombre || !email || !celular || !telefono) {
+        if (!modal || !title || !idField || !nombre || !email || !celular) {
             return;
         }
 
@@ -181,14 +174,12 @@
             nombre.value = asesor.nombre_asesor ?? '';
             email.value = asesor.email ?? '';
             celular.value = asesor.celular ?? '';
-            telefono.value = asesor.telefono ?? '';
         } else {
             title.textContent = 'Nuevo Asesor';
             idField.value = '';
             nombre.value = '';
             email.value = '';
             celular.value = '';
-            telefono.value = '';
         }
 
         modal.classList.remove('hidden');
