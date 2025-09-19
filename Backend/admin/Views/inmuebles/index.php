@@ -35,6 +35,7 @@
                 <?php
                     $pk = (string)($inm['pk'] ?? '');
                     $sk = (string)($inm['sk'] ?? '');
+
                     $legacyId = isset($inm['id']) ? (string)$inm['id'] : '';
                     $rowKey = ($pk !== '' && $sk !== '') ? md5($pk . '|' . $sk) : $legacyId;
                     if ($rowKey === '') {
@@ -49,6 +50,7 @@
                         : $baseUrl . '/inmuebles/editar/' . $legacyId;
                 ?>
                 <tr id="<?= htmlspecialchars($rowId, ENT_QUOTES, 'UTF-8') ?>">
+
                     <td class="px-4 py-2 whitespace-nowrap"><?= htmlspecialchars($inm['direccion_inmueble']) ?></td>
                     <td class="px-4 py-2 text-center"><?= htmlspecialchars($inm['tipo']) ?></td>
                     <td class="px-4 py-2 text-center">$<?= htmlspecialchars($inm['renta']) ?></td>
@@ -59,21 +61,27 @@
                     </td>
                     <td class="px-4 py-2 text-center">
                         <div class="flex gap-2 justify-center">
+
                             <a href="<?= htmlspecialchars($verUrl, ENT_QUOTES, 'UTF-8') ?>" class="text-green-400 hover:text-green-300" title="Ver">
+
                                 <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                                     <path d="M15 12H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />
                                 </svg>
                             </a>
+
                             <a href="<?= htmlspecialchars($editUrl, ENT_QUOTES, 'UTF-8') ?>" class="text-pink-400 hover:text-pink-300" title="Editar">
+
                                 <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                                     <path d="M11 5H6a2 2 0 00-2 2v12a2 2 0 002 2h12a2 2 0 002-2v-5M18.5 2.5a2.121 2.121 0 113 3L12 15l-4 1 1-4 9.5-9.5z" />
                                 </svg>
                             </a>
+
                             <?php if ($pk !== '' && $sk !== ''): ?>
                             <button
                                 data-pk="<?= htmlspecialchars($pk, ENT_QUOTES, 'UTF-8') ?>"
                                 data-sk="<?= htmlspecialchars($sk, ENT_QUOTES, 'UTF-8') ?>"
                                 data-row-id="<?= htmlspecialchars($rowId, ENT_QUOTES, 'UTF-8') ?>"
+
                                 class="btn-eliminar text-red-400 hover:text-red-300"
                                 title="Eliminar"
                             >
@@ -167,12 +175,14 @@
 <script>
     document.querySelectorAll('.btn-eliminar').forEach(btn => {
         btn.addEventListener('click', () => {
+
             const pk = btn.dataset.pk;
             const sk = btn.dataset.sk;
             const rowId = btn.dataset.rowId;
             if (!pk || !sk) {
                 return;
             }
+
             Swal.fire({
                 title: '¿Eliminar inmueble?',
                 icon: 'warning',
@@ -187,7 +197,9 @@
                     fetch('<?= $baseUrl ?>/inmuebles/delete', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+
                         body: 'pk=' + encodeURIComponent(pk) + '&sk=' + encodeURIComponent(sk)
+
                     })
                     .then(r => r.json())
                     .then(data => {

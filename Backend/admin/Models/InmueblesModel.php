@@ -429,6 +429,20 @@ class InmuebleModel extends Database
         return $row;
     }
 
+    public function obtenerIdPorLlaves(string $pk, string $sk): ?int
+    {
+        $sql = 'SELECT id FROM inmuebles WHERE pk = :pk AND sk = :sk LIMIT 1';
+        $stmt = $this->getConnection()->prepare($sql);
+        $stmt->execute([
+            ':pk' => $pk,
+            ':sk' => $sk,
+        ]);
+
+        $id = $stmt->fetchColumn();
+
+        return $id !== false ? (int) $id : null;
+    }
+
     public function crear(array $data): bool
     {
         /**
@@ -447,20 +461,24 @@ class InmuebleModel extends Database
             'renta'              => ['N' => (string) $data['renta']],
             'mantenimiento'      => ['S' => $data['mantenimiento']],
             'estacionamiento'    => ['N' => (string) $data['estacionamiento']],
-            'mascotas'           => ['S' => strtoupper($data['mascotas'])],
+            'mascotas'           => ['S' => strtoupper((string) $data['mascotas'])],
             'fecha_registro'     => ['S' => date('Y-m-d H:i:s')],
         ];
 
-        if ($data['monto_mantenimiento'] !== '' && is_numeric($data['monto_mantenimiento'])) {
+        if (isset($data['monto_mantenimiento']) && $data['monto_mantenimiento'] !== null && $data['monto_mantenimiento'] !== '') {
             $item['monto_mantenimiento'] = ['N' => (string) $data['monto_mantenimiento']];
         }
 
-        if (!empty($data['deposito'])) {
-            $item['deposito'] = ['S' => $data['deposito']];
+        if (isset($data['deposito']) && $data['deposito'] !== null && $data['deposito'] !== '') {
+            $item['deposito'] = ['N' => (string) $data['deposito']];
         }
 
         if (!empty($data['comentarios'])) {
             $item['comentarios'] = ['S' => $data['comentarios']];
+        }
+
+        if (!empty($data['asesor'])) {
+            $item['asesor'] = ['S' => $data['asesor']];
         }
 
         try {
@@ -495,36 +513,80 @@ class InmuebleModel extends Database
 
 
 
-    public function actualizar(int $id, array $data): bool
+    public function actualizarPorPkSk(string $pk, string $sk, array $data): bool
     {
-        $sql = "UPDATE inmuebles SET
-                    id_arrendador = :id_arrendador,
-                    id_asesor = :id_asesor,
-                    direccion_inmueble = :direccion_inmueble,
-                    tipo = :tipo,
-                    renta = :renta,
-                    mantenimiento = :mantenimiento,
-                    monto_mantenimiento = :monto_mantenimiento,
-                    deposito = :deposito,
-                    estacionamiento = :estacionamiento,
-                    mascotas = :mascotas,
-                    comentarios = :comentarios
-                WHERE id = :id";
-        $stmt = $this->getConnection()->prepare($sql);
-        return $stmt->execute([
-            ':id_arrendador'       => $data['id_arrendador'],
-            ':id_asesor'           => $data['id_asesor'],
-            ':direccion_inmueble'  => $data['direccion_inmueble'],
-            ':tipo'                => $data['tipo'],
-            ':renta'               => $data['renta'],
-            ':mantenimiento'       => $data['mantenimiento'],
-            ':monto_mantenimiento' => $data['monto_mantenimiento'],
-            ':deposito'            => $data['deposito'],
-            ':estacionamiento'     => (int) !empty($data['estacionamiento']),
-            ':mascotas'            => $data['mascotas'],
-            ':comentarios'         => $data['comentarios'] ?? null,
-            ':id'                  => $id,
-        ]);
+        try {
+            $setParts = [
+                'tipo = :tipo',
+                'direccion_inmueble = :direccion',
+                'renta = :renta',
+                'mantenimiento = :mantenimiento',
+                'estacionamiento = :estacionamiento',
+                'mascotas = :mascotas',
+            ];
+
+            $values = [
+                ':tipo'           => ['S' => (string) $data['tipo']],
+                ':direccion'      => ['S' => (string) $data['direccion_inmueble']],
+                ':renta'          => ['N' => (string) $data['renta']],
+                ':mantenimiento'  => ['S' => (string) $data['mantenimiento']],
+                ':estacionamiento'=> ['N' => (string) (int) $data['estacionamiento']],
+                ':mascotas'       => ['S' => strtoupper((string) $data['mascotas'])],
+            ];
+
+            $remove = [];
+
+            if (isset($data['monto_mantenimiento']) && $data['monto_mantenimiento'] !== null && $data['monto_mantenimiento'] !== '') {
+                $setParts[] = 'monto_mantenimiento = :monto_mantenimiento';
+                $values[':monto_mantenimiento'] = ['N' => (string) $data['monto_mantenimiento']];
+            } else {
+                $remove[] = 'monto_mantenimiento';
+            }
+
+            if (isset($data['deposito']) && $data['deposito'] !== null && $data['deposito'] !== '') {
+                $setParts[] = 'deposito = :deposito';
+                $values[':deposito'] = ['N' => (string) $data['deposito']];
+            } else {
+                $remove[] = 'deposito';
+            }
+
+            if (!empty($data['comentarios'])) {
+                $setParts[] = 'comentarios = :comentarios';
+                $values[':comentarios'] = ['S' => (string) $data['comentarios']];
+            } else {
+                $remove[] = 'comentarios';
+            }
+
+            if (!empty($data['asesor'])) {
+                $setParts[] = 'asesor = :asesor';
+                $values[':asesor'] = ['S' => (string) $data['asesor']];
+            } else {
+                $remove[] = 'asesor';
+            }
+
+            $updateExpression = 'SET ' . implode(', ', $setParts);
+            $remove = array_unique(array_filter($remove));
+            if (!empty($remove)) {
+                $updateExpression .= ' REMOVE ' . implode(', ', $remove);
+            }
+
+            $params = [
+                'TableName' => $this->table,
+                'Key'       => [
+                    'pk' => ['S' => $pk],
+                    'sk' => ['S' => $sk],
+                ],
+                'UpdateExpression'          => $updateExpression,
+                'ExpressionAttributeValues' => $values,
+            ];
+
+            $this->client->updateItem($params);
+
+            return true;
+        } catch (\Throwable $e) {
+            error_log('❌ Error actualizando inmueble en Dynamo: ' . $e->getMessage());
+            return false;
+        }
     }
 
     public function eliminar(string $pk, string $sk): bool

@@ -78,6 +78,7 @@ class InmuebleController
     /**
      * Ver detalle de un inmueble
      */
+
     public function ver(string $pk, ?string $sk = null): void
     {
         $pkDecodificado = rawurldecode($pk);
@@ -88,6 +89,7 @@ class InmuebleController
         } catch (InvalidArgumentException $e) {
             $inmueble = null;
         }
+
         if (!$inmueble) {
             http_response_code(404);
             $title = 'No encontrado';
@@ -226,6 +228,7 @@ class InmuebleController
         } catch (InvalidArgumentException $e) {
             $inmueble = null;
         }
+
         if (!$inmueble) {
             header('Location: ' . getBaseUrl() . '/inmuebles');
             exit;
@@ -255,10 +258,13 @@ class InmuebleController
         }
 
         try {
-            $data = $this->buildInmuebleDataFromPost();
+            $data = $this->buildDynamoInmueblePayload();
 
             $ok = $this->model->crear($data);
             echo json_encode(['ok' => (bool)$ok]);
+        } catch (\InvalidArgumentException $e) {
+            http_response_code(422);
+            echo json_encode(['ok' => false, 'mensaje' => $e->getMessage()]);
         } catch (\Throwable $e) {
             http_response_code(500);
             echo json_encode(['ok' => false, 'mensaje' => 'Error al crear inmueble', 'error' => $e->getMessage()]);
@@ -278,18 +284,17 @@ class InmuebleController
             return;
         }
 
-        $id = isset($_POST['id']) ? (int)$_POST['id'] : 0;
-        if ($id <= 0) {
-            http_response_code(400);
-            echo json_encode(['ok' => false, 'mensaje' => 'ID inválido']);
-            return;
-        }
-
         try {
-            $data = $this->buildInmuebleDataFromPost(/* isUpdate */true);
+            $data = $this->buildDynamoInmueblePayload(true);
+            $pk = $data['pk'];
+            $sk = $data['sk'];
+            unset($data['sk']);
 
-            $ok = $this->model->actualizar($id, $data);
+            $ok = $this->model->actualizarPorPkSk($pk, $sk, $data);
             echo json_encode(['ok' => (bool)$ok]);
+        } catch (\InvalidArgumentException $e) {
+            http_response_code(422);
+            echo json_encode(['ok' => false, 'mensaje' => $e->getMessage()]);
         } catch (\Throwable $e) {
             http_response_code(500);
             echo json_encode(['ok' => false, 'mensaje' => 'Error al actualizar inmueble', 'error' => $e->getMessage()]);
@@ -299,7 +304,7 @@ class InmuebleController
     /**
      * Eliminar inmueble (JSON, Dynamo)
      */
-    public function delete(): void
+    public function delete(?string $pkRoute = null, ?string $skRoute = null): void
     {
 
         header('Content-Type: application/json; charset=utf-8');
@@ -310,8 +315,10 @@ class InmuebleController
             return;
         }
 
+
         $pk = trim((string)($_POST['pk'] ?? ''));
         $sk = trim((string)($_POST['sk'] ?? ''));
+
 
         if (!$pk || !$sk) {
             http_response_code(400);
@@ -376,45 +383,95 @@ class InmuebleController
      * @param bool $isUpdate Si es true, procesa 'estacionamiento' aceptando 0/1 directos además de checkbox
      * @return array<string, string|int>
      */
-    private function buildInmuebleDataFromPost(bool $isUpdate = false): array
+    private function buildDynamoInmueblePayload(bool $isUpdate = false): array
     {
-        // IDs seguros
-        $idArrendador = isset($_POST['id_arrendador']) ? (int)$_POST['id_arrendador'] : 0;
-        $idAsesor     = isset($_POST['id_asesor']) ? (int)$_POST['id_asesor'] : 0;
-
-        // Estacionamiento:
-        // - En crear (checkbox): isset → 1/0
-        // - En update aceptamos '0'/'1' o checkbox
-        $estacionamiento = 0;
-        if ($isUpdate) {
-            if (isset($_POST['estacionamiento'])) {
-                // Si viene de input hidden/select
-                $val = trim((string)$_POST['estacionamiento']);
-                $estacionamiento = (int)($val === '1' || $val === 'SI' || $val === 'true' || $val === 'on' || $val === 'yes');
-            } else {
-                $estacionamiento = 0;
-            }
-        } else {
-            $estacionamiento = isset($_POST['estacionamiento']) ? 1 : 0;
+        $pkInput = trim((string)($_POST['pk'] ?? $_POST['arrendador_pk'] ?? $_POST['id_arrendador'] ?? ''));
+        if ($pkInput === '') {
+            throw new \InvalidArgumentException('Debe seleccionar un arrendador');
         }
 
-        // Mascotas: solo SI/NO
-        $mascotasRaw = strtoupper(trim((string)($_POST['mascotas'] ?? 'NO')));
-        $mascotas = ($mascotasRaw === 'SI') ? 'SI' : 'NO';
+        if (ctype_digit($pkInput)) {
+            $pkInput = 'arr#' . $pkInput;
+        }
 
-        return [
-            'id_arrendador'       => $idArrendador,
-            'id_asesor'           => $idAsesor,
-            'direccion_inmueble'  => trim((string)($_POST['direccion_inmueble'] ?? '')),
-            'tipo'                => trim((string)($_POST['tipo'] ?? '')),
-            'renta'               => $this->normalizarMonto((string)($_POST['renta'] ?? '0')),
-            'mantenimiento'       => trim((string)($_POST['mantenimiento'] ?? '')),
-            'monto_mantenimiento' => $this->normalizarMonto((string)($_POST['monto_mantenimiento'] ?? '0')),
-            'deposito'            => $this->normalizarMonto((string)($_POST['deposito'] ?? '0')),
-            'estacionamiento'     => $estacionamiento, // 1 | 0
-            'mascotas'            => $mascotas,        // 'SI' | 'NO'
-            'comentarios'         => trim((string)($_POST['comentarios'] ?? '')),
+        $pk = NormalizadoHelper::lower($pkInput);
+        if ($pk === '') {
+            throw new \InvalidArgumentException('Identificador de arrendador inválido');
+        }
+
+        $sk = '';
+        if ($isUpdate) {
+            $skInput = trim((string)($_POST['sk'] ?? ''));
+            if ($skInput === '') {
+                throw new \InvalidArgumentException('Identificador del inmueble requerido');
+            }
+            $sk = NormalizadoHelper::lower($skInput);
+        }
+
+        $direccion = NormalizadoHelper::lower(trim((string)($_POST['direccion_inmueble'] ?? '')));
+        $tipo = NormalizadoHelper::lower(trim((string)($_POST['tipo'] ?? '')));
+        $rentaRaw = (string)($_POST['renta'] ?? '');
+        $renta = $this->normalizarMonto($rentaRaw);
+
+        if ($direccion === '' || $tipo === '' || trim($rentaRaw) === '') {
+            throw new \InvalidArgumentException('Faltan datos obligatorios del inmueble');
+        }
+
+        $mantenimientoRaw = NormalizadoHelper::lower(trim((string)($_POST['mantenimiento'] ?? 'no')));
+        $mantenimiento = $mantenimientoRaw === 'si' ? 'si' : 'no';
+
+        $montoMantenimiento = $this->normalizarMonto((string)($_POST['monto_mantenimiento'] ?? '0'));
+        $deposito = $this->normalizarMonto((string)($_POST['deposito'] ?? '0'));
+
+        $estacionamientoVal = $_POST['estacionamiento'] ?? 0;
+        if (is_array($estacionamientoVal)) {
+            $estacionamientoVal = reset($estacionamientoVal);
+        }
+        $estacionamiento = max(0, (int)$estacionamientoVal);
+
+        $mascotasRaw = strtoupper(trim((string)($_POST['mascotas'] ?? 'NO')));
+        $mascotas = $mascotasRaw === 'SI' ? 'SI' : 'NO';
+
+        $comentarios = NormalizadoHelper::lower(trim((string)($_POST['comentarios'] ?? '')));
+
+        $asesorInput = trim((string)($_POST['asesor_pk'] ?? ($_POST['id_asesor'] ?? '')));
+        $asesor = '';
+        if ($asesorInput !== '') {
+            if (ctype_digit($asesorInput)) {
+                $asesorInput = 'ase#' . $asesorInput;
+            }
+            $asesor = NormalizadoHelper::lower($asesorInput);
+        }
+
+        if ($asesor === '' && $pk !== '') {
+            $profile = $this->arrendadorModel->obtenerProfilePorPk($pk);
+            if ($profile && !empty($profile['asesor'])) {
+                $asesor = NormalizadoHelper::lower((string)$profile['asesor']);
+            }
+        }
+
+        $data = [
+            'pk'                  => $pk,
+            'tipo'                => $tipo,
+            'direccion_inmueble'  => $direccion,
+            'renta'               => $renta,
+            'mantenimiento'       => $mantenimiento,
+            'monto_mantenimiento' => $montoMantenimiento,
+            'deposito'            => $deposito,
+            'estacionamiento'     => $estacionamiento,
+            'mascotas'            => $mascotas,
+            'comentarios'         => $comentarios,
         ];
+
+        if ($asesor !== '') {
+            $data['asesor'] = $asesor;
+        }
+
+        if ($isUpdate) {
+            $data['sk'] = $sk;
+        }
+
+        return $data;
     }
 
     /**
