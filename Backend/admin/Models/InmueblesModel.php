@@ -45,6 +45,11 @@ class InmuebleModel
     {
         $filtrados = $this->filtrarInmuebles($query);
 
+        echo "<pre>";
+        var_dump($filtrados);
+        echo "</pre>";
+        exit;
+
         return array_slice($filtrados, $offset, $limite);
     }
 
@@ -583,7 +588,7 @@ class InmuebleModel
                 ':direccion'      => ['S' => (string) $data['direccion_inmueble']],
                 ':renta'          => ['N' => (string) $data['renta']],
                 ':mantenimiento'  => ['S' => (string) $data['mantenimiento']],
-                ':estacionamiento'=> ['N' => (string) (int) $data['estacionamiento']],
+                ':estacionamiento' => ['N' => (string) (int) $data['estacionamiento']],
                 ':mascotas'       => ['S' => strtoupper((string) $data['mascotas'])],
             ];
 

@@ -12,10 +12,10 @@
         name="q"
         placeholder="Buscar dirección o arrendador"
         value="<?= htmlspecialchars($_GET['q'] ?? '') ?>"
-        class="w-full sm:w-64 px-3 py-2 rounded-lg bg-[#232336] border border-indigo-800 placeholder-indigo-400 text-indigo-100"
-    />
+        class="w-full sm:w-64 px-3 py-2 rounded-lg bg-[#232336] border border-indigo-800 placeholder-indigo-400 text-indigo-100" />
     <button class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg">Buscar</button>
 </form>
+
 
 <div class="overflow-x-auto bg-white/5 backdrop-blur-md border border-white/20 rounded-2xl">
     <table class="min-w-full text-sm divide-y divide-gray-700">
@@ -33,21 +33,21 @@
         <tbody class="divide-y divide-gray-700 text-indigo-100">
             <?php foreach ($inmuebles as $inm): ?>
                 <?php
-                    $pk = (string)($inm['pk'] ?? '');
-                    $sk = (string)($inm['sk'] ?? '');
+                $pk = (string)($inm['pk'] ?? '');
+                $sk = (string)($inm['sk'] ?? '');
 
-                    $legacyId = isset($inm['id']) ? (string)$inm['id'] : '';
-                    $rowKey = ($pk !== '' && $sk !== '') ? md5($pk . '|' . $sk) : $legacyId;
-                    if ($rowKey === '') {
-                        $rowKey = md5(json_encode($inm));
-                    }
-                    $rowId = 'row-' . $rowKey;
-                    $verUrl = ($pk !== '' && $sk !== '')
-                        ? $baseUrl . '/inmuebles/' . rawurlencode($pk) . '/' . rawurlencode($sk)
-                        : $baseUrl . '/inmuebles/' . $legacyId;
-                    $editUrl = ($pk !== '' && $sk !== '')
-                        ? $baseUrl . '/inmuebles/editar/' . rawurlencode($pk) . '/' . rawurlencode($sk)
-                        : $baseUrl . '/inmuebles/editar/' . $legacyId;
+                $legacyId = isset($inm['id']) ? (string)$inm['id'] : '';
+                $rowKey = ($pk !== '' && $sk !== '') ? md5($pk . '|' . $sk) : $legacyId;
+                if ($rowKey === '') {
+                    $rowKey = md5(json_encode($inm));
+                }
+                $rowId = 'row-' . $rowKey;
+                $verUrl = ($pk !== '' && $sk !== '')
+                    ? $baseUrl . '/inmuebles/' . rawurlencode($pk) . '/' . rawurlencode($sk)
+                    : $baseUrl . '/inmuebles/' . $legacyId;
+                $editUrl = ($pk !== '' && $sk !== '')
+                    ? $baseUrl . '/inmuebles/editar/' . rawurlencode($pk) . '/' . rawurlencode($sk)
+                    : $baseUrl . '/inmuebles/editar/' . $legacyId;
                 ?>
                 <tr id="<?= htmlspecialchars($rowId, ENT_QUOTES, 'UTF-8') ?>">
 
@@ -77,18 +77,17 @@
                             </a>
 
                             <?php if ($pk !== '' && $sk !== ''): ?>
-                            <button
-                                data-pk="<?= htmlspecialchars($pk, ENT_QUOTES, 'UTF-8') ?>"
-                                data-sk="<?= htmlspecialchars($sk, ENT_QUOTES, 'UTF-8') ?>"
-                                data-row-id="<?= htmlspecialchars($rowId, ENT_QUOTES, 'UTF-8') ?>"
+                                <button
+                                    data-pk="<?= htmlspecialchars($pk, ENT_QUOTES, 'UTF-8') ?>"
+                                    data-sk="<?= htmlspecialchars($sk, ENT_QUOTES, 'UTF-8') ?>"
+                                    data-row-id="<?= htmlspecialchars($rowId, ENT_QUOTES, 'UTF-8') ?>"
 
-                                class="btn-eliminar text-red-400 hover:text-red-300"
-                                title="Eliminar"
-                            >
-                                <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                    <path d="M6 18L18 6M6 6l12 12" />
-                                </svg>
-                            </button>
+                                    class="btn-eliminar text-red-400 hover:text-red-300"
+                                    title="Eliminar">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                        <path d="M6 18L18 6M6 6l12 12" />
+                                    </svg>
+                                </button>
                             <?php endif; ?>
                         </div>
                     </td>
@@ -106,7 +105,7 @@
         // Configuración de páginas visibles
         $paginaActual = $pagina;
         $maxPaginasVisibles = 5;
-        $inicio = max(1, $paginaActual - floor($maxPaginasVisibles/2));
+        $inicio = max(1, $paginaActual - floor($maxPaginasVisibles / 2));
         $fin = min($totalPaginas, $inicio + $maxPaginasVisibles - 1);
         $inicio = max(1, $fin - $maxPaginasVisibles + 1);
 
@@ -121,8 +120,8 @@
         <!-- Botón Anterior -->
         <?php if ($paginaActual > 1): ?>
             <a href="<?= $urlBase . ($paginaActual - 1) ?>"
-               class="flex items-center justify-center w-10 h-10 rounded-full border border-indigo-300 hover:bg-indigo-100 transition-colors"
-               aria-label="Anterior">
+                class="flex items-center justify-center w-10 h-10 rounded-full border border-indigo-300 hover:bg-indigo-100 transition-colors"
+                aria-label="Anterior">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
                 </svg>
@@ -131,7 +130,7 @@
 
         <?php if ($inicio > 1): ?>
             <a href="<?= $urlBase ?>1"
-               class="px-4 py-2 rounded-lg border border-indigo-300 hover:bg-indigo-100 transition-colors <?= (1 == $paginaActual) ? 'bg-indigo-600 text-white border-indigo-600' : '' ?>">
+                class="px-4 py-2 rounded-lg border border-indigo-300 hover:bg-indigo-100 transition-colors <?= (1 == $paginaActual) ? 'bg-indigo-600 text-white border-indigo-600' : '' ?>">
                 1
             </a>
             <?php if ($inicio > 2): ?>
@@ -141,7 +140,7 @@
 
         <?php for ($i = $inicio; $i <= $fin; $i++): ?>
             <a href="<?= $urlBase . $i ?>"
-               class="flex items-center justify-center w-10 h-10 rounded-full border border-indigo-300 hover:bg-indigo-100 transition-colors <?= ($i == $paginaActual) ? 'bg-indigo-600 text-white border-indigo-600' : '' ?>">
+                class="flex items-center justify-center w-10 h-10 rounded-full border border-indigo-300 hover:bg-indigo-100 transition-colors <?= ($i == $paginaActual) ? 'bg-indigo-600 text-white border-indigo-600' : '' ?>">
                 <?= $i ?>
             </a>
         <?php endfor; ?>
@@ -151,7 +150,7 @@
                 <span class="px-2 py-2 text-indigo-400">...</span>
             <?php endif; ?>
             <a href="<?= $urlBase . $totalPaginas ?>"
-               class="px-4 py-2 rounded-lg border border-indigo-300 hover:bg-indigo-100 transition-colors <?= ($totalPaginas == $paginaActual) ? 'bg-indigo-600 text-white border-indigo-600' : '' ?>">
+                class="px-4 py-2 rounded-lg border border-indigo-300 hover:bg-indigo-100 transition-colors <?= ($totalPaginas == $paginaActual) ? 'bg-indigo-600 text-white border-indigo-600' : '' ?>">
                 <?= $totalPaginas ?>
             </a>
         <?php endif; ?>
@@ -159,8 +158,8 @@
         <!-- Botón Siguiente -->
         <?php if ($paginaActual < $totalPaginas): ?>
             <a href="<?= $urlBase . ($paginaActual + 1) ?>"
-               class="flex items-center justify-center w-10 h-10 rounded-full border border-indigo-300 hover:bg-indigo-100 transition-colors"
-               aria-label="Siguiente">
+                class="flex items-center justify-center w-10 h-10 rounded-full border border-indigo-300 hover:bg-indigo-100 transition-colors"
+                aria-label="Siguiente">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
                 </svg>
@@ -195,24 +194,26 @@
             }).then(res => {
                 if (res.isConfirmed) {
                     fetch('<?= $baseUrl ?>/inmuebles/delete', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/x-www-form-urlencoded'
+                            },
 
-                        body: 'pk=' + encodeURIComponent(pk) + '&sk=' + encodeURIComponent(sk)
+                            body: 'pk=' + encodeURIComponent(pk) + '&sk=' + encodeURIComponent(sk)
 
-                    })
-                    .then(r => r.json())
-                    .then(data => {
-                        if (data.ok) {
-                            const row = document.getElementById(rowId);
-                            if (row) {
-                                row.remove();
+                        })
+                        .then(r => r.json())
+                        .then(data => {
+                            if (data.ok) {
+                                const row = document.getElementById(rowId);
+                                if (row) {
+                                    row.remove();
+                                }
+                                Swal.fire('Eliminado', '', 'success');
+                            } else {
+                                Swal.fire('Error', 'No se pudo eliminar', 'error');
                             }
-                            Swal.fire('Eliminado', '', 'success');
-                        } else {
-                            Swal.fire('Error', 'No se pudo eliminar', 'error');
-                        }
-                    });
+                        });
                 }
             });
         });
