@@ -1,11 +1,15 @@
 <?php
+
 namespace App\Controllers;
 
 require_once __DIR__ . '/../Models/AsesorModel.php';
+
 use App\Models\AsesorModel;
 
 require_once __DIR__ . '/../Middleware/AuthMiddleware.php';
+
 use App\Middleware\AuthMiddleware;
+
 AuthMiddleware::verificarSesion();
 
 /**
@@ -39,8 +43,21 @@ class AsesorController
         try {
             $data = $this->sanitizarDatos($_POST);
 
+            // Normalizar todo a minúsculas
+            $data = array_map(function ($value) {
+                if (is_string($value)) {
+                    return mb_strtolower(trim($value), 'UTF-8');
+                }
+                return $value;
+            }, $data);
+
             if (!filter_var($data['email'], FILTER_VALIDATE_EMAIL)) {
                 throw new \RuntimeException('El correo electrónico no es válido.');
+            }
+
+            // 🚨 Validar duplicado
+            if ($this->model->existsByEmailOrPhone($data['email'], $data['celular'] ?? null)) {
+                throw new \RuntimeException('Asesor previamente registrado.');
             }
 
             $id     = $this->model->create($data);
@@ -63,6 +80,7 @@ class AsesorController
         }
     }
 
+
     public function update(): void
     {
         $this->ensurePost();
@@ -74,6 +92,14 @@ class AsesorController
             }
 
             $data = $this->sanitizarDatos($_POST);
+
+            // Normalizar todo a minúsculas
+            $data = array_map(function ($value) {
+                if (is_string($value)) {
+                    return mb_strtolower(trim($value), 'UTF-8');
+                }
+                return $value;
+            }, $data);
 
             if (!filter_var($data['email'], FILTER_VALIDATE_EMAIL)) {
                 throw new \RuntimeException('El correo electrónico no es válido.');
