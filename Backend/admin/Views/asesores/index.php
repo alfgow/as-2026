@@ -99,6 +99,12 @@
             .replace(/'/g, '&#039;');
     }
 
+    function formatAssignment(count, singular, plural) {
+        const total = Number.isFinite(Number(count)) ? Number(count) : 0;
+        const label = total === 1 ? singular : plural;
+        return `${total} ${label}`;
+    }
+
     function renderAsesores() {
         const container = document.getElementById('asesores-list');
         const emptyState = document.getElementById('asesores-empty');
@@ -116,7 +122,12 @@
             const name = escapeHtml(asesor.nombre_asesor || 'Sin nombre');
             const email = escapeHtml(asesor.email || '');
             const celular = escapeHtml(asesor.celular || '—');
-            const inquilinos = Array.isArray(asesor.inquilinos_id) ? asesor.inquilinos_id.length : 0;
+            const totalInquilinos = Number.isFinite(Number(asesor.inquilinos_total))
+                ? Number(asesor.inquilinos_total)
+                : (Array.isArray(asesor.inquilinos_id) ? asesor.inquilinos_id.length : 0);
+            const totalArrendadores = Number.isFinite(Number(asesor.arrendadores_total))
+                ? Number(asesor.arrendadores_total)
+                : 0;
 
             return `
                 <article class="bg-[#1f2340] rounded-2xl border border-indigo-900/40 shadow-lg p-6 flex flex-col gap-4" data-id="${asesor.id}">
@@ -141,8 +152,15 @@
                             >Eliminar</button>
                         </div>
                     </div>
-                    <div class="text-xs text-indigo-200/60 border-t border-indigo-900/60 pt-3">
-                        ${inquilinos === 1 ? '1 inquilino asignado' : `${inquilinos} inquilinos asignados`}
+                    <div class="grid grid-cols-2 gap-3 text-xs text-indigo-200/70 border-t border-indigo-900/60 pt-3">
+                        <div>
+                            <p class="font-semibold text-indigo-200/80 uppercase tracking-wide text-[11px]">Inquilinos</p>
+                            <p>${formatAssignment(totalInquilinos, 'inquilino asignado', 'inquilinos asignados')}</p>
+                        </div>
+                        <div>
+                            <p class="font-semibold text-indigo-200/80 uppercase tracking-wide text-[11px]">Arrendadores</p>
+                            <p>${formatAssignment(totalArrendadores, 'arrendador asignado', 'arrendadores asignados')}</p>
+                        </div>
                     </div>
                 </article>
             `;
