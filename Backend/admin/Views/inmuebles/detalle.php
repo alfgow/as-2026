@@ -1,4 +1,12 @@
 <div class="max-w-xl mx-auto py-8">
+    <?php
+        $pk = (string)($inmueble['pk'] ?? '');
+        $sk = (string)($inmueble['sk'] ?? '');
+        $legacyId = isset($inmueble['id']) ? (string)$inmueble['id'] : '';
+        $editUrl = ($pk !== '' && $sk !== '')
+            ? $baseUrl . '/inmuebles/editar/' . rawurlencode($pk) . '/' . rawurlencode($sk)
+            : $baseUrl . '/inmuebles/editar/' . $legacyId;
+    ?>
     <div class="bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl p-6 space-y-4">
         <h2 class="text-xl font-semibold text-indigo-300 text-center mb-4">Detalle de Inmueble</h2>
         <div class="text-sm text-indigo-100 space-y-2">
@@ -16,14 +24,9 @@
         </div>
         <div class="flex justify-center gap-3 pt-4">
             <a href="<?= $baseUrl ?>/inmuebles" class="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white">Regresar</a>
-            <?php
-                $pk = (string)($inmueble['pk'] ?? '');
-                $sk = (string)($inmueble['sk'] ?? '');
-            ?>
-            <a
-                href="<?= $baseUrl ?>/inmuebles/editar/<?= rawurlencode($pk) ?>/<?= rawurlencode($sk) ?>"
-                class="px-4 py-2 rounded-lg bg-pink-600 hover:bg-pink-500 text-white"
-            >Editar</a>
+
+            <a href="<?= htmlspecialchars($editUrl, ENT_QUOTES, 'UTF-8') ?>" class="px-4 py-2 rounded-lg bg-pink-600 hover:bg-pink-500 text-white">Editar</a>
+
         </div>
     </div>
 </div>

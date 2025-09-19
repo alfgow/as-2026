@@ -78,19 +78,18 @@ class InmuebleController
     /**
      * Ver detalle de un inmueble
      */
-    public function ver(string $pk, string $sk): void
+
+    public function ver(string $pk, ?string $sk = null): void
     {
-        $id = $this->model->obtenerIdPorLlaves($pk, $sk);
-        if ($id === null) {
-            http_response_code(404);
-            $title = 'No encontrado';
-            $headerTitle = 'Recurso no encontrado';
-            $contentView = __DIR__ . '/../Views/404.php';
-            include __DIR__ . '/../Views/layouts/main.php';
-            return;
+        $pkDecodificado = rawurldecode($pk);
+        $skDecodificado = $sk !== null ? rawurldecode($sk) : null;
+
+        try {
+            $inmueble = $this->model->obtenerPorId($pkDecodificado, $skDecodificado);
+        } catch (InvalidArgumentException $e) {
+            $inmueble = null;
         }
 
-        $inmueble = $this->model->obtenerPorId($id);
         if (!$inmueble) {
             http_response_code(404);
             $title = 'No encontrado';
@@ -219,15 +218,17 @@ class InmuebleController
     /**
      * Formulario de edición
      */
-    public function editar(string $pk, string $sk): void
+    public function editar(string $pk, ?string $sk = null): void
     {
-        $id = $this->model->obtenerIdPorLlaves($pk, $sk);
-        if ($id === null) {
-            header('Location: ' . getBaseUrl() . '/inmuebles');
-            exit;
+        $pkDecodificado = rawurldecode($pk);
+        $skDecodificado = $sk !== null ? rawurldecode($sk) : null;
+
+        try {
+            $inmueble = $this->model->obtenerPorId($pkDecodificado, $skDecodificado);
+        } catch (InvalidArgumentException $e) {
+            $inmueble = null;
         }
 
-        $inmueble = $this->model->obtenerPorId($id);
         if (!$inmueble) {
             header('Location: ' . getBaseUrl() . '/inmuebles');
             exit;
@@ -314,8 +315,10 @@ class InmuebleController
             return;
         }
 
-        $pk = $pkRoute !== null ? NormalizadoHelper::lower($pkRoute) : NormalizadoHelper::lower($_POST['pk'] ?? '');
-        $sk = $skRoute !== null ? NormalizadoHelper::lower($skRoute) : NormalizadoHelper::lower($_POST['sk'] ?? '');
+
+        $pk = trim((string)($_POST['pk'] ?? ''));
+        $sk = trim((string)($_POST['sk'] ?? ''));
+
 
         if (!$pk || !$sk) {
             http_response_code(400);
@@ -357,13 +360,12 @@ class InmuebleController
     /**
      * Devuelve la información de un inmueble específico en formato JSON
      */
-    public function info(int $id): void
+    public function info(string $pk, ?string $sk = null): void
     {
         header('Content-Type: application/json');
-        $id = (int)$id;
 
         try {
-            $inmueble = $this->model->obtenerPorId($id);
+            $inmueble = $this->model->obtenerPorId(rawurldecode($pk), $sk !== null ? rawurldecode($sk) : null);
             echo json_encode($inmueble ?: []);
         } catch (\Throwable $e) {
             http_response_code(500);
