@@ -439,4 +439,31 @@ class ArrendadorModel
         ];
     }
 
+    public function obtenerProfilePorPk(string $pk): ?array
+    {
+        $pk = NormalizadoHelper::lower(trim($pk));
+        if ($pk === '') {
+            return null;
+        }
+
+        try {
+            $result = $this->client->getItem([
+                'TableName' => $this->table,
+                'Key'       => [
+                    'pk' => ['S' => $pk],
+                    'sk' => ['S' => 'profile']
+                ]
+            ]);
+
+            if (empty($result['Item'])) {
+                return null;
+            }
+
+            return $this->marshaler->unmarshalItem($result['Item']);
+        } catch (\Throwable $e) {
+            error_log('❌ Error obteniendo perfil de arrendador: ' . $e->getMessage());
+            return null;
+        }
+    }
+
 }
