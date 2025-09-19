@@ -36,61 +36,72 @@ class InmuebleModel
         return $this->getInmuebles();
     }
 
-    public function obtenerPaginados(int $limite, int $offset): array
-    {
-        return array_slice($this->getInmuebles(), $offset, $limite);
-    }
-
-    public function buscarPaginados(string $query, int $limite, int $offset): array
-    {
-        $filtrados = $this->filtrarInmuebles($query);
-
-        echo "<pre>";
-        var_dump($filtrados);
-        echo "</pre>";
-        exit;
-
-        return array_slice($filtrados, $offset, $limite);
-    }
-
-    public function contarBusqueda(string $query): int
-    {
-        return count($this->filtrarInmuebles($query));
-    }
-
-    public function contarTodos(): int
-    {
-        return count($this->getInmuebles());
-    }
-
     /**
-     * Obtiene una página de inmuebles directamente desde DynamoDB.
-     *
-     * @param int $limite
-     * @param string|null $token
-     * @return array{items: array<int, array<string, mixed>>, nextToken: ?string, hasMore: bool, consumedCapacity: float}
-     */
-    public function obtenerPaginaDynamo(int $limite, ?string $token = null): array
-    {
-        return $this->consultarPaginaDynamo($limite, $token, null);
-    }
-
-    /**
-     * Busca inmuebles utilizando paginación basada en tokens.
+     * Busca inmuebles por dirección, colonia o datos relacionados.
      *
      * @param string $query
      * @param int $limite
-     * @param string|null $token
-     * @return array{items: array<int, array<string, mixed>>, nextToken: ?string, hasMore: bool, consumedCapacity: float}
+     * @return array{items: array<int, array<string, mixed>>, consumedCapacity: float}
      */
-    public function buscarPaginaDynamo(string $query, int $limite, ?string $token = null): array
+    public function buscarPorDireccion(string $query, int $limite = 30): array
     {
-        $query = trim($query);
-        if ($query === '') {
-            return $this->obtenerPaginaDynamo($limite, $token);
+        $limite = max(1, $limite);
+        $tokens = $this->tokenizarBusqueda($query);
+
+        if ($tokens === []) {
+            return ['items' => [], 'consumedCapacity' => 0.0];
         }
 
-        return $this->consultarPaginaDynamo($limite, $token, mb_strtolower($query, 'UTF-8'));
+        $items = [];
+        $consumed = 0.0;
+        $startKey = null;
+
+        do {
+            $params = [
+                'TableName'                 => $this->table,
+                'FilterExpression'          => 'begins_with(sk, :prefix)',
+                'ExpressionAttributeValues' => [
+                    ':prefix' => ['S' => self::INMUEBLE_SK_PREFIX],
+                ],
+                'Limit'                     => 25,
+                'ReturnConsumedCapacity'    => 'TOTAL',
+            ];
+
+            if ($startKey !== null) {
+                $params['ExclusiveStartKey'] = $startKey;
+                $startKey = null;
+            }
+
+            $result = $this->client->scan($params);
+            $consumed += (float) ($result['ConsumedCapacity']['CapacityUnits'] ?? 0);
+
+            foreach ($result['Items'] ?? [] as $rawItem) {
+                $inmueble = $this->normalizarItem($rawItem);
+
+                if (!$this->coincideBusquedaTokens($inmueble, $tokens)) {
+                    continue;
+                }
+
+                $items[] = $inmueble;
+
+                if (count($items) >= $limite) {
+                    break 2;
+                }
+            }
+
+            $startKey = $result['LastEvaluatedKey'] ?? null;
+
+            if ($startKey !== null && count($items) < $limite) {
+                usleep(250000);
+            }
+        } while ($startKey !== null && count($items) < $limite);
+
+        $items = $this->adjuntarArrendadores($items);
+
+        return [
+            'items'            => $items,
+            'consumedCapacity' => $consumed,
+        ];
     }
 
     public function contarPorArrendador(int|string $idArrendador): int
@@ -191,25 +202,6 @@ class InmuebleModel
     }
 
     /**
-     * @param string $texto
-     * @return array<int, array<string, mixed>>
-     */
-    private function filtrarInmuebles(string $texto): array
-    {
-        $needle = mb_strtolower(trim($texto), 'UTF-8');
-        if ($needle === '') {
-            return $this->getInmuebles();
-        }
-
-        return array_values(array_filter(
-            $this->getInmuebles(),
-            function (array $inmueble) use ($needle): bool {
-                return $this->coincideBusqueda($inmueble, $needle);
-            }
-        ));
-    }
-
-    /**
      * @param array<string, mixed> $item
      * @return array<string, mixed>
      */
@@ -239,73 +231,6 @@ class InmuebleModel
         }
 
         return $data;
-    }
-
-    /**
-     * @param int $limite
-     * @param string|null $token
-     * @param string|null $needle
-     * @return array{items: array<int, array<string, mixed>>, nextToken: ?string, hasMore: bool, consumedCapacity: float}
-     */
-    private function consultarPaginaDynamo(int $limite, ?string $token, ?string $needle): array
-    {
-        $limite = max(1, $limite);
-        $exclusiveStartKey = $this->decodeToken($token);
-        $items = [];
-        $nextToken = null;
-        $consumed = 0.0;
-
-        $startKey = $exclusiveStartKey;
-
-        do {
-            $params = [
-                'TableName'                 => $this->table,
-                'FilterExpression'          => 'begins_with(sk, :prefix)',
-                'ExpressionAttributeValues' => [
-                    ':prefix' => ['S' => self::INMUEBLE_SK_PREFIX],
-                ],
-                'Limit'                     => 25,
-                'ReturnConsumedCapacity'    => 'TOTAL',
-            ];
-
-            if ($startKey !== null) {
-                $params['ExclusiveStartKey'] = $startKey;
-                $startKey = null;
-            }
-
-            $result = $this->client->scan($params);
-            $consumed += (float) ($result['ConsumedCapacity']['CapacityUnits'] ?? 0);
-
-            foreach ($result['Items'] ?? [] as $rawItem) {
-                $inmueble = $this->normalizarItem($rawItem);
-
-                if ($needle !== null && $needle !== '' && !$this->coincideBusqueda($inmueble, $needle)) {
-                    continue;
-                }
-
-                $items[] = $inmueble;
-
-                if (count($items) === $limite) {
-                    $nextToken = $this->encodeKey($rawItem);
-                    break 2;
-                }
-            }
-
-            $startKey = $result['LastEvaluatedKey'] ?? null;
-
-            if ($startKey !== null) {
-                usleep(250000);
-            }
-        } while ($startKey !== null);
-
-        $items = $this->adjuntarArrendadores($items);
-
-        return [
-            'items'            => $items,
-            'nextToken'        => $nextToken,
-            'hasMore'          => $nextToken !== null,
-            'consumedCapacity' => $consumed,
-        ];
     }
 
     /**
@@ -349,6 +274,90 @@ class InmuebleModel
         unset($inmueble);
 
         return $inmuebles;
+    }
+
+    /**
+     * @param array<string, mixed> $inmueble
+     * @param array<int, string> $tokens
+     */
+    private function coincideBusquedaTokens(array $inmueble, array $tokens): bool
+    {
+        if ($tokens === []) {
+            return true;
+        }
+
+        $campos = [
+            $this->normalizarCampoBusqueda($inmueble['direccion_inmueble'] ?? ''),
+            $this->normalizarCampoBusqueda($inmueble['nombre_arrendador'] ?? ''),
+            $this->normalizarCampoBusqueda($inmueble['nombre_asesor'] ?? ''),
+            $this->normalizarCampoBusqueda($inmueble['tipo'] ?? ''),
+        ];
+
+        $haystack = trim(implode(' ', array_filter($campos)));
+        if ($haystack === '') {
+            return false;
+        }
+
+        foreach ($tokens as $token) {
+            if ($token === '') {
+                continue;
+            }
+
+            if (mb_strpos($haystack, $token, 0, 'UTF-8') === false) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function tokenizarBusqueda(string $query): array
+    {
+        $normalizado = $this->normalizarBusqueda($query);
+        if ($normalizado === '') {
+            return [];
+        }
+
+        $tokens = preg_split('/\s+/u', $normalizado) ?: [];
+
+        return array_values(array_filter(array_map('trim', $tokens), static function ($token): bool {
+            return $token !== '';
+        }));
+    }
+
+    private function normalizarCampoBusqueda($valor): string
+    {
+        if ($valor === null) {
+            return '';
+        }
+
+        return $this->normalizarBusqueda((string) $valor);
+    }
+
+    private function normalizarBusqueda(string $texto): string
+    {
+        $texto = mb_strtolower($texto, 'UTF-8');
+
+        $replacements = [
+            'á' => 'a',
+            'é' => 'e',
+            'í' => 'i',
+            'ó' => 'o',
+            'ú' => 'u',
+            'ü' => 'u',
+            'ñ' => 'n',
+        ];
+
+        $texto = strtr($texto, $replacements);
+        $texto = str_replace(['col.', 'colonia'], 'colonia', $texto);
+        $texto = preg_replace('/\bcol\b/u', 'colonia', $texto) ?? $texto;
+        $texto = preg_replace('/[^a-z0-9\s]/u', ' ', $texto) ?? $texto;
+        $texto = preg_replace('/\s+/u', ' ', $texto) ?? $texto;
+
+        return trim($texto);
     }
 
     /**
@@ -428,71 +437,6 @@ class InmuebleModel
         unset($perfil);
 
         return $perfiles;
-    }
-
-    private function coincideBusqueda(array $inmueble, string $needle): bool
-    {
-        foreach (['direccion_inmueble', 'nombre_arrendador', 'nombre_asesor', 'tipo'] as $campo) {
-            $valor = mb_strtolower((string) ($inmueble[$campo] ?? ''), 'UTF-8');
-            if ($valor !== '' && mb_strpos($valor, $needle, 0, 'UTF-8') !== false) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private function encodeKey(array $rawItem): ?string
-    {
-        $pk = $rawItem['pk']['S'] ?? null;
-        $sk = $rawItem['sk']['S'] ?? null;
-
-        if (!is_string($pk) || $pk === '' || !is_string($sk) || $sk === '') {
-            return null;
-        }
-
-        $payload = json_encode(['pk' => $pk, 'sk' => $sk]);
-
-        if ($payload === false) {
-            return null;
-        }
-
-        return rtrim(strtr(base64_encode($payload), '+/', '-_'), '=');
-    }
-
-    private function decodeToken(?string $token): ?array
-    {
-        if ($token === null || $token === '') {
-            return null;
-        }
-
-        $normalized = strtr($token, '-_', '+/');
-        $padding = strlen($normalized) % 4;
-        if ($padding > 0) {
-            $normalized .= str_repeat('=', 4 - $padding);
-        }
-
-        $decoded = base64_decode($normalized, true);
-        if ($decoded === false) {
-            return null;
-        }
-
-        $data = json_decode($decoded, true);
-        if (!is_array($data)) {
-            return null;
-        }
-
-        $pk = $data['pk'] ?? null;
-        $sk = $data['sk'] ?? null;
-
-        if (!is_string($pk) || $pk === '' || !is_string($sk) || $sk === '') {
-            return null;
-        }
-
-        return [
-            'pk' => ['S' => $pk],
-            'sk' => ['S' => $sk],
-        ];
     }
 
     /**
