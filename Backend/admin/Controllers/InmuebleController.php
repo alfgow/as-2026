@@ -78,8 +78,18 @@ class InmuebleController
     /**
      * Ver detalle de un inmueble
      */
-    public function ver(int $id): void
+    public function ver(string $pk, string $sk): void
     {
+        $id = $this->model->obtenerIdPorLlaves($pk, $sk);
+        if ($id === null) {
+            http_response_code(404);
+            $title = 'No encontrado';
+            $headerTitle = 'Recurso no encontrado';
+            $contentView = __DIR__ . '/../Views/404.php';
+            include __DIR__ . '/../Views/layouts/main.php';
+            return;
+        }
+
         $inmueble = $this->model->obtenerPorId($id);
         if (!$inmueble) {
             http_response_code(404);
@@ -209,8 +219,14 @@ class InmuebleController
     /**
      * Formulario de edición
      */
-    public function editar(int $id): void
+    public function editar(string $pk, string $sk): void
     {
+        $id = $this->model->obtenerIdPorLlaves($pk, $sk);
+        if ($id === null) {
+            header('Location: ' . getBaseUrl() . '/inmuebles');
+            exit;
+        }
+
         $inmueble = $this->model->obtenerPorId($id);
         if (!$inmueble) {
             header('Location: ' . getBaseUrl() . '/inmuebles');
@@ -285,7 +301,7 @@ class InmuebleController
     /**
      * Eliminar inmueble (JSON, Dynamo)
      */
-    public function delete(): void
+    public function delete(?string $pkRoute = null, ?string $skRoute = null): void
     {
 
         header('Content-Type: application/json; charset=utf-8');
@@ -296,8 +312,8 @@ class InmuebleController
             return;
         }
 
-        $pk = NormalizadoHelper::lower($_POST['pk'] ?? '');
-        $sk = NormalizadoHelper::lower($_POST['sk'] ?? '');
+        $pk = $pkRoute !== null ? NormalizadoHelper::lower($pkRoute) : NormalizadoHelper::lower($_POST['pk'] ?? '');
+        $sk = $skRoute !== null ? NormalizadoHelper::lower($skRoute) : NormalizadoHelper::lower($_POST['sk'] ?? '');
 
         if (!$pk || !$sk) {
             http_response_code(400);
