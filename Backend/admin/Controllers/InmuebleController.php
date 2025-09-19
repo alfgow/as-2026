@@ -343,13 +343,24 @@ class InmuebleController
     /**
      * Devuelve inmuebles por arrendador (JSON)
      */
-    public function inmueblesPorArrendador(int $id): void
+    public function inmueblesPorArrendador(string $identificador): void
     {
         header('Content-Type: application/json');
-        $id = (int)$id;
+
+        $identificador = trim(rawurldecode($identificador));
+
+        if ($identificador === '') {
+            http_response_code(400);
+            echo json_encode(['ok' => false, 'mensaje' => 'Identificador de arrendador inválido']);
+            return;
+        }
+
+        $idOClave = ctype_digit($identificador)
+            ? (int) $identificador
+            : $identificador;
 
         try {
-            $inmuebles = $this->model->obtenerPorArrendador($id);
+            $inmuebles = $this->model->obtenerPorArrendador($idOClave);
             echo json_encode($inmuebles ?? []);
         } catch (\Throwable $e) {
             http_response_code(500);

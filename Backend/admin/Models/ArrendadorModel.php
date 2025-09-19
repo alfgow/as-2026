@@ -179,25 +179,42 @@ class ArrendadorModel
             return [];
         }
 
-        $keys = [];
+        $cleanIds = [];
         foreach ($ids as $sk) {
-            $keys[] = [
-                'pk' => ['S' => $pkArr], // siempre el arrendador
-                'sk' => ['S' => $sk]     // ej: arrfile#58, INM#539, POL#960
-            ];
+            $value = trim((string) $sk);
+            if ($value !== '') {
+                $cleanIds[] = $value;
+            }
         }
 
-        $response = $this->client->batchGetItem([
-            'RequestItems' => [
-                $this->table => ['Keys' => $keys]
-            ]
-        ]);
+        if ($cleanIds === []) {
+            return [];
+        }
 
         $items = [];
-        if (!empty($response['Responses'][$this->table])) {
-            foreach ($response['Responses'][$this->table] as $item) {
-                $items[] = $this->marshaler->unmarshalItem($item);
+
+        foreach (array_chunk($cleanIds, 25) as $chunk) {
+            $keys = [];
+            foreach ($chunk as $sk) {
+                $keys[] = [
+                    'pk' => ['S' => $pkArr],
+                    'sk' => ['S' => $sk],
+                ];
             }
+
+            $response = $this->client->batchGetItem([
+                'RequestItems' => [
+                    $this->table => ['Keys' => $keys]
+                ]
+            ]);
+
+            if (!empty($response['Responses'][$this->table])) {
+                foreach ($response['Responses'][$this->table] as $item) {
+                    $items[] = $this->marshaler->unmarshalItem($item);
+                }
+            }
+
+            usleep(250000);
         }
 
         return $items;
