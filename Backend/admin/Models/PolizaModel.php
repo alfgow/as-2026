@@ -3,8 +3,12 @@
 namespace App\Models;
 
 require_once __DIR__ . '/../Core/Database.php';
+require_once __DIR__ . '/../Core/Dynamo.php';
 
 use App\Core\Database;
+use App\Core\Dynamo;
+use Aws\DynamoDb\DynamoDbClient;
+use Aws\DynamoDb\Marshaler;
 use PDO;
 
 /**
@@ -17,9 +21,17 @@ use PDO;
  */
 class PolizaModel extends Database
 {
+    private DynamoDbClient $client;
+    private Marshaler $marshaler;
+    private string $table;
+
     public function __construct()
     {
         parent::__construct();
+
+        $this->client    = Dynamo::client();
+        $this->marshaler = Dynamo::marshaler();
+        $this->table     = Dynamo::table();
     }
 
     /**
@@ -164,6 +176,97 @@ class PolizaModel extends Database
             : ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: []);
     }
 
+    /**
+     * Consulta DynamoDB para obtener pólizas activas filtradas por mes/año.
+     *
+     * Se utiliza scan paginado porque los perfiles POL# comparten partición; si el
+     * volumen crece será recomendable un GSI dedicado a mes/year para evitar escaneos.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function obtenerVencimientosDesdeDynamo(int $mes, int $anio): array
+    {
+        $items   = [];
+        $lastKey = null;
+
+        do {
+            $params = [
+                'TableName'                 => $this->table,
+                'FilterExpression'          => 'begins_with(pk, :pk) AND sk = :sk AND estado = :estado AND mes_vencimiento = :mes AND year_vencimiento = :anio',
+                'ExpressionAttributeValues' => [
+                    ':pk'     => ['S' => 'pol#'],
+                    ':sk'     => ['S' => 'profile'],
+                    ':estado' => ['S' => '1'],
+                    ':mes'    => ['N' => (string) $mes],
+                    ':anio'   => ['N' => (string) $anio],
+                ],
+            ];
+
+            if ($lastKey !== null) {
+                $params['ExclusiveStartKey'] = $lastKey;
+            }
+
+            try {
+                $result = $this->client->scan($params);
+            } catch (\Throwable $e) {
+                error_log('❌ Error consultando vencimientos en DynamoDB: ' . $e->getMessage());
+                break;
+            }
+
+            if (!empty($result['Items'])) {
+                foreach ($result['Items'] as $item) {
+                    $profile   = $this->marshaler->unmarshalItem($item);
+                    $items[] = $this->normalizarVencimientoDynamo($profile);
+                }
+            }
+
+            $lastKey = $result['LastEvaluatedKey'] ?? null;
+        } while ($lastKey !== null);
+
+        return $items;
+    }
+
+    /**
+     * Normaliza los campos retornados por Dynamo para que coincidan con las vistas legacy.
+     *
+     * @param array<string, mixed> $item
+     * @return array<string, mixed>
+     */
+    private function normalizarVencimientoDynamo(array $item): array
+    {
+        $normalizado = $item;
+
+        $normalizado['numero_poliza'] = (string)($item['numero_poliza'] ?? ($item['numero'] ?? ''));
+        $normalizado['serie_poliza']  = (string)($item['serie_poliza'] ?? ($item['serie'] ?? ''));
+        $normalizado['tipo_poliza']   = (string)($item['tipo_poliza'] ?? ($item['tipo'] ?? ''));
+        $normalizado['estado']        = (string)($item['estado'] ?? '');
+        $normalizado['vigencia']      = (string)($item['vigencia'] ?? '');
+        $normalizado['fecha_poliza']  = (string)($item['fecha_poliza'] ?? ($item['fecha_emision'] ?? ''));
+        $normalizado['fecha_fin']     = (string)($item['fecha_fin'] ?? ($item['fecha_vencimiento'] ?? ''));
+
+        $normalizado['mes_vencimiento']  = isset($item['mes_vencimiento']) ? (int) $item['mes_vencimiento'] : 0;
+        $normalizado['year_vencimiento'] = isset($item['year_vencimiento']) ? (int) $item['year_vencimiento'] : 0;
+
+        $normalizado['monto_renta']  = isset($item['monto_renta']) ? (float) $item['monto_renta'] : 0.0;
+        $normalizado['monto_poliza'] = isset($item['monto_poliza']) ? (float) $item['monto_poliza'] : 0.0;
+
+        $nombreInquilino = (string)($item['nombre_inquilino'] ?? ($item['inquilino_nombre'] ?? ''));
+        $apPaterno       = (string)($item['apellidop_inquilino'] ?? ($item['inquilino_apellido_p'] ?? ''));
+        $apMaterno       = (string)($item['apellidom_inquilino'] ?? ($item['inquilino_apellido_m'] ?? ''));
+        $normalizado['nombre_inquilino_completo'] = (string)($item['nombre_inquilino_completo'] ?? trim(sprintf('%s %s %s', $nombreInquilino, $apPaterno, $apMaterno)));
+
+        $normalizado['nombre_arrendador'] = (string)($item['nombre_arrendador'] ?? ($item['arrendador_nombre'] ?? ''));
+        $normalizado['nombre_fiador']     = (string)($item['nombre_fiador'] ?? ($item['fiador_nombre'] ?? ''));
+        $normalizado['nombre_asesor']     = (string)($item['nombre_asesor'] ?? ($item['asesor_nombre'] ?? ''));
+
+        $direccionInmueble = (string)($item['direccion_inmueble'] ?? ($item['direccion'] ?? ''));
+        $normalizado['direccion_inmueble'] = $direccionInmueble;
+        $normalizado['direccion']          = (string)($item['direccion'] ?? $direccionInmueble);
+        $normalizado['tipo_inmueble']      = (string)($item['tipo_inmueble'] ?? ($item['inmueble_tipo'] ?? ''));
+
+        return $normalizado;
+    }
+
     /* =========================================================
      *           VENCIMIENTOS / CONSULTAS CLAVE
      * ========================================================= */
@@ -188,10 +291,16 @@ class PolizaModel extends Database
 
     public function obtenerVencimientosPorMesAnio(int $mes, int $anio): array
     {
-        return $this->obtenerPolizasConFiltros(
-            'p.mes_vencimiento = :mes AND p.year_vencimiento = :anio AND p.estado = "1" ORDER BY p.fecha_poliza ASC',
-            [':mes' => $mes, ':anio' => $anio]
-        );
+        $items = $this->obtenerVencimientosDesdeDynamo($mes, $anio);
+
+        usort($items, static function (array $a, array $b): int {
+            $fechaA = (string)($a['fecha_poliza'] ?? '');
+            $fechaB = (string)($b['fecha_poliza'] ?? '');
+
+            return strcmp($fechaA, $fechaB);
+        });
+
+        return $items;
     }
 
     public function obtenerPorNumero(int|string $numero): ?array
