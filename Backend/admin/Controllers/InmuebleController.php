@@ -16,6 +16,7 @@ use App\Models\InmuebleModel;
 use App\Models\ArrendadorModel;
 use App\Models\AsesorModel;
 use App\Middleware\AuthMiddleware;
+use InvalidArgumentException;
 
 /**
  * Controlador de Inmuebles
@@ -78,9 +79,14 @@ class InmuebleController
     /**
      * Ver detalle de un inmueble
      */
-    public function ver(int $id): void
+    public function ver(string $pk, ?string $sk = null): void
     {
-        $inmueble = $this->model->obtenerPorId($id);
+        try {
+            $inmueble = $this->model->obtenerPorId(rawurldecode($pk), $sk !== null ? rawurldecode($sk) : null);
+        } catch (InvalidArgumentException $e) {
+            $inmueble = null;
+        }
+
         if (!$inmueble) {
             http_response_code(404);
             $title = 'No encontrado';
@@ -209,9 +215,14 @@ class InmuebleController
     /**
      * Formulario de edición
      */
-    public function editar(int $id): void
+    public function editar(string $pk, ?string $sk = null): void
     {
-        $inmueble = $this->model->obtenerPorId($id);
+        try {
+            $inmueble = $this->model->obtenerPorId(rawurldecode($pk), $sk !== null ? rawurldecode($sk) : null);
+        } catch (InvalidArgumentException $e) {
+            $inmueble = null;
+        }
+
         if (!$inmueble) {
             header('Location: ' . getBaseUrl() . '/inmuebles');
             exit;
@@ -339,13 +350,12 @@ class InmuebleController
     /**
      * Devuelve la información de un inmueble específico en formato JSON
      */
-    public function info(int $id): void
+    public function info(string $pk, ?string $sk = null): void
     {
         header('Content-Type: application/json');
-        $id = (int)$id;
 
         try {
-            $inmueble = $this->model->obtenerPorId($id);
+            $inmueble = $this->model->obtenerPorId(rawurldecode($pk), $sk !== null ? rawurldecode($sk) : null);
             echo json_encode($inmueble ?: []);
         } catch (\Throwable $e) {
             http_response_code(500);
