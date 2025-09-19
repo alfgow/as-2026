@@ -3,12 +3,12 @@
 namespace App\Models;
 
 require_once __DIR__ . '/../Core/Database.php';
+require_once __DIR__ . '/AsesorModel.php';
 
 use App\Core\Database;
 use PDO;
 
 require_once __DIR__ . '/../Core/Dynamo.php';
-require_once __DIR__ . '/AsesorModel.php';
 
 use App\Core\Dynamo;
 use Aws\DynamoDb\DynamoDbClient;
@@ -17,13 +17,14 @@ use InvalidArgumentException;
 
 class InmuebleModel extends Database
 {
-    private const INMUEBLE_PREFIX = 'INM#';
-    private const PROFILE_SK      = 'profile';
+    private const INMUEBLE_SK_PREFIX = 'INM#';
+    private const ARRENDADOR_PROFILE_SK = 'PROFILE';
 
     private DynamoDbClient $client;
     private Marshaler $marshaler;
     private string $table;
-    private ?array $cachedInmuebles = null;
+    /** @var array<int, array<string, mixed>>|null */
+    private ?array $inmueblesCache = null;
     private ?AsesorModel $asesorModel = null;
 
     public function __construct()
@@ -37,28 +38,29 @@ class InmuebleModel extends Database
     /** Listado completo (ojo: sin paginar) */
     public function obtenerTodos(): array
     {
-        return $this->allInmuebles();
+        return $this->getInmuebles();
     }
 
     public function obtenerPaginados(int $limite, int $offset): array
     {
-        return array_slice($this->allInmuebles(), $offset, $limite);
+        return array_slice($this->getInmuebles(), $offset, $limite);
     }
 
     public function buscarPaginados(string $query, int $limite, int $offset): array
     {
-        $filtrados = $this->filtrarPorTexto($query);
+        $filtrados = $this->filtrarInmuebles($query);
+
         return array_slice($filtrados, $offset, $limite);
     }
 
     public function contarBusqueda(string $query): int
     {
-        return count($this->filtrarPorTexto($query));
+        return count($this->filtrarInmuebles($query));
     }
 
     public function contarTodos(): int
     {
-        return count($this->allInmuebles());
+        return count($this->getInmuebles());
     }
 
     public function contarPorArrendador(int|string $idArrendador): int
@@ -66,30 +68,26 @@ class InmuebleModel extends Database
         $pk = is_numeric($idArrendador)
             ? 'arr#' . (int) $idArrendador
             : (string) $idArrendador;
-
-        $pkLower = strtolower($pk);
+        $needle = mb_strtolower($pk, 'UTF-8');
 
         return count(array_filter(
-            $this->allInmuebles(),
-            static fn(array $inmueble): bool => strtolower((string)($inmueble['pk'] ?? '')) === $pkLower
+            $this->getInmuebles(),
+            static fn(array $inmueble): bool => mb_strtolower((string)($inmueble['pk'] ?? ''), 'UTF-8') === $needle
         ));
     }
 
-    public function obtenerPorId(string|int $pk, ?string $sk = null): ?array
+    public function obtenerPorId(int|string $pk, ?string $sk = null): ?array
     {
+        if ($sk === null && is_string($pk) && str_contains($pk, '|')) {
+            [$pk, $sk] = explode('|', $pk, 2);
+        }
+
         if ($sk === null) {
-            // Compatibilidad legacy: si recibimos un ID numérico, consultamos la versión anterior.
             if (is_numeric($pk)) {
                 return $this->obtenerPorIdLegacy((int) $pk);
             }
 
-            if (is_string($pk) && str_contains($pk, '|')) {
-                [$pk, $sk] = explode('|', $pk, 2);
-            }
-        }
-
-        if ($sk === null) {
-            throw new InvalidArgumentException('Se requieren pk y sk del inmueble para consultar en DynamoDB.');
+            throw new InvalidArgumentException('Se requieren pk y sk del inmueble para DynamoDB.');
         }
 
         $pk = (string) $pk;
@@ -107,45 +105,45 @@ class InmuebleModel extends Database
             return null;
         }
 
-        $inmueble = $this->normalizeInmuebleItem($result['Item']);
-        $conRelacion = $this->adjuntarArrendadores([$inmueble]);
+        $inmueble = $this->normalizarItem($result['Item']);
+        $conDatos = $this->adjuntarArrendadores([$inmueble]);
 
-        return $conRelacion[0] ?? $inmueble;
+        return $conDatos[0] ?? $inmueble;
     }
 
     /**
      * @return array<int, array<string, mixed>>
      */
-    private function allInmuebles(): array
+    private function getInmuebles(): array
     {
-        if ($this->cachedInmuebles !== null) {
-            return $this->cachedInmuebles;
+        if ($this->inmueblesCache !== null) {
+            return $this->inmueblesCache;
         }
 
-        $items   = [];
-        $lastKey = null;
+        $items = [];
+        $lastEvaluatedKey = null;
 
         do {
             $params = [
                 'TableName'                 => $this->table,
-                'FilterExpression'          => 'begins_with(sk, :inmPrefix)',
+                'FilterExpression'          => 'begins_with(sk, :prefix)',
                 'ExpressionAttributeValues' => [
-                    ':inmPrefix' => ['S' => self::INMUEBLE_PREFIX],
+                    ':prefix' => ['S' => self::INMUEBLE_SK_PREFIX],
                 ],
             ];
 
-            if ($lastKey !== null) {
-                $params['ExclusiveStartKey'] = $lastKey;
+            if ($lastEvaluatedKey) {
+                $params['ExclusiveStartKey'] = $lastEvaluatedKey;
             }
 
             $result = $this->client->scan($params);
 
             foreach ($result['Items'] ?? [] as $item) {
-                $items[] = $this->normalizeInmuebleItem($item);
+                $items[] = $this->normalizarItem($item);
             }
 
-            $lastKey = $result['LastEvaluatedKey'] ?? null;
-        } while ($lastKey);
+            $lastEvaluatedKey = $result['LastEvaluatedKey'] ?? null;
+        } while ($lastEvaluatedKey);
 
         $items = $this->adjuntarArrendadores($items);
 
@@ -154,27 +152,27 @@ class InmuebleModel extends Database
             static function (array $a, array $b): int {
                 $fechaA = strtotime((string)($a['fecha_registro'] ?? '')) ?: 0;
                 $fechaB = strtotime((string)($b['fecha_registro'] ?? '')) ?: 0;
+
                 return $fechaB <=> $fechaA;
             }
         );
 
-        return $this->cachedInmuebles = array_values($items);
+        return $this->inmueblesCache = array_values($items);
     }
 
     /**
+     * @param string $texto
      * @return array<int, array<string, mixed>>
      */
-    private function filtrarPorTexto(string $query): array
+    private function filtrarInmuebles(string $texto): array
     {
-        $needle = trim($query);
+        $needle = mb_strtolower(trim($texto), 'UTF-8');
         if ($needle === '') {
-            return $this->allInmuebles();
+            return $this->getInmuebles();
         }
 
-        $needle = mb_strtolower($needle, 'UTF-8');
-
         return array_values(array_filter(
-            $this->allInmuebles(),
+            $this->getInmuebles(),
             static function (array $inmueble) use ($needle): bool {
                 foreach (['direccion_inmueble', 'nombre_arrendador', 'nombre_asesor', 'tipo'] as $campo) {
                     $valor = mb_strtolower((string)($inmueble[$campo] ?? ''), 'UTF-8');
@@ -192,23 +190,24 @@ class InmuebleModel extends Database
      * @param array<string, mixed> $item
      * @return array<string, mixed>
      */
-    private function normalizeInmuebleItem(array $item): array
+    private function normalizarItem(array $item): array
     {
         $data = $this->marshaler->unmarshalItem($item);
 
-        $data['pk'] = (string)($data['pk'] ?? '');
-        $data['sk'] = (string)($data['sk'] ?? '');
-
-        $data['direccion_inmueble']  = (string)($data['direccion_inmueble'] ?? '');
-        $data['tipo']                = (string)($data['tipo'] ?? '');
-        $data['mantenimiento']       = strtoupper((string)($data['mantenimiento'] ?? 'NO'));
-        $data['mascotas']            = strtoupper((string)($data['mascotas'] ?? 'NO'));
-        $data['deposito']            = (string)($data['deposito'] ?? '');
-        $data['comentarios']         = (string)($data['comentarios'] ?? '');
-        $data['fecha_registro']      = (string)($data['fecha_registro'] ?? '');
-        $data['renta']               = $this->formatMonto($data['renta'] ?? null);
-        $data['monto_mantenimiento'] = $this->formatMonto($data['monto_mantenimiento'] ?? null);
-        $data['estacionamiento']     = (int)($data['estacionamiento'] ?? 0);
+        $data['pk'] = (string) ($data['pk'] ?? '');
+        $data['sk'] = (string) ($data['sk'] ?? '');
+        $data['tipo'] = (string) ($data['tipo'] ?? '');
+        $data['direccion_inmueble'] = (string) ($data['direccion_inmueble'] ?? '');
+        $data['mantenimiento'] = (string) ($data['mantenimiento'] ?? '');
+        $data['mascotas'] = strtoupper((string) ($data['mascotas'] ?? 'NO'));
+        $data['deposito'] = (string) ($data['deposito'] ?? '');
+        $data['comentarios'] = (string) ($data['comentarios'] ?? '');
+        $data['fecha_registro'] = (string) ($data['fecha_registro'] ?? '');
+        $data['nombre_arrendador'] = (string) ($data['nombre_arrendador'] ?? '');
+        $data['nombre_asesor'] = (string) ($data['nombre_asesor'] ?? '');
+        $data['renta'] = $this->formatearMonto($data['renta'] ?? null);
+        $data['monto_mantenimiento'] = $this->formatearMonto($data['monto_mantenimiento'] ?? null);
+        $data['estacionamiento'] = (int) ($data['estacionamiento'] ?? 0);
 
         return $data;
     }
@@ -225,31 +224,30 @@ class InmuebleModel extends Database
 
         $pks = [];
         foreach ($inmuebles as $inmueble) {
-            $pks[] = (string)($inmueble['pk'] ?? '');
+            $pk = (string) ($inmueble['pk'] ?? '');
+            if ($pk !== '') {
+                $pks[] = $pk;
+            }
         }
 
-        $arrendadores = $this->fetchArrendadorProfiles($pks);
+        $arrendadores = $this->obtenerPerfilesArrendador($pks);
 
         foreach ($inmuebles as &$inmueble) {
-            $pkLower = strtolower((string)($inmueble['pk'] ?? ''));
-            if (!isset($arrendadores[$pkLower])) {
-                continue;
-            }
+            $pkLower = mb_strtolower((string)($inmueble['pk'] ?? ''), 'UTF-8');
+            $datos = $arrendadores[$pkLower] ?? null;
 
-            $profile = $arrendadores[$pkLower];
-
-            $inmueble['nombre_arrendador'] = $profile['nombre_arrendador'] ?? '';
-            if (isset($profile['id_arrendador'])) {
-                $inmueble['id_arrendador'] = $profile['id_arrendador'];
+            $inmueble['nombre_arrendador'] = $datos['nombre_arrendador'] ?? '';
+            if (isset($datos['id_arrendador'])) {
+                $inmueble['id_arrendador'] = $datos['id_arrendador'];
             }
-            if (isset($profile['asesor_pk'])) {
-                $inmueble['asesor_pk'] = $profile['asesor_pk'];
+            if (isset($datos['nombre_asesor'])) {
+                $inmueble['nombre_asesor'] = $datos['nombre_asesor'];
             }
-            if (isset($profile['nombre_asesor'])) {
-                $inmueble['nombre_asesor'] = $profile['nombre_asesor'];
+            if (isset($datos['id_asesor'])) {
+                $inmueble['id_asesor'] = $datos['id_asesor'];
             }
-            if (isset($profile['id_asesor'])) {
-                $inmueble['id_asesor'] = $profile['id_asesor'];
+            if (isset($datos['asesor_pk'])) {
+                $inmueble['asesor_pk'] = $datos['asesor_pk'];
             }
         }
         unset($inmueble);
@@ -258,135 +256,100 @@ class InmuebleModel extends Database
     }
 
     /**
-     * @param array<int, string> $pks
-     * @return array<string, array<string, mixed>> keyed by pk en minúsculas
+     * @param array<int, string> $arrendadorPks
+     * @return array<string, array<string, mixed>>
      */
-    private function fetchArrendadorProfiles(array $pks): array
+    private function obtenerPerfilesArrendador(array $arrendadorPks): array
     {
         $unique = [];
-        foreach ($pks as $pk) {
-            $pk = trim((string) $pk);
-            if ($pk === '') {
+        foreach ($arrendadorPks as $pk) {
+            $original = trim((string) $pk);
+            if ($original === '') {
                 continue;
             }
-            $unique[strtolower($pk)] = $pk;
+            $unique[mb_strtolower($original, 'UTF-8')] = $original;
         }
 
         if ($unique === []) {
             return [];
         }
 
-        $profiles  = [];
+        $perfiles = [];
         $asesorPks = [];
 
-        $this->appendArrendadoresPorSk(array_values($unique), self::PROFILE_SK, $profiles, $asesorPks);
-
-        if (count($profiles) < count($unique)) {
-            $faltantes = [];
-            foreach ($unique as $lower => $original) {
-                if (!isset($profiles[$lower])) {
-                    $faltantes[] = $original;
-                }
-            }
-
-            if ($faltantes !== []) {
-                $this->appendArrendadoresPorSk($faltantes, strtoupper(self::PROFILE_SK), $profiles, $asesorPks);
-            }
-        }
-
-        if ($profiles === []) {
-            return [];
-        }
-
-        $asesorPks = array_values(array_unique(array_filter($asesorPks)));
-        $asesores  = $asesorPks === [] ? [] : $this->getAsesorModel()->batchGetByPk($asesorPks);
-
-        foreach ($profiles as $pkLower => &$profile) {
-            $asesorPk = $profile['asesor_pk'] ?? null;
-            if ($asesorPk && isset($asesores[$asesorPk])) {
-                $asesor = $asesores[$asesorPk];
-                $profile['nombre_asesor'] = (string)($asesor['nombre_asesor'] ?? '');
-                if (isset($asesor['id'])) {
-                    $profile['id_asesor'] = (int) $asesor['id'];
-                }
-            } else {
-                $profile['nombre_asesor'] = '';
-            }
-        }
-        unset($profile);
-
-        return $profiles;
-    }
-
-    /**
-     * @param array<int, string> $pks
-     * @param string $skValue
-     * @param array<string, array<string, mixed>> $profiles
-     * @param array<int, string> $asesorPks
-     */
-    private function appendArrendadoresPorSk(array $pks, string $skValue, array &$profiles, array &$asesorPks): void
-    {
-        if ($pks === []) {
-            return;
-        }
-
-        foreach (array_chunk($pks, 100) as $chunk) {
+        foreach (array_chunk(array_values($unique), 100) as $chunk) {
             $keys = [];
             foreach ($chunk as $pk) {
                 $keys[] = [
                     'pk' => ['S' => $pk],
-                    'sk' => ['S' => $skValue],
+                    'sk' => ['S' => self::ARRENDADOR_PROFILE_SK],
                 ];
             }
 
-            foreach ($this->batchGetRawItems($keys) as $item) {
+            foreach ($this->batchGet($keys) as $item) {
                 $profile = $this->marshaler->unmarshalItem($item);
-                $pkValue = (string)($profile['pk'] ?? '');
-
+                $pkValue = (string) ($profile['pk'] ?? '');
                 if ($pkValue === '') {
                     continue;
                 }
 
-                $pkLower = strtolower($pkValue);
-                if (isset($profiles[$pkLower])) {
+                $pkLower = mb_strtolower($pkValue, 'UTF-8');
+                if (isset($perfiles[$pkLower])) {
                     continue;
                 }
 
-                $asesorPk = $this->extractAsesorPk($profile['asesor'] ?? null);
+                $asesorPk = $this->resolverAsesorPk($profile['asesor_pk'] ?? null, $profile['asesor'] ?? null);
                 if ($asesorPk !== null) {
                     $asesorPks[] = $asesorPk;
                 }
 
-                $profiles[$pkLower] = [
-                    'profile'           => $profile,
-                    'nombre_arrendador' => (string)($profile['nombre_arrendador'] ?? ''),
-                    'asesor_pk'         => $asesorPk,
+                $perfiles[$pkLower] = [
+                    'pk'                => $pkValue,
                     'id_arrendador'     => isset($profile['id']) ? (int) $profile['id'] : null,
+                    'nombre_arrendador' => (string) ($profile['nombre_arrendador'] ?? ''),
+                    'asesor_pk'         => $asesorPk,
                 ];
             }
         }
+
+        $asesorPks = array_values(array_unique(array_filter($asesorPks)));
+        $asesores = $asesorPks === [] ? [] : $this->getAsesorModel()->batchGetByPk($asesorPks);
+
+        foreach ($perfiles as $pkLower => &$perfil) {
+            $asesorPk = $perfil['asesor_pk'] ?? null;
+            if ($asesorPk && isset($asesores[$asesorPk])) {
+                $asesor = $asesores[$asesorPk];
+                $perfil['nombre_asesor'] = (string) ($asesor['nombre_asesor'] ?? '');
+                if (isset($asesor['id'])) {
+                    $perfil['id_asesor'] = (int) $asesor['id'];
+                }
+            } else {
+                $perfil['nombre_asesor'] = '';
+            }
+        }
+        unset($perfil);
+
+        return $perfiles;
     }
 
     /**
      * @param array<int, array<string, array<string, string>>> $keys
      * @return array<int, array<string, mixed>>
      */
-    private function batchGetRawItems(array $keys): array
+    private function batchGet(array $keys): array
     {
         if ($keys === []) {
             return [];
         }
 
-        $items   = [];
+        $items = [];
         $request = ['RequestItems' => [$this->table => ['Keys' => $keys]]];
 
         do {
             $response = $this->client->batchGetItem($request);
 
-            if (!empty($response['Responses'][$this->table])) {
-                foreach ($response['Responses'][$this->table] as $item) {
-                    $items[] = $item;
-                }
+            foreach ($response['Responses'][$this->table] ?? [] as $item) {
+                $items[] = $item;
             }
 
             if (!empty($response['UnprocessedKeys'][$this->table]['Keys'])) {
@@ -399,35 +362,30 @@ class InmuebleModel extends Database
         return $items;
     }
 
-    private function getAsesorModel(): AsesorModel
+    private function resolverAsesorPk(mixed $asesorPk, mixed $asesor): ?string
     {
-        if ($this->asesorModel === null) {
-            $this->asesorModel = new AsesorModel();
+        if (is_string($asesorPk) && $asesorPk !== '') {
+            return $asesorPk;
         }
 
-        return $this->asesorModel;
-    }
-
-    private function extractAsesorPk(mixed $valor): ?string
-    {
-        if (is_string($valor) && $valor !== '') {
-            return $valor;
+        if (is_string($asesor) && $asesor !== '') {
+            return $asesor;
         }
 
-        if (is_array($valor)) {
-            if (!empty($valor['pk']) && is_string($valor['pk'])) {
-                return $valor['pk'];
+        if (is_array($asesor)) {
+            if (!empty($asesor['pk']) && is_string($asesor['pk'])) {
+                return $asesor['pk'];
             }
 
-            if (!empty($valor['id']) && is_scalar($valor['id'])) {
-                return 'ase#' . (string) $valor['id'];
+            if (!empty($asesor['id']) && is_scalar($asesor['id'])) {
+                return 'ase#' . (string) $asesor['id'];
             }
         }
 
         return null;
     }
 
-    private function formatMonto(mixed $valor): string
+    private function formatearMonto(mixed $valor): string
     {
         if ($valor === null || $valor === '') {
             return '0.00';
@@ -440,6 +398,15 @@ class InmuebleModel extends Database
         return (string) $valor;
     }
 
+    private function getAsesorModel(): AsesorModel
+    {
+        if ($this->asesorModel === null) {
+            $this->asesorModel = new AsesorModel();
+        }
+
+        return $this->asesorModel;
+    }
+
     private function obtenerPorIdLegacy(int $id): ?array
     {
         $sql = "SELECT i.*, a.nombre_arrendador, s.nombre_asesor
@@ -448,13 +415,18 @@ class InmuebleModel extends Database
                 JOIN asesores s ON i.id_asesor = s.id
                 WHERE i.id = :id
                 LIMIT 1";
-
         $stmt = $this->getConnection()->prepare($sql);
         $stmt->execute([':id' => $id]);
-
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
-        return $row ?: null;
+        if (!$row) {
+            return null;
+        }
+
+        $row['pk'] = (string)($row['pk'] ?? '');
+        $row['sk'] = (string)($row['sk'] ?? '');
+
+        return $row;
     }
 
     public function crear(array $data): bool
@@ -511,6 +483,8 @@ class InmuebleModel extends Database
                     ':empty_list' => ['L' => []]
                 ]
             ]);
+
+            $this->inmueblesCache = null;
 
             return true;
         } catch (\Throwable $e) {
@@ -604,6 +578,8 @@ class InmuebleModel extends Database
                 ],
                 'UpdateExpression' => "REMOVE inmuebles_ids[$index]"
             ]);
+
+            $this->inmueblesCache = null;
 
             return true;
         } catch (\Throwable $e) {

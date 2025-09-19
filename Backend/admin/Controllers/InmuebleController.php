@@ -16,7 +16,6 @@ use App\Models\InmuebleModel;
 use App\Models\ArrendadorModel;
 use App\Models\AsesorModel;
 use App\Middleware\AuthMiddleware;
-use InvalidArgumentException;
 
 /**
  * Controlador de Inmuebles
@@ -81,12 +80,14 @@ class InmuebleController
      */
     public function ver(string $pk, ?string $sk = null): void
     {
+        $pkDecodificado = rawurldecode($pk);
+        $skDecodificado = $sk !== null ? rawurldecode($sk) : null;
+
         try {
-            $inmueble = $this->model->obtenerPorId(rawurldecode($pk), $sk !== null ? rawurldecode($sk) : null);
+            $inmueble = $this->model->obtenerPorId($pkDecodificado, $skDecodificado);
         } catch (InvalidArgumentException $e) {
             $inmueble = null;
         }
-
         if (!$inmueble) {
             http_response_code(404);
             $title = 'No encontrado';
@@ -217,12 +218,14 @@ class InmuebleController
      */
     public function editar(string $pk, ?string $sk = null): void
     {
+        $pkDecodificado = rawurldecode($pk);
+        $skDecodificado = $sk !== null ? rawurldecode($sk) : null;
+
         try {
-            $inmueble = $this->model->obtenerPorId(rawurldecode($pk), $sk !== null ? rawurldecode($sk) : null);
+            $inmueble = $this->model->obtenerPorId($pkDecodificado, $skDecodificado);
         } catch (InvalidArgumentException $e) {
             $inmueble = null;
         }
-
         if (!$inmueble) {
             header('Location: ' . getBaseUrl() . '/inmuebles');
             exit;
@@ -307,8 +310,8 @@ class InmuebleController
             return;
         }
 
-        $pk = NormalizadoHelper::lower($_POST['pk'] ?? '');
-        $sk = NormalizadoHelper::lower($_POST['sk'] ?? '');
+        $pk = trim((string)($_POST['pk'] ?? ''));
+        $sk = trim((string)($_POST['sk'] ?? ''));
 
         if (!$pk || !$sk) {
             http_response_code(400);

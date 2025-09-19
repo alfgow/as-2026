@@ -169,6 +169,74 @@ class AsesorModel
     }
 
     /**
+     * @param array<int, string> $pks
+     * @return array<string, array<string, mixed>>
+     */
+    public function batchGetByPk(array $pks): array
+    {
+        $unique = [];
+        foreach ($pks as $pk) {
+            $value = trim((string) $pk);
+            if ($value === '') {
+                continue;
+            }
+            $unique[$value] = $value;
+        }
+
+        if ($unique === []) {
+            return [];
+        }
+
+        $asesores = [];
+
+        foreach (array_chunk(array_values($unique), 100) as $chunk) {
+            $keys = array_map(
+                static fn(string $pk): array => [
+                    'pk' => ['S' => $pk],
+                    'sk' => ['S' => self::PROFILE_SK],
+                ],
+                $chunk
+            );
+
+            $request = ['RequestItems' => [$this->table => ['Keys' => $keys]]];
+
+            do {
+                $response = $this->client->batchGetItem($request);
+
+                foreach ($response['Responses'][$this->table] ?? [] as $item) {
+                    $asesor = $this->normalizeAsesor($this->marshaler->unmarshalItem($item));
+                    $pkValue = (string) ($asesor['pk'] ?? '');
+                    if ($pkValue !== '') {
+                        $asesores[$pkValue] = $asesor;
+                    }
+                }
+
+                if (!empty($response['UnprocessedKeys'][$this->table]['Keys'])) {
+                    $request = ['RequestItems' => [$this->table => ['Keys' => $response['UnprocessedKeys'][$this->table]['Keys']]]];
+                } else {
+                    break;
+                }
+            } while (true);
+        }
+
+        if ($asesores === []) {
+            return [];
+        }
+
+        $withSummary = $this->attachAssignmentsSummary(array_values($asesores));
+
+        $result = [];
+        foreach ($withSummary as $asesor) {
+            $pkValue = (string) ($asesor['pk'] ?? '');
+            if ($pkValue !== '') {
+                $result[$pkValue] = $asesor;
+            }
+        }
+
+        return $result;
+    }
+
+    /**
      * @return array<int, array<string, mixed>>
      */
     public function search(string $q, int $offset = 0, int $limit = 20): array
@@ -200,61 +268,6 @@ class AsesorModel
     public function searchCount(string $q): int
     {
         return count($this->search($q, 0, PHP_INT_MAX));
-    }
-
-    /**
-     * Obtiene varios asesores en una sola llamada usando sus PKs.
-     *
-     * @param array<int, string> $pks
-     * @return array<string, array<string, mixed>> Mapa pk => asesor normalizado
-     */
-    public function batchGetByPk(array $pks): array
-    {
-        $unique = [];
-        foreach ($pks as $pk) {
-            $pk = trim((string) $pk);
-            if ($pk === '') {
-                continue;
-            }
-            $unique[$pk] = $pk;
-        }
-
-        if ($unique === []) {
-            return [];
-        }
-
-        $asesores = [];
-
-        foreach (array_chunk(array_values($unique), 100) as $chunk) {
-            $keys = [];
-            foreach ($chunk as $pk) {
-                $keys[] = [
-                    'pk' => ['S' => $pk],
-                    'sk' => ['S' => self::PROFILE_SK],
-                ];
-            }
-
-            $request = ['RequestItems' => [$this->table => ['Keys' => $keys]]];
-
-            do {
-                $response = $this->client->batchGetItem($request);
-
-                if (!empty($response['Responses'][$this->table])) {
-                    foreach ($response['Responses'][$this->table] as $item) {
-                        $asesor = $this->normalizeAsesor($this->marshaler->unmarshalItem($item));
-                        $asesores[$asesor['pk']] = $asesor;
-                    }
-                }
-
-                if (!empty($response['UnprocessedKeys'][$this->table]['Keys'])) {
-                    $request = ['RequestItems' => [$this->table => ['Keys' => $response['UnprocessedKeys'][$this->table]['Keys']]]];
-                } else {
-                    break;
-                }
-            } while (true);
-        }
-
-        return $asesores;
     }
 
     public function existsByEmailOrPhone(string $email, ?string $celular = null): bool
