@@ -35,6 +35,274 @@ class PolizaModel extends Database
     }
 
     /**
+     * @param array<int, array<string, mixed>> $polizas
+     * @return array<int, array<string, mixed>>
+     */
+    private function adjuntarInmueblesDesdeDynamo(array $polizas): array
+    {
+        if ($polizas === []) {
+            return [];
+        }
+
+        $ids = [];
+        foreach ($polizas as $poliza) {
+            $id = isset($poliza['id_inmueble']) ? (int) $poliza['id_inmueble'] : 0;
+            if ($id > 0) {
+                $ids[$id] = $id;
+            }
+        }
+
+        $llaves = $ids === []
+            ? []
+            : $this->obtenerLlavesInmueblesPorIds(array_values($ids));
+
+        $keyToId = [];
+        $keys = [];
+
+        foreach ($llaves as $id => $llave) {
+            $pk = trim((string)($llave['pk'] ?? ''));
+            $sk = trim((string)($llave['sk'] ?? ''));
+
+            if ($pk === '' || $sk === '') {
+                continue;
+            }
+
+            $keys[] = ['pk' => $pk, 'sk' => $sk];
+            $keyToId[mb_strtolower($pk . '|' . $sk, 'UTF-8')] = $id;
+        }
+
+        $items = $keys === [] ? [] : $this->batchGetInmuebles($keys);
+
+        $datos = [];
+        foreach ($items as $item) {
+            $normalizado = $this->normalizarInmuebleDynamo($item);
+            $pk = (string)($normalizado['pk'] ?? '');
+            $sk = (string)($normalizado['sk'] ?? '');
+
+            if ($pk === '' || $sk === '') {
+                continue;
+            }
+
+            $clave = mb_strtolower($pk . '|' . $sk, 'UTF-8');
+            if (isset($keyToId[$clave])) {
+                $datos[$keyToId[$clave]] = $normalizado;
+            }
+        }
+
+        $defaults = [
+            'direccion_inmueble'       => 'SIN DIRECCIÓN',
+            'estacionamiento_inmueble' => 0,
+            'monto_mantenimiento'      => '0.00',
+            'mascotas_inmueble'        => 'NO',
+            'mantenimiento_inmueble'   => '',
+        ];
+
+        foreach ($polizas as &$poliza) {
+            foreach ($defaults as $campo => $valor) {
+                $poliza[$campo] = $valor;
+            }
+
+            $poliza['inmueble_pk'] = '';
+            $poliza['inmueble_sk'] = '';
+
+            $id = isset($poliza['id_inmueble']) ? (int) $poliza['id_inmueble'] : 0;
+
+            if ($id > 0) {
+                if (isset($llaves[$id])) {
+                    $poliza['inmueble_pk'] = (string)($llaves[$id]['pk'] ?? '');
+                    $poliza['inmueble_sk'] = (string)($llaves[$id]['sk'] ?? '');
+                }
+
+                if (isset($datos[$id])) {
+                    $info = $datos[$id];
+                    $poliza['direccion_inmueble'] = (string)($info['direccion_inmueble'] ?? $defaults['direccion_inmueble']);
+                    $poliza['estacionamiento_inmueble'] = (int)($info['estacionamiento_inmueble'] ?? $defaults['estacionamiento_inmueble']);
+                    $poliza['monto_mantenimiento'] = (string)($info['monto_mantenimiento'] ?? $defaults['monto_mantenimiento']);
+                    $poliza['mascotas_inmueble'] = (string)($info['mascotas_inmueble'] ?? $defaults['mascotas_inmueble']);
+                    $poliza['mantenimiento_inmueble'] = (string)($info['mantenimiento_inmueble'] ?? $defaults['mantenimiento_inmueble']);
+                }
+            }
+        }
+        unset($poliza);
+
+        return $polizas;
+    }
+
+    /**
+     * @param array<int, int> $ids
+     * @return array<int, array<string, string>>
+     */
+    private function obtenerLlavesInmueblesPorIds(array $ids): array
+    {
+        $ids = array_values(array_unique(array_map('intval', $ids)));
+
+        if ($ids === []) {
+            return [];
+        }
+
+        $placeholders = [];
+        $params = [];
+
+        foreach ($ids as $idx => $id) {
+            $placeholder = ':id' . $idx;
+            $placeholders[] = $placeholder;
+            $params[$placeholder] = $id;
+        }
+
+        $sql = 'SELECT id, pk, sk FROM inmuebles WHERE id IN (' . implode(', ', $placeholders) . ')';
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
+
+        $map = [];
+
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $id = (int)($row['id'] ?? 0);
+            if ($id <= 0) {
+                continue;
+            }
+
+            $map[$id] = [
+                'pk' => isset($row['pk']) ? (string)$row['pk'] : '',
+                'sk' => isset($row['sk']) ? (string)$row['sk'] : '',
+            ];
+        }
+
+        return $map;
+    }
+
+    /**
+     * @param array<int, array{pk: string, sk: string}> $keys
+     * @return array<int, array<string, mixed>>
+     */
+    private function batchGetInmuebles(array $keys): array
+    {
+        if ($keys === []) {
+            return [];
+        }
+
+        $items = [];
+
+        foreach (array_chunk($keys, 25) as $chunk) {
+            $request = ['RequestItems' => [$this->table => ['Keys' => []]]];
+
+            foreach ($chunk as $key) {
+                $request['RequestItems'][$this->table]['Keys'][] = [
+                    'pk' => ['S' => $key['pk']],
+                    'sk' => ['S' => $key['sk']],
+                ];
+            }
+
+            do {
+                try {
+                    $response = $this->client->batchGetItem($request);
+                } catch (\Throwable $e) {
+                    error_log('❌ Error consultando inmuebles en DynamoDB: ' . $e->getMessage());
+                    break;
+                }
+
+                foreach ($response['Responses'][$this->table] ?? [] as $item) {
+                    $items[] = $item;
+                }
+
+                if (!empty($response['UnprocessedKeys'][$this->table]['Keys'])) {
+                    $request = ['RequestItems' => [$this->table => ['Keys' => $response['UnprocessedKeys'][$this->table]['Keys']]]];
+                } else {
+                    $request = null;
+                }
+            } while ($request !== null);
+
+            usleep(250000);
+        }
+
+        return $items;
+    }
+
+    /**
+     * @param array<string, mixed> $item
+     * @return array<string, mixed>
+     */
+    private function normalizarInmuebleDynamo(array $item): array
+    {
+        $data = $this->marshaler->unmarshalItem($item);
+
+        $pk = (string)($data['pk'] ?? '');
+        $sk = (string)($data['sk'] ?? '');
+
+        $direccion = trim((string)($data['direccion_inmueble'] ?? ''));
+        if ($direccion === '') {
+            $direccion = 'SIN DIRECCIÓN';
+        }
+
+        $mascotas = strtoupper((string)($data['mascotas'] ?? 'NO'));
+        if ($mascotas === '') {
+            $mascotas = 'NO';
+        }
+
+        return [
+            'pk'                       => $pk,
+            'sk'                       => $sk,
+            'direccion_inmueble'       => $direccion,
+            'estacionamiento_inmueble' => isset($data['estacionamiento']) ? (int) $data['estacionamiento'] : 0,
+            'monto_mantenimiento'      => $this->formatearMontoInmueble($data['monto_mantenimiento'] ?? null),
+            'mascotas_inmueble'        => $mascotas,
+            'mantenimiento_inmueble'   => (string)($data['mantenimiento'] ?? ''),
+        ];
+    }
+
+    private function formatearMontoInmueble(mixed $valor): string
+    {
+        if ($valor === null || $valor === '') {
+            return '0.00';
+        }
+
+        if (is_numeric($valor)) {
+            return number_format((float) $valor, 2, '.', '');
+        }
+
+        return (string) $valor;
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $polizas
+     * @return array<int, array<string, mixed>>
+     */
+    private function filtrarPolizasPorBusqueda(array $polizas, string $termino): array
+    {
+        $termino = trim($termino);
+        if ($termino === '') {
+            return $polizas;
+        }
+
+        $needle    = mb_strtolower($termino, 'UTF-8');
+        $esNumero  = ctype_digit($termino);
+
+        return array_values(array_filter($polizas, static function (array $poliza) use ($needle, $esNumero, $termino): bool {
+            if ($esNumero && (string)($poliza['numero_poliza'] ?? '') === $termino) {
+                return true;
+            }
+
+            $campos = [
+                'nombre_inquilino',
+                'apellidop_inquilino',
+                'apellidom_inquilino',
+                'nombre_inquilino_completo',
+                'nombre_arrendador',
+                'direccion_inmueble',
+            ];
+
+            foreach ($campos as $campo) {
+                $valor = mb_strtolower((string)($poliza[$campo] ?? ''), 'UTF-8');
+                if ($valor !== '' && mb_strpos($valor, $needle) !== false) {
+                    return true;
+                }
+            }
+
+            return false;
+        }));
+    }
+
+    /**
      * Arma y ejecuta una consulta completa de pólizas con sus relaciones,
      * aplicando condiciones dinámicas.
      *
@@ -76,6 +344,11 @@ class PolizaModel extends Database
             p.fecha_fin,
             p.periodo,
             p.comentarios,
+            \'SIN DIRECCIÓN\' AS direccion_inmueble,
+            0 AS estacionamiento_inmueble,
+            \'0.00\' AS monto_mantenimiento,
+            \'NO\' AS mascotas_inmueble,
+            \'\' AS mantenimiento_inmueble,
             a.nombre_asesor AS nombre_asesor,
             a.celular AS celular_asesor,
             arr.nombre_arrendador AS nombre_arrendador,
@@ -86,11 +359,6 @@ class PolizaModel extends Database
             arr.clabe AS clabe_arrendador,
             arr.tipo_id AS tipo_id_arrendador,
             arr.num_id AS num_id_arrendador,
-            COALESCE(inm.direccion_inmueble, "SIN DIRECCIÓN") AS direccion_inmueble,
-            inm.estacionamiento AS estacionamiento_inmueble,
-            inm.monto_mantenimiento AS monto_mantenimiento,
-            inm.mascotas AS mascotas_inmueble,
-            inm.mantenimiento AS mantenimiento_inmueble,
             i.nombre_inquilino AS nombre_inquilino,
             i.apellidop_inquilino AS apellidop_inquilino,
             i.apellidom_inquilino AS apellidom_inquilino,
@@ -144,7 +412,6 @@ class PolizaModel extends Database
         FROM polizas p
         LEFT JOIN asesores a        ON p.id_asesor     = a.id
         LEFT JOIN arrendadores arr  ON p.id_arrendador = arr.id
-        LEFT JOIN inmuebles inm     ON p.id_inmueble   = inm.id
         LEFT JOIN inquilinos i      ON p.id_inquilino  = i.id
         LEFT JOIN inquilinos f      ON p.id_fiador     = f.id
         LEFT JOIN inquilinos o      ON p.id_obligado   = o.id
@@ -171,9 +438,21 @@ class PolizaModel extends Database
 
         $stmt->execute();
 
-        return $soloUna
-            ? ($stmt->fetch(PDO::FETCH_ASSOC) ?: null)
-            : ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: []);
+        if ($soloUna) {
+            $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+
+            if ($row === null) {
+                return null;
+            }
+
+            $conInmueble = $this->adjuntarInmueblesDesdeDynamo([$row]);
+
+            return $conInmueble[0] ?? $row;
+        }
+
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+        return $this->adjuntarInmueblesDesdeDynamo($rows);
     }
 
     /**
@@ -374,27 +653,25 @@ class PolizaModel extends Database
         $bloques = [];
         $params  = [];
 
+        $buscarTerm = null;
         if ($buscar !== null && trim($buscar) !== '') {
-            $term = trim($buscar);
-            $like = "%{$term}%";
+            $buscarTerm = trim($buscar);
+            $like = "%{$buscarTerm}%";
 
             $sub = [
                 'i.nombre_inquilino LIKE :t1',
                 'i.apellidop_inquilino LIKE :t2',
                 'i.apellidom_inquilino LIKE :t3',
                 'arr.nombre_arrendador LIKE :t4',
-                'inm.direccion_inmueble LIKE :t5',
             ];
             $params[':t1'] = $like;
             $params[':t2'] = $like;
             $params[':t3'] = $like;
             $params[':t4'] = $like;
-            $params[':t5'] = $like;
 
-            // Si es numérico, busca también por número de póliza exacto
-            if (ctype_digit($term)) {
+            if (ctype_digit($buscarTerm)) {
                 $sub[] = 'p.numero_poliza = :num_poliza';
-                $params[':num_poliza'] = (int)$term;
+                $params[':num_poliza'] = (int)$buscarTerm;
             }
 
             $bloques[] = '(' . implode(' OR ', $sub) . ')';
@@ -410,7 +687,14 @@ class PolizaModel extends Database
             $params[':tipo'] = $tipo;
         }
 
-        $where = implode(' AND ', $bloques);
+        $where = $bloques ? implode(' AND ', $bloques) : '1';
+
+        if ($buscarTerm !== null) {
+            $polizas = $this->obtenerPolizasConFiltros($where, $params);
+            $filtradas = $this->filtrarPolizasPorBusqueda($polizas, $buscarTerm);
+
+            return array_slice($filtradas, $offset, $limit);
+        }
 
         // 2) Orden y paginación
         $extras = ' ORDER BY p.numero_poliza DESC LIMIT :limit OFFSET :offset';
@@ -431,26 +715,25 @@ class PolizaModel extends Database
         $bloques = [];
         $params  = [];
 
+        $buscarTerm = null;
         if ($buscar !== null && trim($buscar) !== '') {
-            $term = trim($buscar);
-            $like = "%{$term}%";
+            $buscarTerm = trim($buscar);
+            $like = "%{$buscarTerm}%";
 
             $sub = [
                 'i.nombre_inquilino LIKE :t1',
                 'i.apellidop_inquilino LIKE :t2',
                 'i.apellidom_inquilino LIKE :t3',
                 'arr.nombre_arrendador LIKE :t4',
-                'inm.direccion_inmueble LIKE :t5',
             ];
             $params[':t1'] = $like;
             $params[':t2'] = $like;
             $params[':t3'] = $like;
             $params[':t4'] = $like;
-            $params[':t5'] = $like;
 
-            if (ctype_digit($term)) {
+            if (ctype_digit($buscarTerm)) {
                 $sub[] = 'p.numero_poliza = :num_poliza';
-                $params[':num_poliza'] = (int)$term;
+                $params[':num_poliza'] = (int)$buscarTerm;
             }
 
             $bloques[] = '(' . implode(' OR ', $sub) . ')';
@@ -466,32 +749,15 @@ class PolizaModel extends Database
             $params[':tipo'] = $tipo;
         }
 
-        $where = $bloques ? (' WHERE ' . implode(' AND ', $bloques)) : '';
+        $where = $bloques ? implode(' AND ', $bloques) : '1';
 
-        // COUNT con mismos JOINs; DISTINCT para evitar duplicados por LEFT JOIN
-        $sql = '
-            SELECT COUNT(DISTINCT p.id_poliza) AS total
-            FROM polizas p
-            LEFT JOIN asesores a        ON p.id_asesor     = a.id
-            LEFT JOIN arrendadores arr  ON p.id_arrendador = arr.id
-            LEFT JOIN inmuebles inm     ON p.id_inmueble   = inm.id
-            LEFT JOIN inquilinos i      ON p.id_inquilino  = i.id
-            LEFT JOIN inquilinos f      ON p.id_fiador     = f.id
-            LEFT JOIN inquilinos o      ON p.id_obligado   = o.id
-            LEFT JOIN inquilinos_direccion di  ON di.id_inquilino  = i.id
-            LEFT JOIN inquilinos_direccion df  ON df.id_inquilino  = f.id
-            LEFT JOIN inquilinos_direccion do2 ON do2.id_inquilino = o.id
-        ' . $where;
+        $polizas = $this->obtenerPolizasConFiltros($where, $params);
 
-        $stmt = $this->db->prepare($sql);
-
-        foreach ($params as $k => $v) {
-            // Llaves ya vienen con ":"; si no, podrías normalizarlas igual que en tu método común
-            $stmt->bindValue($k, $v, is_int($v) ? \PDO::PARAM_INT : \PDO::PARAM_STR);
+        if ($buscarTerm !== null) {
+            $polizas = $this->filtrarPolizasPorBusqueda($polizas, $buscarTerm);
         }
 
-        $stmt->execute();
-        return (int)$stmt->fetchColumn();
+        return count($polizas);
     }
 
     /* =========================================================
