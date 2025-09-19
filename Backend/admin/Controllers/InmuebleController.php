@@ -53,19 +53,20 @@ class InmuebleController
     {
         $porPagina = 10;
         $pagina = isset($_GET['page']) ? max(1, (int)$_GET['page']) : 1;
-        $offset = ($pagina - 1) * $porPagina;
+        $token = isset($_GET['token']) ? trim((string) $_GET['token']) : null;
 
         $query = trim((string)($_GET['q'] ?? ''));
 
         if ($query !== '') {
-            $inmuebles = $this->model->buscarPaginados($query, $porPagina, $offset);
-            $totalInmuebles = (int)$this->model->contarBusqueda($query);
+            $resultado = $this->model->buscarPaginaDynamo($query, $porPagina, $token);
         } else {
-            $inmuebles = $this->model->obtenerPaginados($porPagina, $offset);
-            $totalInmuebles = (int)$this->model->contarTodos();
+            $resultado = $this->model->obtenerPaginaDynamo($porPagina, $token);
         }
 
-        $totalPaginas = (int) ceil($totalInmuebles / $porPagina);
+        $inmuebles = $resultado['items'] ?? [];
+        $hasMore = (bool) ($resultado['hasMore'] ?? false);
+        $nextToken = $resultado['nextToken'] ?? null;
+        $rcuUsed = (float) ($resultado['consumedCapacity'] ?? 0.0);
 
         $title = 'Inmuebles - AS';
         $headerTitle = 'Listado de inmuebles';
@@ -84,7 +85,7 @@ class InmuebleController
 
         try {
             $inmueble = $this->model->obtenerPorId($pkDecodificado, $skDecodificado);
-        } catch (InvalidArgumentException $e) {
+        } catch (\InvalidArgumentException $e) {
             $inmueble = null;
         }
 
@@ -110,41 +111,27 @@ class InmuebleController
     {
         header('Content-Type: application/json; charset=utf-8');
 
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            http_response_code(405);
+            echo json_encode(['ok' => false, 'error' => 'Método no permitido']);
+            return;
+        }
+
         try {
-            $idArrendador   = $_POST['id_arrendador'] ?? null;
-            $direccion      = trim($_POST['direccion_inmueble'] ?? '');
-            $tipo           = trim($_POST['tipo'] ?? '');
-            $renta          = trim($_POST['renta'] ?? '');
-            $mantenimiento  = trim($_POST['mantenimiento'] ?? '');
-            $deposito       = trim($_POST['deposito'] ?? '');
-            $estacionamiento = isset($_POST['estacionamiento']) ? (int) $_POST['estacionamiento'] : 0;
-            $mascotas       = trim($_POST['mascotas'] ?? '');
-            $comentarios    = trim($_POST['comentarios'] ?? '');
+            $data = $this->buildDynamoInmueblePayload();
 
-            if (!$idArrendador || !$direccion || !$tipo || !$renta) {
-                echo json_encode(['ok' => false, 'error' => 'Campos obligatorios faltantes']);
-                return;
-            }
-
-            $ok = $this->model->crear([
-                'id_arrendador'   => $idArrendador,
-                'direccion'       => $direccion,
-                'tipo'            => $tipo,
-                'renta'           => $renta,
-                'mantenimiento'   => $mantenimiento,
-                'deposito'        => $deposito,
-                'estacionamiento' => $estacionamiento,
-                'mascotas'        => $mascotas,
-                'comentarios'     => $comentarios,
-            ]);
-
-            if ($ok) {
-                echo json_encode(['ok' => true]);
-            } else {
-                echo json_encode(['ok' => false, 'error' => 'No se pudo guardar el inmueble']);
-            }
-        } catch (\Throwable $e) {
+            $ok = $this->model->crear($data);
+            echo json_encode(['ok' => (bool) $ok]);
+        } catch (\InvalidArgumentException $e) {
+            http_response_code(422);
             echo json_encode(['ok' => false, 'error' => $e->getMessage()]);
+        } catch (\Throwable $e) {
+            http_response_code(500);
+            echo json_encode([
+                'ok'    => false,
+                'error' => 'No se pudo guardar el inmueble',
+                'detalle' => $e->getMessage(),
+            ]);
         }
     }
 
@@ -223,7 +210,7 @@ class InmuebleController
 
         try {
             $inmueble = $this->model->obtenerPorId($pkDecodificado, $skDecodificado);
-        } catch (InvalidArgumentException $e) {
+        } catch (\InvalidArgumentException $e) {
             $inmueble = null;
         }
 
