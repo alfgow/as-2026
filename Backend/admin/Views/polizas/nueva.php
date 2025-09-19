@@ -61,8 +61,28 @@ $siguienteNumero = $siguienteNumero ?? '';
                 <label class="block text-indigo-300 mb-1">Inmueble</label>
                 <select name="id_inmueble" id="inmueble-select" class="appearance-none w-full px-4 py-2 rounded-lg bg-[#232336] border border-indigo-800 text-indigo-100 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
                     <option value="">- SELECCIONA UN INMUEBLE -</option>
-                    <?php foreach ($inmuebles as $inm): ?>
-                        <option value="<?= $inm['id'] ?>" data-monto="<?= $inm['renta'] ?>"><?= htmlspecialchars($inm['direccion_inmueble']) ?></option>
+                    <?php foreach ($inmuebles as $inm):
+                        $pk         = (string)($inm['pk'] ?? '');
+                        $sk         = (string)($inm['sk'] ?? '');
+                        $virtualId  = $inm['id_virtual'] ?? ($pk !== '' && $sk !== '' ? $pk . '|' . $sk : '');
+                        $legacyId   = isset($inm['id']) ? (string)$inm['id'] : '';
+                        $optionVal  = $legacyId !== '' ? $legacyId : $virtualId;
+                        if ($optionVal === '') {
+                            continue;
+                        }
+                        $direccion  = (string)($inm['direccion_inmueble'] ?? ($virtualId !== '' ? $virtualId : 'SIN DIRECCIÓN'));
+                        $renta      = (string)($inm['renta'] ?? '');
+                        $tipo       = (string)($inm['tipo'] ?? '');
+                    ?>
+                        <option
+                            value="<?= htmlspecialchars($optionVal) ?>"
+                            data-pk="<?= htmlspecialchars($pk) ?>"
+                            data-sk="<?= htmlspecialchars($sk) ?>"
+                            data-virtual-id="<?= htmlspecialchars($virtualId) ?>"
+                            data-legacy-id="<?= htmlspecialchars($legacyId) ?>"
+                            data-monto="<?= htmlspecialchars($renta) ?>"
+                            data-tipo="<?= htmlspecialchars($tipo) ?>"
+                        ><?= htmlspecialchars($direccion) ?></option>
                     <?php endforeach; ?>
                 </select>
             </div>
@@ -308,6 +328,16 @@ $siguienteNumero = $siguienteNumero ?? '';
         const montoPolizaInput = document.getElementById('monto-poliza');
         const comisionInput = document.getElementById('comision-asesor');
 
+        const inmueblePkHidden = document.createElement('input');
+        inmueblePkHidden.type = 'hidden';
+        inmueblePkHidden.name = 'inmueble_pk';
+        form.appendChild(inmueblePkHidden);
+
+        const inmuebleSkHidden = document.createElement('input');
+        inmuebleSkHidden.type = 'hidden';
+        inmuebleSkHidden.name = 'inmueble_sk';
+        form.appendChild(inmuebleSkHidden);
+
         const fechaInicioInput = document.getElementById('fecha-inicio');
         const fechaFinInput = document.getElementById('fecha-fin');
         const vigenciaInput = document.getElementById('vigencia-texto');
@@ -360,14 +390,66 @@ $siguienteNumero = $siguienteNumero ?? '';
         fechaFinInput.addEventListener('change', actualizarVigencia);
 
         // ---------- Carga dependientes ----------
+        function clearInmuebleDetails() {
+            tipoInmuebleSel.value = '';
+            rentaDisplay.value = '';
+            rentaHidden.value = '';
+            montoPolizaInput.value = '';
+            actualizarComision();
+            inmueblePkHidden.value = '';
+            inmuebleSkHidden.value = '';
+        }
+
+        function resetInmuebleSelect(showLoading = false) {
+            if (showLoading) {
+                inmuebleSel.innerHTML = '<option value="">Cargando...</option>';
+            } else {
+                inmuebleSel.innerHTML = '<option value="">- SELECCIONA UN INMUEBLE -</option>';
+            }
+            clearInmuebleDetails();
+        }
+
+        function populateInmuebleOptions(inmuebles) {
+            inmuebleSel.innerHTML = '';
+
+            const defaultOpt = document.createElement('option');
+            defaultOpt.value = '';
+            defaultOpt.textContent = '- SELECCIONA UN INMUEBLE -';
+            inmuebleSel.appendChild(defaultOpt);
+
+            if (!Array.isArray(inmuebles)) {
+                return;
+            }
+
+            inmuebles.forEach((inmueble) => {
+                const pk = typeof inmueble.pk === 'string' ? inmueble.pk : '';
+                const sk = typeof inmueble.sk === 'string' ? inmueble.sk : '';
+                const virtualId = typeof inmueble.id_virtual === 'string' && inmueble.id_virtual !== ''
+                    ? inmueble.id_virtual
+                    : (pk && sk ? `${pk}|${sk}` : '');
+                const legacyId = inmueble.id ?? inmueble.legacy_id ?? '';
+                const value = legacyId !== '' ? String(legacyId) : virtualId;
+                if (!value) {
+                    return;
+                }
+                const label = inmueble.direccion_inmueble || virtualId || 'SIN DIRECCIÓN';
+                const option = document.createElement('option');
+                option.value = value;
+                option.textContent = label;
+                option.dataset.pk = pk;
+                option.dataset.sk = sk;
+                option.dataset.virtualId = virtualId;
+                option.dataset.legacyId = legacyId !== '' ? String(legacyId) : '';
+                option.dataset.monto = inmueble.renta ?? '';
+                option.dataset.tipo = inmueble.tipo ?? '';
+                inmuebleSel.appendChild(option);
+            });
+        }
+
         asesorSel.addEventListener('change', async function() {
             const id = this.value;
             arrendadorSel.innerHTML = '<option value="">Cargando...</option>';
-            inmuebleSel.innerHTML = '<option value="">- SELECCIONA UN INMUEBLE -</option>';
-            tipoInmuebleSel.value = '';
-            rentaDisplay.value = rentaHidden.value = '';
-            montoPolizaInput.value = '';
-            actualizarComision();
+            resetInmuebleSelect();
 
             if (!id) {
                 arrendadorSel.innerHTML = '<option value="">Selecciona un arrendador</option>';
@@ -384,47 +466,51 @@ $siguienteNumero = $siguienteNumero ?? '';
 
         arrendadorSel.addEventListener('change', async function() {
             const id = this.value;
-            inmuebleSel.innerHTML = '<option value="">Cargando...</option>';
-            tipoInmuebleSel.value = '';
-            rentaDisplay.value = rentaHidden.value = '';
-            montoPolizaInput.value = '';
-            actualizarComision();
+            resetInmuebleSelect(true);
 
             if (!id) {
-                inmuebleSel.innerHTML = '<option value="">- SELECCIONA UN INMUEBLE -</option>';
+                resetInmuebleSelect();
                 return;
             }
-            const resp = await fetch(BASE_URL + '/inmuebles/por-arrendador/' + id);
-            const data = await resp.json();
-            let opts = '<option value="">- SELECCIONA UN INMUEBLE -</option>';
-            data.forEach(inm => {
-                opts += `<option value="${inm.id}" data-monto="${inm.renta}">${inm.direccion_inmueble}</option>`;
-            });
-            inmuebleSel.innerHTML = opts;
+
+            try {
+                const resp = await fetch(`${BASE_URL}/inmuebles/por-arrendador/${encodeURIComponent(id)}`);
+                const data = await resp.json();
+                populateInmuebleOptions(Array.isArray(data) ? data : []);
+            } catch (err) {
+                console.error('Error cargando inmuebles', err);
+                resetInmuebleSelect();
+            }
         });
 
-        inmuebleSel.addEventListener('change', async function() {
+        inmuebleSel.addEventListener('change', function() {
             const id = this.value;
             if (!id) {
-                tipoInmuebleSel.value = '';
-                rentaDisplay.value = rentaHidden.value = '';
-                montoPolizaInput.value = '';
-                actualizarComision();
+                clearInmuebleDetails();
                 return;
             }
-            const resp = await fetch(BASE_URL + '/inmuebles/info/' + id);
-            const data = await resp.json();
+            const option = this.options[this.selectedIndex];
+            const pk = option?.dataset?.pk ?? '';
+            const sk = option?.dataset?.sk ?? '';
+            const virtualId = option?.dataset?.virtualId ?? (pk && sk ? `${pk}|${sk}` : '');
+            const renta = option?.dataset?.monto ?? '';
+            const tipo = option?.dataset?.tipo ?? '';
+            const hasLegacy = option?.dataset?.legacyId ?? '';
 
-            const renta = data?.renta ?? this.options[this.selectedIndex]?.getAttribute('data-monto') ?? '';
-            const tipo = data?.tipo ?? '';
+            if (!hasLegacy && virtualId && this.value !== virtualId) {
+                this.value = virtualId;
+            }
 
             tipoInmuebleSel.value = tipo || '';
             rentaHidden.value = parseMoneyToNumber(renta);
-            rentaDisplay.value = formatCurrency(rentaHidden.value);
+            rentaDisplay.value = rentaHidden.value ? formatCurrency(rentaHidden.value) : '';
 
             const precio = calcularPoliza(rentaHidden.value, tipoPolizaSel.value);
             montoPolizaInput.value = String(precio);
             actualizarComision();
+
+            inmueblePkHidden.value = pk;
+            inmuebleSkHidden.value = sk;
         });
 
         tipoPolizaSel.addEventListener('change', function() {

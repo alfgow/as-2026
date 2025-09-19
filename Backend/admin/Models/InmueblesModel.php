@@ -277,7 +277,7 @@ class InmuebleModel extends Database
         $perfiles = [];
         $asesorPks = [];
 
-        foreach (array_chunk(array_values($unique), 100) as $chunk) {
+        foreach (array_chunk(array_values($unique), 25) as $chunk) {
             $keys = [];
             foreach ($chunk as $pk) {
                 $keys[] = [
@@ -310,6 +310,8 @@ class InmuebleModel extends Database
                     'asesor_pk'         => $asesorPk,
                 ];
             }
+
+            usleep(250000);
         }
 
         $asesorPks = array_values(array_unique(array_filter($asesorPks)));
@@ -651,16 +653,93 @@ class InmuebleModel extends Database
     }
 
 
-    public function obtenerPorArrendador(int $idArrendador): array
+    public function obtenerPorArrendador(int|string $idArrendador): array
     {
-        $stmt = $this->getConnection()->prepare(
-            "SELECT id, direccion_inmueble, renta
-             FROM inmuebles
-             WHERE id_arrendador = :id
-             ORDER BY direccion_inmueble"
+        $pk = is_numeric($idArrendador)
+            ? 'arr#' . (int) $idArrendador
+            : (string) $idArrendador;
+
+        $pk = mb_strtolower(trim($pk), 'UTF-8');
+        if ($pk === '') {
+            return [];
+        }
+
+        $profileResult = $this->client->getItem([
+            'TableName'            => $this->table,
+            'Key'                  => [
+                'pk' => ['S' => $pk],
+                'sk' => ['S' => self::ARRENDADOR_PROFILE_SK],
+            ],
+            'ProjectionExpression' => 'inmuebles_ids',
+        ]);
+
+        $inmuebleSks = [];
+        foreach (($profileResult['Item']['inmuebles_ids']['L'] ?? []) as $value) {
+            if (isset($value['S'])) {
+                $sk = trim((string) $value['S']);
+                if ($sk !== '') {
+                    $inmuebleSks[$sk] = $sk;
+                }
+            }
+        }
+
+        if ($inmuebleSks === []) {
+            return [];
+        }
+
+        $items = [];
+
+        foreach (array_chunk(array_values($inmuebleSks), 25) as $chunk) {
+            $keys = [];
+            foreach ($chunk as $sk) {
+                $keys[] = [
+                    'pk' => ['S' => $pk],
+                    'sk' => ['S' => $sk],
+                ];
+            }
+
+            foreach ($this->batchGet($keys) as $item) {
+                $inmueble = $this->normalizarItem($item);
+                $skValue = (string) ($inmueble['sk'] ?? '');
+                if ($skValue === '') {
+                    continue;
+                }
+
+                $items[$skValue] = $inmueble;
+            }
+
+            usleep(250000);
+        }
+
+        $items = array_filter(
+            $items,
+            static fn(array $inmueble): bool => mb_strtolower((string)($inmueble['pk'] ?? ''), 'UTF-8') === $pk
         );
-        $stmt->execute([':id' => $idArrendador]);
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $items = array_values($items);
+
+        usort(
+            $items,
+            static function (array $a, array $b): int {
+                return strcasecmp((string)($a['direccion_inmueble'] ?? ''), (string)($b['direccion_inmueble'] ?? ''));
+            }
+        );
+
+        foreach ($items as &$inmueble) {
+            $pkValue = (string)($inmueble['pk'] ?? '');
+            $skValue = (string)($inmueble['sk'] ?? '');
+            if ($pkValue !== '' && $skValue !== '') {
+                $inmueble['id_virtual'] = $pkValue . '|' . $skValue;
+            }
+
+            $legacyId = $this->obtenerIdPorLlaves($pkValue, $skValue);
+            if ($legacyId !== null) {
+                $inmueble['id'] = $legacyId;
+            }
+        }
+        unset($inmueble);
+
+        return $items;
     }
 
     /* Helpers opcionales de filtrado */

@@ -257,9 +257,9 @@ switch (true) {
         exit;
         break;
 
-    case preg_match('#^/inmuebles/por-arrendador/(\d+)$#', $uri, $m):
+    case preg_match('#^/inmuebles/por-arrendador/([^/]+)$#', $uri, $m):
         require __DIR__ . '/Controllers/InmuebleController.php';
-        (new \App\Controllers\InmuebleController())->inmueblesPorArrendador((int)$m[1]);
+        (new \App\Controllers\InmuebleController())->inmueblesPorArrendador($m[1]);
         exit;
         break;
 
