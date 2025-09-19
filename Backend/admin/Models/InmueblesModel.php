@@ -125,6 +125,20 @@ class InmuebleModel extends Database
         return $row ?: null;
     }
 
+    public function obtenerIdPorLlaves(string $pk, string $sk): ?int
+    {
+        $sql = 'SELECT id FROM inmuebles WHERE pk = :pk AND sk = :sk LIMIT 1';
+        $stmt = $this->getConnection()->prepare($sql);
+        $stmt->execute([
+            ':pk' => $pk,
+            ':sk' => $sk,
+        ]);
+
+        $id = $stmt->fetchColumn();
+
+        return $id !== false ? (int) $id : null;
+    }
+
     public function crear(array $data): bool
     {
         /**
