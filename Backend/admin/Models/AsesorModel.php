@@ -49,6 +49,13 @@ class AsesorModel
         return self::PK_PREFIX . $id;
     }
 
+    private function ensurePk(array &$item): void
+    {
+        if (!isset($item['pk']) && isset($item['id'])) {
+            $item['pk'] = $this->buildPk((int) $item['id']);
+        }
+    }
+
     /**
      * Normaliza un registro de asesor proveniente de Dynamo.
      *
@@ -63,11 +70,16 @@ class AsesorModel
             $item['id'] = (int) $matches[1];
         }
 
+        $this->ensurePk($item);
+
         if (!empty($item['inquilinos_id']) && is_array($item['inquilinos_id'])) {
             $item['inquilinos_id'] = array_values(array_map('strval', $item['inquilinos_id']));
         } else {
             $item['inquilinos_id'] = [];
         }
+
+        $item['inquilinos_total']    = count($item['inquilinos_id']);
+        $item['arrendadores_total'] = (int) ($item['arrendadores_total'] ?? 0);
 
         return $item;
     }
@@ -125,6 +137,8 @@ class AsesorModel
             $lastKey = $result['LastEvaluatedKey'] ?? null;
         } while ($lastKey);
 
+        $asesores = $this->attachAssignmentsSummary($asesores);
+
         usort(
             $asesores,
             static fn(array $a, array $b): int => strcasecmp((string) ($a['nombre_asesor'] ?? ''), (string) ($b['nombre_asesor'] ?? ''))
@@ -147,7 +161,11 @@ class AsesorModel
             return null;
         }
 
-        return $this->normalizeAsesor($this->marshaler->unmarshalItem($result['Item']));
+        $asesor = $this->normalizeAsesor($this->marshaler->unmarshalItem($result['Item']));
+
+        $withAssignments = $this->attachAssignmentsSummary([$asesor]);
+
+        return $withAssignments[0] ?? $asesor;
     }
 
     /**
@@ -189,8 +207,9 @@ class AsesorModel
      */
     public function create(array $data): int
     {
-        $nombre = trim((string) ($data['nombre_asesor'] ?? ''));
-        $email  = trim((string) ($data['email'] ?? ''));
+        $nombre    = trim((string) ($data['nombre_asesor'] ?? ''));
+        $emailRaw  = trim((string) ($data['email'] ?? ''));
+        $email     = mb_strtolower($emailRaw, 'UTF-8');
         $cel    = trim((string) ($data['celular'] ?? ''));
         if ($nombre === '' || $email === '') {
             throw new RuntimeException('Nombre y email son obligatorios.');
@@ -198,6 +217,10 @@ class AsesorModel
 
         if ($this->existsByName($nombre)) {
             throw new RuntimeException('El nombre del asesor ya existe.');
+        }
+
+        if ($this->existsByEmail($email)) {
+            throw new RuntimeException('El correo electrónico del asesor ya existe.');
         }
 
         for ($attempt = 0; $attempt < 5; $attempt++) {
@@ -244,8 +267,9 @@ class AsesorModel
      */
     public function update(int $id, array $data): bool
     {
-        $nombre = trim((string) ($data['nombre_asesor'] ?? ''));
-        $email  = trim((string) ($data['email'] ?? ''));
+        $nombre    = trim((string) ($data['nombre_asesor'] ?? ''));
+        $emailRaw  = trim((string) ($data['email'] ?? ''));
+        $email     = mb_strtolower($emailRaw, 'UTF-8');
         $cel    = trim((string) ($data['celular'] ?? ''));
         if ($nombre === '' || $email === '') {
             throw new RuntimeException('Nombre y email son obligatorios.');
@@ -253,6 +277,10 @@ class AsesorModel
 
         if ($this->existsByName($nombre, $id)) {
             throw new RuntimeException('El nombre del asesor ya existe.');
+        }
+
+        if ($this->existsByEmail($email, $id)) {
+            throw new RuntimeException('El correo electrónico del asesor ya existe.');
         }
 
         $setParts = ['#nombre = :nombre', '#email = :email'];
@@ -368,6 +396,202 @@ class AsesorModel
         } while ($lastKey);
 
         return false;
+    }
+
+    public function existsByEmail(string $email, ?int $excludeId = null): bool
+    {
+        $emailLookup = mb_strtolower(trim($email), 'UTF-8');
+        $lastKey = null;
+
+        do {
+            $params = [
+                'TableName'                 => $this->table,
+                'FilterExpression'          => 'begins_with(pk, :pk) AND sk = :sk',
+                'ExpressionAttributeValues' => [
+                    ':pk'    => ['S' => self::PK_PREFIX],
+                    ':sk'    => ['S' => self::PROFILE_SK],
+                ],
+            ];
+
+            if ($lastKey) {
+                $params['ExclusiveStartKey'] = $lastKey;
+            }
+
+            $result = $this->client->scan($params);
+            foreach ($result['Items'] ?? [] as $item) {
+                $asesor = $this->normalizeAsesor($this->marshaler->unmarshalItem($item));
+                $emailActual = mb_strtolower((string) ($asesor['email'] ?? ''), 'UTF-8');
+                if ($emailActual === $emailLookup && ($excludeId === null || (int) ($asesor['id'] ?? 0) !== $excludeId)) {
+                    return true;
+                }
+            }
+
+            $lastKey = $result['LastEvaluatedKey'] ?? null;
+        } while ($lastKey);
+
+        return false;
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $asesores
+     * @return array<int, array<string, mixed>>
+     */
+    private function attachAssignmentsSummary(array $asesores): array
+    {
+        if (empty($asesores)) {
+            return $asesores;
+        }
+
+        $pks = [];
+        foreach ($asesores as $asesor) {
+            $id = (int) ($asesor['id'] ?? 0);
+            $pk = (string) ($asesor['pk'] ?? '');
+            if ($pk === '' && $id > 0) {
+                $pk = $this->buildPk($id);
+            }
+            if ($pk !== '') {
+                $pks[$pk] = true;
+            }
+        }
+
+        $uniquePks = array_keys($pks);
+
+        if (count($uniquePks) === 1) {
+            $arrendadores = $this->countArrendadores($uniquePks[0]);
+            $inquilinos   = $this->countInquilinos($uniquePks[0]);
+        } else {
+            $arrendadores = $this->countArrendadores();
+            $inquilinos   = $this->countInquilinos();
+        }
+
+        foreach ($asesores as &$asesor) {
+            $id = (int) ($asesor['id'] ?? 0);
+            $pk = (string) ($asesor['pk'] ?? '');
+
+            if ($pk === '' && $id > 0) {
+                $pk          = $this->buildPk($id);
+                $asesor['pk'] = $pk;
+            }
+
+            $asesor['arrendadores_total'] = $arrendadores[$pk] ?? (int) ($asesor['arrendadores_total'] ?? 0);
+            $asesor['inquilinos_total']   = $inquilinos[$pk] ?? (is_array($asesor['inquilinos_id']) ? count($asesor['inquilinos_id']) : 0);
+        }
+
+        unset($asesor);
+
+        return $asesores;
+    }
+
+    /**
+     * @return array<string, int>
+     */
+    private function countArrendadores(?string $targetPk = null): array
+    {
+        $counts = [];
+        $lastKey = null;
+
+        $values = [
+            ':pk' => ['S' => 'arr#'],
+            ':sk' => ['S' => self::PROFILE_SK],
+        ];
+
+        do {
+            $params = [
+                'TableName'                 => $this->table,
+                'FilterExpression'          => 'begins_with(pk, :pk) AND sk = :sk',
+                'ExpressionAttributeValues' => $values,
+                'ProjectionExpression'      => '#asesor, asesor_pk, asesor_id',
+                'ExpressionAttributeNames'  => ['#asesor' => 'asesor'],
+            ];
+
+            if ($lastKey !== null) {
+                $params['ExclusiveStartKey'] = $lastKey;
+            }
+
+            $result = $this->client->scan($params);
+            foreach ($result['Items'] ?? [] as $item) {
+                $arrendador = $this->marshaler->unmarshalItem($item);
+
+                $asesorPk = '';
+                if (!empty($arrendador['asesor'])) {
+                    $asesorPk = (string) $arrendador['asesor'];
+                } elseif (!empty($arrendador['asesor_pk'])) {
+                    $asesorPk = (string) $arrendador['asesor_pk'];
+                } elseif (!empty($arrendador['asesor_id'])) {
+                    $asesorPk = $this->buildPk((int) $arrendador['asesor_id']);
+                }
+
+                if ($asesorPk === '') {
+                    continue;
+                }
+
+                if ($targetPk !== null && $asesorPk !== $targetPk) {
+                    continue;
+                }
+
+                $counts[$asesorPk] = ($counts[$asesorPk] ?? 0) + 1;
+            }
+
+            $lastKey = $result['LastEvaluatedKey'] ?? null;
+        } while ($lastKey);
+
+        return $counts;
+    }
+
+    /**
+     * @return array<string, int>
+     */
+    private function countInquilinos(?string $targetPk = null): array
+    {
+        $counts = [];
+        $lastKey = null;
+
+        $values = [
+            ':pk' => ['S' => 'inq#'],
+            ':sk' => ['S' => self::PROFILE_SK],
+        ];
+
+        do {
+            $params = [
+                'TableName'                 => $this->table,
+                'FilterExpression'          => 'begins_with(pk, :pk) AND sk = :sk',
+                'ExpressionAttributeValues' => $values,
+                'ProjectionExpression'      => 'asesor_pk, asesor_id, #asesor',
+                'ExpressionAttributeNames'  => ['#asesor' => 'asesor'],
+            ];
+
+            if ($lastKey !== null) {
+                $params['ExclusiveStartKey'] = $lastKey;
+            }
+
+            $result = $this->client->scan($params);
+            foreach ($result['Items'] ?? [] as $item) {
+                $inquilino = $this->marshaler->unmarshalItem($item);
+
+                $asesorPk = '';
+                if (!empty($inquilino['asesor_pk'])) {
+                    $asesorPk = (string) $inquilino['asesor_pk'];
+                } elseif (!empty($inquilino['asesor']['pk'])) {
+                    $asesorPk = (string) $inquilino['asesor']['pk'];
+                } elseif (!empty($inquilino['asesor_id'])) {
+                    $asesorPk = $this->buildPk((int) $inquilino['asesor_id']);
+                }
+
+                if ($asesorPk === '') {
+                    continue;
+                }
+
+                if ($targetPk !== null && $asesorPk !== $targetPk) {
+                    continue;
+                }
+
+                $counts[$asesorPk] = ($counts[$asesorPk] ?? 0) + 1;
+            }
+
+            $lastKey = $result['LastEvaluatedKey'] ?? null;
+        } while ($lastKey);
+
+        return $counts;
     }
 
     public function hasUsage(int $id): bool
