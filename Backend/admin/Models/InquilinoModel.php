@@ -1220,7 +1220,7 @@ class InquilinoModel
             throw new \RuntimeException('Asesor inválido.');
         }
 
-        $nuevoPk = sprintf('ASE#%d', $nuevoId);
+        $nuevoPk = sprintf('ase#%d', $nuevoId);
 
         $asesorPayload = [
             'id'            => $nuevoId,
@@ -1228,7 +1228,6 @@ class InquilinoModel
             'nombre_asesor' => (string) ($asesorData['nombre_asesor'] ?? ''),
             'email'         => (string) ($asesorData['email'] ?? ''),
             'celular'       => (string) ($asesorData['celular'] ?? ''),
-            'telefono'      => (string) ($asesorData['telefono'] ?? ''),
         ];
 
         $prevAsesorId = null;
@@ -1236,11 +1235,11 @@ class InquilinoModel
             $prevAsesorId = (int)$profile['asesor_id'];
         } elseif (!empty($profile['asesor']['id'])) {
             $prevAsesorId = (int)$profile['asesor']['id'];
-        } elseif (!empty($profile['asesor_pk']) && preg_match('/^ASE#(\d+)$/i', (string)$profile['asesor_pk'], $m)) {
+        } elseif (!empty($profile['asesor_pk']) && preg_match('/^ase#(\d+)$/i', (string)$profile['asesor_pk'], $m)) {
             $prevAsesorId = (int)$m[1];
         }
 
-        $prevAsesorPk = $prevAsesorId ? sprintf('ASE#%d', $prevAsesorId) : null;
+        $prevAsesorPk = $prevAsesorId ? sprintf('ase#%d', $prevAsesorId) : null;
 
         $this->client->updateItem([
             'TableName' => $this->table,
@@ -1393,7 +1392,7 @@ class InquilinoModel
                 'id'      => $row['id'],
                 'nombre'  => $row['nombre'],
                 'email'   => $row['email'],
-                'telefono'=> $row['celular'],
+                'celular' => $row['celular'] ?? '',
                 'tipo'    => $row['tipo'] ?? 'inquilino',
             ];
         }, $rows);

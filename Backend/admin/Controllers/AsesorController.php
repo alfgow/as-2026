@@ -135,7 +135,6 @@ class AsesorController
             'nombre_asesor' => trim($input['nombre_asesor'] ?? ''),
             'email'         => trim($input['email'] ?? ''),
             'celular'       => trim($input['celular'] ?? ''),
-            'telefono'      => trim($input['telefono'] ?? ''),
         ];
     }
 

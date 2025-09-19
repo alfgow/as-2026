@@ -996,11 +996,11 @@ class InquilinoController
     {
         $asesor = $profile['asesor'] ?? null;
         if (is_array($asesor) && !empty($asesor)) {
-            if (!isset($asesor['id']) && isset($asesor['pk']) && preg_match('/^ASE#(\d+)$/i', (string) $asesor['pk'], $m)) {
+            if (!isset($asesor['id']) && isset($asesor['pk']) && preg_match('/^ase#(\d+)$/i', (string) $asesor['pk'], $m)) {
                 $asesor['id'] = (int) $m[1];
             }
             if (!isset($asesor['pk']) && isset($asesor['id'])) {
-                $asesor['pk'] = sprintf('ASE#%d', (int) $asesor['id']);
+                $asesor['pk'] = sprintf('ase#%d', (int) $asesor['id']);
             }
             return $asesor;
         }
@@ -1008,7 +1008,7 @@ class InquilinoController
         $asesorId = null;
         if (isset($profile['asesor_id']) && (int) $profile['asesor_id'] > 0) {
             $asesorId = (int) $profile['asesor_id'];
-        } elseif (!empty($profile['asesor_pk']) && preg_match('/^ASE#(\d+)$/i', (string) $profile['asesor_pk'], $m)) {
+        } elseif (!empty($profile['asesor_pk']) && preg_match('/^ase#(\d+)$/i', (string) $profile['asesor_pk'], $m)) {
             $asesorId = (int) $m[1];
         }
 
@@ -1022,7 +1022,7 @@ class InquilinoController
         }
 
         if (!isset($asesorData['pk'])) {
-            $asesorData['pk'] = sprintf('ASE#%d', (int) ($asesorData['id'] ?? $asesorId));
+            $asesorData['pk'] = sprintf('ase#%d', (int) ($asesorData['id'] ?? $asesorId));
         }
 
         return $asesorData;
