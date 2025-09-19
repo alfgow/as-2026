@@ -189,7 +189,7 @@ class AsesorModel
 
         $asesores = [];
 
-        foreach (array_chunk(array_values($unique), 100) as $chunk) {
+        foreach (array_chunk(array_values($unique), 25) as $chunk) {
             $keys = array_map(
                 static fn(string $pk): array => [
                     'pk' => ['S' => $pk],
@@ -217,6 +217,8 @@ class AsesorModel
                     break;
                 }
             } while (true);
+
+            usleep(250000);
         }
 
         if ($asesores === []) {
