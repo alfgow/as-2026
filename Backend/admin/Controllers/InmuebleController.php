@@ -46,8 +46,6 @@ class InmuebleController
         $this->asesorModel = new AsesorModel();
     }
 
-
-
     /**
      * Listado con búsqueda y paginación básica
      */
