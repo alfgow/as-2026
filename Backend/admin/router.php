@@ -232,6 +232,7 @@ switch (true) {
         break;
 
     case preg_match('#^/inmuebles/editar/([^/]+)/([^/]+)$#', $uri, $m):
+
         require __DIR__ . '/Controllers/InmuebleController.php';
         (new \App\Controllers\InmuebleController())->editar($m[1], $m[2]);
         exit;
@@ -240,6 +241,7 @@ switch (true) {
     case preg_match('#^/inmuebles/editar/(\d+)$#', $uri, $m):
         require __DIR__ . '/Controllers/InmuebleController.php';
         (new \App\Controllers\InmuebleController())->editar((string)$m[1]);
+
         exit;
         break;
 
@@ -279,9 +281,10 @@ switch (true) {
         exit;
         break;
 
-    case preg_match('#^/inmuebles/(\d+)$#', $uri, $m):
+    case preg_match('#^/inmuebles/([^/]+)/([^/]+)$#', $uri, $m):
         require __DIR__ . '/Controllers/InmuebleController.php';
         (new \App\Controllers\InmuebleController())->ver((string)$m[1]);
+
         exit;
         break;
 
