@@ -58,6 +58,36 @@ class InmuebleModel
         return count($this->getInmuebles());
     }
 
+    /**
+     * Obtiene una página de inmuebles directamente desde DynamoDB.
+     *
+     * @param int $limite
+     * @param string|null $token
+     * @return array{items: array<int, array<string, mixed>>, nextToken: ?string, hasMore: bool, consumedCapacity: float}
+     */
+    public function obtenerPaginaDynamo(int $limite, ?string $token = null): array
+    {
+        return $this->consultarPaginaDynamo($limite, $token, null);
+    }
+
+    /**
+     * Busca inmuebles utilizando paginación basada en tokens.
+     *
+     * @param string $query
+     * @param int $limite
+     * @param string|null $token
+     * @return array{items: array<int, array<string, mixed>>, nextToken: ?string, hasMore: bool, consumedCapacity: float}
+     */
+    public function buscarPaginaDynamo(string $query, int $limite, ?string $token = null): array
+    {
+        $query = trim($query);
+        if ($query === '') {
+            return $this->obtenerPaginaDynamo($limite, $token);
+        }
+
+        return $this->consultarPaginaDynamo($limite, $token, mb_strtolower($query, 'UTF-8'));
+    }
+
     public function contarPorArrendador(int|string $idArrendador): int
     {
         $pk = is_numeric($idArrendador)
@@ -168,15 +198,8 @@ class InmuebleModel
 
         return array_values(array_filter(
             $this->getInmuebles(),
-            static function (array $inmueble) use ($needle): bool {
-                foreach (['direccion_inmueble', 'nombre_arrendador', 'nombre_asesor', 'tipo'] as $campo) {
-                    $valor = mb_strtolower((string)($inmueble[$campo] ?? ''), 'UTF-8');
-                    if ($valor !== '' && mb_strpos($valor, $needle, 0, 'UTF-8') !== false) {
-                        return true;
-                    }
-                }
-
-                return false;
+            function (array $inmueble) use ($needle): bool {
+                return $this->coincideBusqueda($inmueble, $needle);
             }
         ));
     }
@@ -211,6 +234,73 @@ class InmuebleModel
         }
 
         return $data;
+    }
+
+    /**
+     * @param int $limite
+     * @param string|null $token
+     * @param string|null $needle
+     * @return array{items: array<int, array<string, mixed>>, nextToken: ?string, hasMore: bool, consumedCapacity: float}
+     */
+    private function consultarPaginaDynamo(int $limite, ?string $token, ?string $needle): array
+    {
+        $limite = max(1, $limite);
+        $exclusiveStartKey = $this->decodeToken($token);
+        $items = [];
+        $nextToken = null;
+        $consumed = 0.0;
+
+        $startKey = $exclusiveStartKey;
+
+        do {
+            $params = [
+                'TableName'                 => $this->table,
+                'FilterExpression'          => 'begins_with(sk, :prefix)',
+                'ExpressionAttributeValues' => [
+                    ':prefix' => ['S' => self::INMUEBLE_SK_PREFIX],
+                ],
+                'Limit'                     => 25,
+                'ReturnConsumedCapacity'    => 'TOTAL',
+            ];
+
+            if ($startKey !== null) {
+                $params['ExclusiveStartKey'] = $startKey;
+                $startKey = null;
+            }
+
+            $result = $this->client->scan($params);
+            $consumed += (float) ($result['ConsumedCapacity']['CapacityUnits'] ?? 0);
+
+            foreach ($result['Items'] ?? [] as $rawItem) {
+                $inmueble = $this->normalizarItem($rawItem);
+
+                if ($needle !== null && $needle !== '' && !$this->coincideBusqueda($inmueble, $needle)) {
+                    continue;
+                }
+
+                $items[] = $inmueble;
+
+                if (count($items) === $limite) {
+                    $nextToken = $this->encodeKey($rawItem);
+                    break 2;
+                }
+            }
+
+            $startKey = $result['LastEvaluatedKey'] ?? null;
+
+            if ($startKey !== null) {
+                usleep(250000);
+            }
+        } while ($startKey !== null);
+
+        $items = $this->adjuntarArrendadores($items);
+
+        return [
+            'items'            => $items,
+            'nextToken'        => $nextToken,
+            'hasMore'          => $nextToken !== null,
+            'consumedCapacity' => $consumed,
+        ];
     }
 
     /**
@@ -333,6 +423,71 @@ class InmuebleModel
         unset($perfil);
 
         return $perfiles;
+    }
+
+    private function coincideBusqueda(array $inmueble, string $needle): bool
+    {
+        foreach (['direccion_inmueble', 'nombre_arrendador', 'nombre_asesor', 'tipo'] as $campo) {
+            $valor = mb_strtolower((string) ($inmueble[$campo] ?? ''), 'UTF-8');
+            if ($valor !== '' && mb_strpos($valor, $needle, 0, 'UTF-8') !== false) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function encodeKey(array $rawItem): ?string
+    {
+        $pk = $rawItem['pk']['S'] ?? null;
+        $sk = $rawItem['sk']['S'] ?? null;
+
+        if (!is_string($pk) || $pk === '' || !is_string($sk) || $sk === '') {
+            return null;
+        }
+
+        $payload = json_encode(['pk' => $pk, 'sk' => $sk]);
+
+        if ($payload === false) {
+            return null;
+        }
+
+        return rtrim(strtr(base64_encode($payload), '+/', '-_'), '=');
+    }
+
+    private function decodeToken(?string $token): ?array
+    {
+        if ($token === null || $token === '') {
+            return null;
+        }
+
+        $normalized = strtr($token, '-_', '+/');
+        $padding = strlen($normalized) % 4;
+        if ($padding > 0) {
+            $normalized .= str_repeat('=', 4 - $padding);
+        }
+
+        $decoded = base64_decode($normalized, true);
+        if ($decoded === false) {
+            return null;
+        }
+
+        $data = json_decode($decoded, true);
+        if (!is_array($data)) {
+            return null;
+        }
+
+        $pk = $data['pk'] ?? null;
+        $sk = $data['sk'] ?? null;
+
+        if (!is_string($pk) || $pk === '' || !is_string($sk) || $sk === '') {
+            return null;
+        }
+
+        return [
+            'pk' => ['S' => $pk],
+            'sk' => ['S' => $sk],
+        ];
     }
 
     /**
