@@ -236,36 +236,35 @@ class PolizaModel extends Database
     {
         $normalizado = $item;
 
-        $normalizado['numero_poliza'] = (string)($item['numero_poliza'] ?? ($item['numero'] ?? ''));
-        $normalizado['serie_poliza']  = (string)($item['serie_poliza'] ?? ($item['serie'] ?? ''));
-        $normalizado['tipo_poliza']   = (string)($item['tipo_poliza'] ?? ($item['tipo'] ?? ''));
+        // Identificadores
+        $normalizado['numero_poliza'] = (string)($item['numero_poliza'] ?? '');
+        $normalizado['serie_poliza']  = (string)($item['serie_poliza'] ?? '');
+        $normalizado['tipo_poliza']   = (string)($item['tipo_poliza'] ?? '');
         $normalizado['estado']        = (string)($item['estado'] ?? '');
         $normalizado['vigencia']      = (string)($item['vigencia'] ?? '');
-        $normalizado['fecha_poliza']  = (string)($item['fecha_poliza'] ?? ($item['fecha_emision'] ?? ''));
-        $normalizado['fecha_fin']     = (string)($item['fecha_fin'] ?? ($item['fecha_vencimiento'] ?? ''));
+        $normalizado['fecha_poliza']  = (string)($item['fecha_poliza'] ?? '');
+        $normalizado['fecha_fin']     = (string)($item['fecha_fin'] ?? '');
 
+        // Fechas de vencimiento
         $normalizado['mes_vencimiento']  = isset($item['mes_vencimiento']) ? (int) $item['mes_vencimiento'] : 0;
         $normalizado['year_vencimiento'] = isset($item['year_vencimiento']) ? (int) $item['year_vencimiento'] : 0;
 
+        // Montos
         $normalizado['monto_renta']  = isset($item['monto_renta']) ? (float) $item['monto_renta'] : 0.0;
         $normalizado['monto_poliza'] = isset($item['monto_poliza']) ? (float) $item['monto_poliza'] : 0.0;
 
-        $nombreInquilino = (string)($item['nombre_inquilino'] ?? ($item['inquilino_nombre'] ?? ''));
-        $apPaterno       = (string)($item['apellidop_inquilino'] ?? ($item['inquilino_apellido_p'] ?? ''));
-        $apMaterno       = (string)($item['apellidom_inquilino'] ?? ($item['inquilino_apellido_m'] ?? ''));
-        $normalizado['nombre_inquilino_completo'] = (string)($item['nombre_inquilino_completo'] ?? trim(sprintf('%s %s %s', $nombreInquilino, $apPaterno, $apMaterno)));
+        // 🔥 Nombres de personas
+        $normalizado['nombre_inquilino_completo'] = (string)($item['nombre_inquilino_completo'] ?? $item['inquilino'] ?? '—');
+        $normalizado['nombre_arrendador']         = (string)($item['nombre_arrendador'] ?? $item['arrendador'] ?? '—');
+        $normalizado['nombre_fiador']             = (string)($item['nombre_fiador'] ?? $item['fiador'] ?? '—');
+        $normalizado['nombre_asesor']             = (string)($item['nombre_asesor'] ?? $item['asesor'] ?? '—');
 
-        $normalizado['nombre_arrendador'] = (string)($item['nombre_arrendador'] ?? ($item['arrendador_nombre'] ?? ''));
-        $normalizado['nombre_fiador']     = (string)($item['nombre_fiador'] ?? ($item['fiador_nombre'] ?? ''));
-        $normalizado['nombre_asesor']     = (string)($item['nombre_asesor'] ?? ($item['asesor_nombre'] ?? ''));
-
-        $direccionInmueble = (string)($item['direccion_inmueble'] ?? ($item['direccion'] ?? ''));
-        $normalizado['direccion_inmueble'] = $direccionInmueble;
-        $normalizado['direccion']          = (string)($item['direccion'] ?? $direccionInmueble);
-        $normalizado['tipo_inmueble']      = (string)($item['tipo_inmueble'] ?? ($item['inmueble_tipo'] ?? ''));
+        // 🔥 Dirección
+        $normalizado['direccion_inmueble'] = (string)($item['direccion_inmueble'] ?? $item['inmueble'] ?? '—');
 
         return $normalizado;
     }
+
 
     /* =========================================================
      *           VENCIMIENTOS / CONSULTAS CLAVE
