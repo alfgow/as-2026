@@ -231,9 +231,9 @@ switch (true) {
         exit;
         break;
 
-    case preg_match('#^/inmuebles/editar/(\d+)$#', $uri, $m):
+    case preg_match('#^/inmuebles/editar/([^/]+)/([^/]+)$#', $uri, $m):
         require __DIR__ . '/Controllers/InmuebleController.php';
-        (new \App\Controllers\InmuebleController())->editar((int)$m[1]);
+        (new \App\Controllers\InmuebleController())->editar(rawurldecode($m[1]), rawurldecode($m[2]));
         exit;
         break;
 
@@ -261,9 +261,14 @@ switch (true) {
         exit;
         break;
 
-    case preg_match('#^/inmuebles/(\d+)$#', $uri, $m):
+    case preg_match('#^/inmuebles/([^/]+)/([^/]+)$#', $uri, $m):
         require __DIR__ . '/Controllers/InmuebleController.php';
-        (new \App\Controllers\InmuebleController())->ver((int)$m[1]);
+        (new \App\Controllers\InmuebleController())->ver(rawurldecode($m[1]), rawurldecode($m[2]));
+        exit;
+        break;
+    case preg_match('#^/inmuebles/delete/([^/]+)/([^/]+)$#', $uri, $m) && $_SERVER['REQUEST_METHOD'] === 'POST':
+        require __DIR__ . '/Controllers/InmuebleController.php';
+        (new \App\Controllers\InmuebleController())->delete(rawurldecode($m[1]), rawurldecode($m[2]));
         exit;
         break;
 
