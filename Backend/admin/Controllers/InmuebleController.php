@@ -55,19 +55,20 @@ class InmuebleController
     {
         $porPagina = 10;
         $pagina = isset($_GET['page']) ? max(1, (int)$_GET['page']) : 1;
-        $offset = ($pagina - 1) * $porPagina;
+        $token = isset($_GET['token']) ? trim((string) $_GET['token']) : null;
 
         $query = trim((string)($_GET['q'] ?? ''));
 
         if ($query !== '') {
-            $inmuebles = $this->model->buscarPaginados($query, $porPagina, $offset);
-            $totalInmuebles = (int)$this->model->contarBusqueda($query);
+            $resultado = $this->model->buscarPaginaDynamo($query, $porPagina, $token);
         } else {
-            $inmuebles = $this->model->obtenerPaginados($porPagina, $offset);
-            $totalInmuebles = (int)$this->model->contarTodos();
+            $resultado = $this->model->obtenerPaginaDynamo($porPagina, $token);
         }
 
-        $totalPaginas = (int) ceil($totalInmuebles / $porPagina);
+        $inmuebles = $resultado['items'] ?? [];
+        $hasMore = (bool) ($resultado['hasMore'] ?? false);
+        $nextToken = $resultado['nextToken'] ?? null;
+        $rcuUsed = (float) ($resultado['consumedCapacity'] ?? 0.0);
 
         $title = 'Inmuebles - AS';
         $headerTitle = 'Listado de inmuebles';
