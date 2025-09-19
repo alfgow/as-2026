@@ -305,7 +305,7 @@ class ArrendadorModel
             'ExpressionAttributeValues' => [
                 ':pk'     => ['S' => 'arr#'],
                 ':sk'     => ['S' => 'profile'],
-                ':asesor' => ['S' => $asesorId] // Ej: ASE#1
+                ':asesor' => ['S' => $asesorId] // Ej: ase#1
             ]
         ]);
 

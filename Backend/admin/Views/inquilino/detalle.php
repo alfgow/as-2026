@@ -1550,10 +1550,6 @@ $selfieUrl    = $selfieUrl ?? null;
                     <?php endif; ?>
                 </span>
             </div>
-            <div>
-                <span class="font-semibold text-fuchsia-100">Teléfono:</span>
-                <span class="block text-white/90"><?= $a['telefono'] ?? 'N/A' ?></span>
-            </div>
         </div>
 
         <!-- Formulario edición (oculto) -->
