@@ -2,11 +2,7 @@
 
 namespace App\Models;
 
-require_once __DIR__ . '/../Core/Database.php';
 require_once __DIR__ . '/AsesorModel.php';
-
-use App\Core\Database;
-use PDO;
 
 require_once __DIR__ . '/../Core/Dynamo.php';
 
@@ -15,7 +11,7 @@ use Aws\DynamoDb\DynamoDbClient;
 use Aws\DynamoDb\Marshaler;
 use InvalidArgumentException;
 
-class InmuebleModel extends Database
+class InmuebleModel
 {
     private const INMUEBLE_SK_PREFIX = 'INM#';
     private const ARRENDADOR_PROFILE_SK = 'PROFILE';
@@ -29,7 +25,6 @@ class InmuebleModel extends Database
 
     public function __construct()
     {
-        parent::__construct();
         $this->client    = Dynamo::client();
         $this->marshaler = Dynamo::marshaler();
         $this->table     = Dynamo::table();
@@ -84,7 +79,7 @@ class InmuebleModel extends Database
 
         if ($sk === null) {
             if (is_numeric($pk)) {
-                return $this->obtenerPorIdLegacy((int) $pk);
+                return $this->obtenerPorLegacyId((int) $pk);
             }
 
             throw new InvalidArgumentException('Se requieren pk y sk del inmueble para DynamoDB.');
@@ -208,6 +203,12 @@ class InmuebleModel extends Database
         $data['renta'] = $this->formatearMonto($data['renta'] ?? null);
         $data['monto_mantenimiento'] = $this->formatearMonto($data['monto_mantenimiento'] ?? null);
         $data['estacionamiento'] = (int) ($data['estacionamiento'] ?? 0);
+
+        $legacyId = $this->extraerLegacyId($data);
+        if ($legacyId !== null) {
+            $data['legacy_id'] = $legacyId;
+            $data['id']        = $legacyId;
+        }
 
         return $data;
     }
@@ -400,6 +401,26 @@ class InmuebleModel extends Database
         return (string) $valor;
     }
 
+    private function extraerLegacyId(array $data): ?int
+    {
+        foreach (['legacy_id', 'id'] as $field) {
+            if (!isset($data[$field])) {
+                continue;
+            }
+
+            $value = $data[$field];
+            if (is_numeric($value)) {
+                return (int) $value;
+            }
+
+            if (is_array($value) && isset($value['N']) && is_numeric($value['N'])) {
+                return (int) $value['N'];
+            }
+        }
+
+        return null;
+    }
+
     private function getAsesorModel(): AsesorModel
     {
         if ($this->asesorModel === null) {
@@ -409,40 +430,70 @@ class InmuebleModel extends Database
         return $this->asesorModel;
     }
 
-    private function obtenerPorIdLegacy(int $id): ?array
+    private function obtenerPorLegacyId(int $legacyId): ?array
     {
-        $sql = "SELECT i.*, a.nombre_arrendador, s.nombre_asesor
-                FROM inmuebles i
-                JOIN arrendadores a ON i.id_arrendador = a.id
-                JOIN asesores s ON i.id_asesor = s.id
-                WHERE i.id = :id
-                LIMIT 1";
-        $stmt = $this->getConnection()->prepare($sql);
-        $stmt->execute([':id' => $id]);
-        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        $lastKey = null;
 
-        if (!$row) {
-            return null;
-        }
+        do {
+            $params = [
+                'TableName'                 => $this->table,
+                'FilterExpression'          => 'begins_with(sk, :prefix) AND (#legacy = :legacy OR #id = :legacy)',
+                'ExpressionAttributeValues' => [
+                    ':prefix' => ['S' => self::INMUEBLE_SK_PREFIX],
+                    ':legacy' => ['N' => (string) $legacyId],
+                ],
+                'ExpressionAttributeNames'  => [
+                    '#legacy' => 'legacy_id',
+                    '#id'     => 'id',
+                ],
+                'Limit' => 25,
+            ];
 
-        $row['pk'] = (string)($row['pk'] ?? '');
-        $row['sk'] = (string)($row['sk'] ?? '');
+            if ($lastKey) {
+                $params['ExclusiveStartKey'] = $lastKey;
+            }
 
-        return $row;
+            $result = $this->client->scan($params);
+
+            if (!empty($result['Items'])) {
+                $inmueble  = $this->normalizarItem($result['Items'][0]);
+                $withOwner = $this->adjuntarArrendadores([$inmueble]);
+
+                return $withOwner[0] ?? $inmueble;
+            }
+
+            $lastKey = $result['LastEvaluatedKey'] ?? null;
+
+            if ($lastKey) {
+                usleep(250000);
+            }
+        } while ($lastKey);
+
+        return null;
     }
 
     public function obtenerIdPorLlaves(string $pk, string $sk): ?int
     {
-        $sql = 'SELECT id FROM inmuebles WHERE pk = :pk AND sk = :sk LIMIT 1';
-        $stmt = $this->getConnection()->prepare($sql);
-        $stmt->execute([
-            ':pk' => $pk,
-            ':sk' => $sk,
+        $result = $this->client->getItem([
+            'TableName' => $this->table,
+            'Key'       => [
+                'pk' => ['S' => $pk],
+                'sk' => ['S' => $sk],
+            ],
+            'ProjectionExpression'     => '#legacy, #id',
+            'ExpressionAttributeNames' => [
+                '#legacy' => 'legacy_id',
+                '#id'     => 'id',
+            ],
         ]);
 
-        $id = $stmt->fetchColumn();
+        if (empty($result['Item'])) {
+            return null;
+        }
 
-        return $id !== false ? (int) $id : null;
+        $data = $this->marshaler->unmarshalItem($result['Item']);
+
+        return $this->extraerLegacyId($data);
     }
 
     public function crear(array $data): bool
@@ -732,9 +783,9 @@ class InmuebleModel extends Database
                 $inmueble['id_virtual'] = $pkValue . '|' . $skValue;
             }
 
-            $legacyId = $this->obtenerIdPorLlaves($pkValue, $skValue);
-            if ($legacyId !== null) {
-                $inmueble['id'] = $legacyId;
+            $legacyId = $inmueble['legacy_id'] ?? $inmueble['id'] ?? null;
+            if (is_numeric($legacyId)) {
+                $inmueble['id'] = (int) $legacyId;
             }
         }
         unset($inmueble);
@@ -745,35 +796,42 @@ class InmuebleModel extends Database
     /* Helpers opcionales de filtrado */
     public function filtrarPorTipo(string $tipo, int $limite = 50, int $offset = 0): array
     {
-        $sql = "SELECT i.*, a.nombre_arrendador, s.nombre_asesor
-                FROM inmuebles i
-                JOIN arrendadores a ON i.id_arrendador = a.id
-                JOIN asesores s ON i.id_asesor = s.id
-                WHERE i.tipo = :tipo
-                ORDER BY i.fecha_registro DESC
-                LIMIT :limite OFFSET :offset";
-        $stmt = $this->getConnection()->prepare($sql);
-        $stmt->bindValue(':tipo', $tipo, PDO::PARAM_STR);
-        $stmt->bindValue(':limite', $limite, PDO::PARAM_INT);
-        $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
-        $stmt->execute();
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $needle = mb_strtolower(trim($tipo), 'UTF-8');
+
+        if ($needle === '') {
+            return [];
+        }
+
+        $filtered = array_values(array_filter(
+            $this->getInmuebles(),
+            static function (array $inmueble) use ($needle): bool {
+                $valor = mb_strtolower((string)($inmueble['tipo'] ?? ''), 'UTF-8');
+
+                return $valor === $needle;
+            }
+        ));
+
+        return array_slice($filtered, $offset, $limite);
     }
 
     public function filtrarPorAsesor(int $idAsesor, int $limite = 50, int $offset = 0): array
     {
-        $sql = "SELECT i.*, a.nombre_arrendador, s.nombre_asesor
-                FROM inmuebles i
-                JOIN arrendadores a ON i.id_arrendador = a.id
-                JOIN asesores s ON i.id_asesor = s.id
-                WHERE i.id_asesor = :idAsesor
-                ORDER BY i.fecha_registro DESC
-                LIMIT :limite OFFSET :offset";
-        $stmt = $this->getConnection()->prepare($sql);
-        $stmt->bindValue(':idAsesor', $idAsesor, PDO::PARAM_INT);
-        $stmt->bindValue(':limite', $limite, PDO::PARAM_INT);
-        $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
-        $stmt->execute();
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $needleInt = (int) $idAsesor;
+        $needlePk  = 'ase#' . $needleInt;
+
+        $filtered = array_values(array_filter(
+            $this->getInmuebles(),
+            static function (array $inmueble) use ($needleInt, $needlePk): bool {
+                if (isset($inmueble['id_asesor']) && (int) $inmueble['id_asesor'] === $needleInt) {
+                    return true;
+                }
+
+                $asesorPk = (string)($inmueble['asesor_pk'] ?? '');
+
+                return $asesorPk !== '' && strcasecmp($asesorPk, $needlePk) === 0;
+            }
+        ));
+
+        return array_slice($filtered, $offset, $limite);
     }
 }
