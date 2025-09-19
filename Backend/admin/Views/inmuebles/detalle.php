@@ -16,7 +16,7 @@
         </div>
         <div class="flex justify-center gap-3 pt-4">
             <a href="<?= $baseUrl ?>/inmuebles" class="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white">Regresar</a>
-            <a href="<?= $baseUrl ?>/inmuebles/editar/<?= $inmueble['id'] ?>" class="px-4 py-2 rounded-lg bg-pink-600 hover:bg-pink-500 text-white">Editar</a>
+            <a href="<?= $baseUrl ?>/inmuebles/editar/<?= rawurlencode((string) $inmueble['pk']) ?>/<?= rawurlencode((string) $inmueble['sk']) ?>" class="px-4 py-2 rounded-lg bg-pink-600 hover:bg-pink-500 text-white">Editar</a>
         </div>
     </div>
 </div>
