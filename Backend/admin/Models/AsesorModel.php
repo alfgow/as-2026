@@ -202,6 +202,30 @@ class AsesorModel
         return count($this->search($q, 0, PHP_INT_MAX));
     }
 
+    public function existsByEmailOrPhone(string $email, ?string $celular = null): bool
+    {
+        $email = mb_strtolower(trim($email), 'UTF-8');
+        $celular = $celular ? mb_strtolower(trim($celular), 'UTF-8') : null;
+
+        $expr = 'email = :email';
+        $eav = [':email' => ['S' => $email]];
+
+        if ($celular) {
+            $expr .= ' OR celular = :celular';
+            $eav[':celular'] = ['S' => $celular];
+        }
+
+        $result = $this->client->scan([
+            'TableName' => $this->table,
+            'FilterExpression' => $expr,
+            'ExpressionAttributeValues' => $eav,
+            'Limit' => 1,
+        ]);
+
+        return !empty($result['Items']);
+    }
+
+
     /**
      * @param array<string, mixed> $data
      */
