@@ -87,7 +87,7 @@ class InmuebleController
 
         try {
             $inmueble = $this->model->obtenerPorId($pkDecodificado, $skDecodificado);
-        } catch (InvalidArgumentException $e) {
+        } catch (\InvalidArgumentException $e) {
             $inmueble = null;
         }
 
@@ -212,7 +212,7 @@ class InmuebleController
 
         try {
             $inmueble = $this->model->obtenerPorId($pkDecodificado, $skDecodificado);
-        } catch (InvalidArgumentException $e) {
+        } catch (\InvalidArgumentException $e) {
             $inmueble = null;
         }
 
