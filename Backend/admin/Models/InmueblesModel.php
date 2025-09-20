@@ -1,46 +1,44 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Models;
 
-require_once __DIR__ . '/AsesorModel.php';
+require_once __DIR__ . '/../Core/Database.php';
 
-require_once __DIR__ . '/../Core/Dynamo.php';
-
-use App\Core\Dynamo;
-use Aws\DynamoDb\DynamoDbClient;
-use Aws\DynamoDb\Marshaler;
+use App\Core\Database;
 use InvalidArgumentException;
+use PDO;
 
-class InmuebleModel
+class InmuebleModel extends Database
 {
     private const INMUEBLE_SK_PREFIX = 'INM#';
-    private const ARRENDADOR_PROFILE_SK = 'PROFILE';
+    private const ARRENDADOR_PK_PREFIX = 'arr#';
 
-    private DynamoDbClient $client;
-    private Marshaler $marshaler;
-    private string $table;
     /** @var array<int, array<string, mixed>>|null */
     private ?array $inmueblesCache = null;
-    private ?AsesorModel $asesorModel = null;
 
     public function __construct()
     {
-        $this->client    = Dynamo::client();
-        $this->marshaler = Dynamo::marshaler();
-        $this->table     = Dynamo::table();
+        parent::__construct();
     }
 
-    /** Listado completo (ojo: sin paginar) */
+    /**
+     * Obtiene todos los inmuebles ordenados por fecha de registro descendente.
+     *
+     * @return array<int, array<string, mixed>>
+     */
     public function obtenerTodos(): array
     {
         return $this->getInmuebles();
     }
 
     /**
-     * Busca inmuebles por dirección, colonia o datos relacionados.
+     * Busca inmuebles utilizando coincidencias parciales en dirección, arrendador, asesor o tipo.
      *
      * @param string $query
-     * @param int $limite
+     * @param int    $limite
+     *
      * @return array{items: array<int, array<string, mixed>>, consumedCapacity: float}
      */
     public function buscarPorDireccion(string $query, int $limite = 30): array
@@ -53,68 +51,34 @@ class InmuebleModel
         }
 
         $items = [];
-        $consumed = 0.0;
-        $startKey = null;
-
-        do {
-            $params = [
-                'TableName'                 => $this->table,
-                'FilterExpression'          => 'begins_with(sk, :prefix)',
-                'ExpressionAttributeValues' => [
-                    ':prefix' => ['S' => self::INMUEBLE_SK_PREFIX],
-                ],
-                'Limit'                     => 25,
-                'ReturnConsumedCapacity'    => 'TOTAL',
-            ];
-
-            if ($startKey !== null) {
-                $params['ExclusiveStartKey'] = $startKey;
-                $startKey = null;
+        foreach ($this->getInmuebles() as $inmueble) {
+            if (!$this->coincideBusquedaTokens($inmueble, $tokens)) {
+                continue;
             }
 
-            $result = $this->client->scan($params);
-            $consumed += (float) ($result['ConsumedCapacity']['CapacityUnits'] ?? 0);
-
-            foreach ($result['Items'] ?? [] as $rawItem) {
-                $inmueble = $this->normalizarItem($rawItem);
-
-                if (!$this->coincideBusquedaTokens($inmueble, $tokens)) {
-                    continue;
-                }
-
-                $items[] = $inmueble;
-
-                if (count($items) >= $limite) {
-                    break 2;
-                }
+            $items[] = $inmueble;
+            if (count($items) >= $limite) {
+                break;
             }
-
-            $startKey = $result['LastEvaluatedKey'] ?? null;
-
-            if ($startKey !== null && count($items) < $limite) {
-                usleep(250000);
-            }
-        } while ($startKey !== null && count($items) < $limite);
-
-        $items = $this->adjuntarArrendadores($items);
+        }
 
         return [
             'items'            => $items,
-            'consumedCapacity' => $consumed,
+            'consumedCapacity' => 0.0,
         ];
     }
 
     public function contarPorArrendador(int|string $idArrendador): int
     {
-        $pk = is_numeric($idArrendador)
-            ? 'arr#' . (int) $idArrendador
-            : (string) $idArrendador;
-        $needle = mb_strtolower($pk, 'UTF-8');
+        $id = $this->parseArrendadorId($idArrendador);
+        if ($id === null) {
+            return 0;
+        }
 
-        return count(array_filter(
-            $this->getInmuebles(),
-            static fn(array $inmueble): bool => mb_strtolower((string)($inmueble['pk'] ?? ''), 'UTF-8') === $needle
-        ));
+        $sql  = 'SELECT COUNT(*) AS total FROM inmuebles WHERE id_arrendador = :id';
+        $row  = $this->fetch($sql, [':id' => $id]);
+
+        return (int) ($row['total'] ?? 0);
     }
 
     public function obtenerPorId(int|string $pk, ?string $sk = null): ?array
@@ -128,28 +92,26 @@ class InmuebleModel
                 return $this->obtenerPorLegacyId((int) $pk);
             }
 
-            throw new InvalidArgumentException('Se requieren pk y sk del inmueble para DynamoDB.');
+            throw new InvalidArgumentException('Se requieren pk y sk del inmueble.');
         }
 
-        $pk = (string) $pk;
-        $sk = (string) $sk;
+        $arrendadorId = $this->parseArrendadorId($pk);
+        $inmuebleId   = $this->parseInmuebleSk($sk);
 
-        $result = $this->client->getItem([
-            'TableName' => $this->table,
-            'Key'       => [
-                'pk' => ['S' => $pk],
-                'sk' => ['S' => $sk],
-            ],
-        ]);
+        if ($inmuebleId === null) {
+            throw new InvalidArgumentException('Identificador de inmueble inválido.');
+        }
 
-        if (empty($result['Item'])) {
+        $inmueble = $this->obtenerPorLegacyId($inmuebleId);
+        if ($inmueble === null) {
             return null;
         }
 
-        $inmueble = $this->normalizarItem($result['Item']);
-        $conDatos = $this->adjuntarArrendadores([$inmueble]);
+        if ($arrendadorId !== null && (int) ($inmueble['id_arrendador'] ?? 0) !== $arrendadorId) {
+            return null;
+        }
 
-        return $conDatos[0] ?? $inmueble;
+        return $inmueble;
     }
 
     /**
@@ -161,124 +123,57 @@ class InmuebleModel
             return $this->inmueblesCache;
         }
 
-        $items = [];
-        $lastEvaluatedKey = null;
+        $sql  = $this->baseSelect() . ' ORDER BY i.fecha_registro DESC';
+        $rows = $this->fetchAll($sql);
 
-        do {
-            $params = [
-                'TableName'                 => $this->table,
-                'FilterExpression'          => 'begins_with(sk, :prefix)',
-                'ExpressionAttributeValues' => [
-                    ':prefix' => ['S' => self::INMUEBLE_SK_PREFIX],
-                ],
-            ];
-
-            if ($lastEvaluatedKey) {
-                $params['ExclusiveStartKey'] = $lastEvaluatedKey;
-            }
-
-            $result = $this->client->scan($params);
-
-            foreach ($result['Items'] ?? [] as $item) {
-                $items[] = $this->normalizarItem($item);
-            }
-
-            $lastEvaluatedKey = $result['LastEvaluatedKey'] ?? null;
-        } while ($lastEvaluatedKey);
-
-        $items = $this->adjuntarArrendadores($items);
-
-        usort(
-            $items,
-            static function (array $a, array $b): int {
-                $fechaA = strtotime((string)($a['fecha_registro'] ?? '')) ?: 0;
-                $fechaB = strtotime((string)($b['fecha_registro'] ?? '')) ?: 0;
-
-                return $fechaB <=> $fechaA;
-            }
-        );
+        $items = array_map(fn(array $row): array => $this->mapInmueble($row), $rows);
 
         return $this->inmueblesCache = array_values($items);
     }
 
     /**
      * @param array<string, mixed> $item
+     *
      * @return array<string, mixed>
      */
-    private function normalizarItem(array $item): array
+    private function mapInmueble(array $item): array
     {
-        $data = $this->marshaler->unmarshalItem($item);
+        $id            = (int) ($item['id'] ?? 0);
+        $idArrendador  = (int) ($item['id_arrendador'] ?? 0);
+        $idAsesor      = isset($item['id_asesor']) ? (int) $item['id_asesor'] : null;
+        $pk            = $idArrendador > 0 ? self::ARRENDADOR_PK_PREFIX . $idArrendador : '';
+        $sk            = $id > 0 ? self::INMUEBLE_SK_PREFIX . $id : '';
+        $mantenimiento = strtoupper((string) ($item['mantenimiento'] ?? 'NO'));
+        $mascotas      = strtoupper((string) ($item['mascotas'] ?? 'NO'));
 
-        $data['pk'] = (string) ($data['pk'] ?? '');
-        $data['sk'] = (string) ($data['sk'] ?? '');
-        $data['tipo'] = (string) ($data['tipo'] ?? '');
-        $data['direccion_inmueble'] = (string) ($data['direccion_inmueble'] ?? '');
-        $data['mantenimiento'] = (string) ($data['mantenimiento'] ?? '');
-        $data['mascotas'] = strtoupper((string) ($data['mascotas'] ?? 'NO'));
-        $data['deposito'] = (string) ($data['deposito'] ?? '');
-        $data['comentarios'] = (string) ($data['comentarios'] ?? '');
-        $data['fecha_registro'] = (string) ($data['fecha_registro'] ?? '');
-        $data['nombre_arrendador'] = (string) ($data['nombre_arrendador'] ?? '');
-        $data['nombre_asesor'] = (string) ($data['nombre_asesor'] ?? '');
-        $data['renta'] = $this->formatearMonto($data['renta'] ?? null);
-        $data['monto_mantenimiento'] = $this->formatearMonto($data['monto_mantenimiento'] ?? null);
-        $data['estacionamiento'] = (int) ($data['estacionamiento'] ?? 0);
+        $inmueble = [
+            'id'                  => $id,
+            'pk'                  => $pk,
+            'sk'                  => $sk,
+            'id_virtual'          => ($pk !== '' && $sk !== '') ? $pk . '|' . $sk : null,
+            'id_arrendador'       => $idArrendador,
+            'id_asesor'           => $idAsesor,
+            'tipo'                => (string) ($item['tipo'] ?? ''),
+            'direccion_inmueble'  => (string) ($item['direccion_inmueble'] ?? ''),
+            'renta'               => $this->formatearMonto($item['renta'] ?? null),
+            'mantenimiento'       => $mantenimiento === 'SI' ? 'SI' : 'NO',
+            'monto_mantenimiento' => $this->formatearMonto($item['monto_mantenimiento'] ?? null),
+            'deposito'            => $this->formatearMonto($item['deposito'] ?? null),
+            'estacionamiento'     => (int) ($item['estacionamiento'] ?? 0),
+            'mascotas'            => $mascotas === 'SI' ? 'SI' : 'NO',
+            'comentarios'         => (string) ($item['comentarios'] ?? ''),
+            'fecha_registro'      => $item['fecha_registro'] ?? null,
+            'nombre_arrendador'   => (string) ($item['nombre_arrendador'] ?? ''),
+            'nombre_asesor'       => (string) ($item['nombre_asesor'] ?? ''),
+            'asesor_pk'           => $idAsesor ? ('ase#' . $idAsesor) : null,
+        ];
 
-        $legacyId = $this->extraerLegacyId($data);
-        if ($legacyId !== null) {
-            $data['legacy_id'] = $legacyId;
-            $data['id']        = $legacyId;
-        }
-
-        return $data;
-    }
-
-    /**
-     * @param array<int, array<string, mixed>> $inmuebles
-     * @return array<int, array<string, mixed>>
-     */
-    private function adjuntarArrendadores(array $inmuebles): array
-    {
-        if ($inmuebles === []) {
-            return [];
-        }
-
-        $pks = [];
-        foreach ($inmuebles as $inmueble) {
-            $pk = (string) ($inmueble['pk'] ?? '');
-            if ($pk !== '') {
-                $pks[] = $pk;
-            }
-        }
-
-        $arrendadores = $this->obtenerPerfilesArrendador($pks);
-
-        foreach ($inmuebles as &$inmueble) {
-            $pkLower = mb_strtolower((string)($inmueble['pk'] ?? ''), 'UTF-8');
-            $datos = $arrendadores[$pkLower] ?? null;
-
-            $inmueble['nombre_arrendador'] = $datos['nombre_arrendador'] ?? '';
-            if (isset($datos['id_arrendador'])) {
-                $inmueble['id_arrendador'] = $datos['id_arrendador'];
-            }
-            if (isset($datos['nombre_asesor'])) {
-                $inmueble['nombre_asesor'] = $datos['nombre_asesor'];
-            }
-            if (isset($datos['id_asesor'])) {
-                $inmueble['id_asesor'] = $datos['id_asesor'];
-            }
-            if (isset($datos['asesor_pk'])) {
-                $inmueble['asesor_pk'] = $datos['asesor_pk'];
-            }
-        }
-        unset($inmueble);
-
-        return $inmuebles;
+        return $inmueble;
     }
 
     /**
      * @param array<string, mixed> $inmueble
-     * @param array<int, string> $tokens
+     * @param array<int, string>   $tokens
      */
     private function coincideBusquedaTokens(array $inmueble, array $tokens): bool
     {
@@ -328,7 +223,7 @@ class InmuebleModel
         }));
     }
 
-    private function normalizarCampoBusqueda($valor): string
+    private function normalizarCampoBusqueda(mixed $valor): string
     {
         if ($valor === null) {
             return '';
@@ -361,540 +256,174 @@ class InmuebleModel
     }
 
     /**
-     * @param array<int, string> $arrendadorPks
-     * @return array<string, array<string, mixed>>
-     */
-    private function obtenerPerfilesArrendador(array $arrendadorPks): array
-    {
-        $unique = [];
-        foreach ($arrendadorPks as $pk) {
-            $original = trim((string) $pk);
-            if ($original === '') {
-                continue;
-            }
-            $unique[mb_strtolower($original, 'UTF-8')] = $original;
-        }
-
-        if ($unique === []) {
-            return [];
-        }
-
-        $perfiles = [];
-        $asesorPks = [];
-
-        foreach (array_chunk(array_values($unique), 25) as $chunk) {
-            $keys = [];
-            foreach ($chunk as $pk) {
-                $keys[] = [
-                    'pk' => ['S' => $pk],
-                    'sk' => ['S' => self::ARRENDADOR_PROFILE_SK],
-                ];
-            }
-
-            foreach ($this->batchGet($keys) as $item) {
-                $profile = $this->marshaler->unmarshalItem($item);
-                $pkValue = (string) ($profile['pk'] ?? '');
-                if ($pkValue === '') {
-                    continue;
-                }
-
-                $pkLower = mb_strtolower($pkValue, 'UTF-8');
-                if (isset($perfiles[$pkLower])) {
-                    continue;
-                }
-
-                $asesorPk = $this->resolverAsesorPk($profile['asesor_pk'] ?? null, $profile['asesor'] ?? null);
-                if ($asesorPk !== null) {
-                    $asesorPks[] = $asesorPk;
-                }
-
-                $perfiles[$pkLower] = [
-                    'pk'                => $pkValue,
-                    'id_arrendador'     => isset($profile['id']) ? (int) $profile['id'] : null,
-                    'nombre_arrendador' => (string) ($profile['nombre_arrendador'] ?? ''),
-                    'asesor_pk'         => $asesorPk,
-                ];
-            }
-
-            usleep(250000);
-        }
-
-        $asesorPks = array_values(array_unique(array_filter($asesorPks)));
-        $asesores = $asesorPks === [] ? [] : $this->getAsesorModel()->batchGetByPk($asesorPks);
-
-        foreach ($perfiles as $pkLower => &$perfil) {
-            $asesorPk = $perfil['asesor_pk'] ?? null;
-            if ($asesorPk && isset($asesores[$asesorPk])) {
-                $asesor = $asesores[$asesorPk];
-                $perfil['nombre_asesor'] = (string) ($asesor['nombre_asesor'] ?? '');
-                if (isset($asesor['id'])) {
-                    $perfil['id_asesor'] = (int) $asesor['id'];
-                }
-            } else {
-                $perfil['nombre_asesor'] = '';
-            }
-        }
-        unset($perfil);
-
-        return $perfiles;
-    }
-
-    /**
-     * @param array<int, array<string, array<string, string>>> $keys
      * @return array<int, array<string, mixed>>
      */
-    private function batchGet(array $keys): array
+    public function obtenerPorArrendador(int|string $idArrendador): array
     {
-        if ($keys === []) {
+        $id = $this->parseArrendadorId($idArrendador);
+        if ($id === null) {
             return [];
         }
 
-        $items = [];
-        $request = ['RequestItems' => [$this->table => ['Keys' => $keys]]];
+        $sql  = $this->baseSelect() . ' WHERE i.id_arrendador = :id ORDER BY LOWER(i.direccion_inmueble) ASC';
+        $rows = $this->fetchAll($sql, [':id' => $id]);
 
-        do {
-            $response = $this->client->batchGetItem($request);
-
-            foreach ($response['Responses'][$this->table] ?? [] as $item) {
-                $items[] = $item;
-            }
-
-            if (!empty($response['UnprocessedKeys'][$this->table]['Keys'])) {
-                $request = ['RequestItems' => [$this->table => ['Keys' => $response['UnprocessedKeys'][$this->table]['Keys']]]];
-            } else {
-                break;
-            }
-        } while (true);
-
-        return $items;
-    }
-
-    private function resolverAsesorPk(mixed $asesorPk, mixed $asesor): ?string
-    {
-        if (is_string($asesorPk) && $asesorPk !== '') {
-            return $asesorPk;
-        }
-
-        if (is_string($asesor) && $asesor !== '') {
-            return $asesor;
-        }
-
-        if (is_array($asesor)) {
-            if (!empty($asesor['pk']) && is_string($asesor['pk'])) {
-                return $asesor['pk'];
-            }
-
-            if (!empty($asesor['id']) && is_scalar($asesor['id'])) {
-                return 'ase#' . (string) $asesor['id'];
-            }
-        }
-
-        return null;
-    }
-
-    private function formatearMonto(mixed $valor): string
-    {
-        if ($valor === null || $valor === '') {
-            return '0.00';
-        }
-
-        if (is_numeric($valor)) {
-            return number_format((float) $valor, 2, '.', '');
-        }
-
-        return (string) $valor;
-    }
-
-    private function extraerLegacyId(array $data): ?int
-    {
-        foreach (['legacy_id', 'id'] as $field) {
-            if (!isset($data[$field])) {
-                continue;
-            }
-
-            $value = $data[$field];
-            if (is_numeric($value)) {
-                return (int) $value;
-            }
-
-            if (is_array($value) && isset($value['N']) && is_numeric($value['N'])) {
-                return (int) $value['N'];
-            }
-        }
-
-        return null;
-    }
-
-    private function getAsesorModel(): AsesorModel
-    {
-        if ($this->asesorModel === null) {
-            $this->asesorModel = new AsesorModel();
-        }
-
-        return $this->asesorModel;
-    }
-
-    private function obtenerPorLegacyId(int $legacyId): ?array
-    {
-        $lastKey = null;
-
-        do {
-            $params = [
-                'TableName'                 => $this->table,
-                'FilterExpression'          => 'begins_with(sk, :prefix) AND (#legacy = :legacy OR #id = :legacy)',
-                'ExpressionAttributeValues' => [
-                    ':prefix' => ['S' => self::INMUEBLE_SK_PREFIX],
-                    ':legacy' => ['N' => (string) $legacyId],
-                ],
-                'ExpressionAttributeNames'  => [
-                    '#legacy' => 'legacy_id',
-                    '#id'     => 'id',
-                ],
-                'Limit' => 25,
-            ];
-
-            if ($lastKey) {
-                $params['ExclusiveStartKey'] = $lastKey;
-            }
-
-            $result = $this->client->scan($params);
-
-            if (!empty($result['Items'])) {
-                $inmueble  = $this->normalizarItem($result['Items'][0]);
-                $withOwner = $this->adjuntarArrendadores([$inmueble]);
-
-                return $withOwner[0] ?? $inmueble;
-            }
-
-            $lastKey = $result['LastEvaluatedKey'] ?? null;
-
-            if ($lastKey) {
-                usleep(250000);
-            }
-        } while ($lastKey);
-
-        return null;
+        return array_map(fn(array $row): array => $this->mapInmueble($row), $rows);
     }
 
     public function obtenerIdPorLlaves(string $pk, string $sk): ?int
     {
-        $result = $this->client->getItem([
-            'TableName' => $this->table,
-            'Key'       => [
-                'pk' => ['S' => $pk],
-                'sk' => ['S' => $sk],
-            ],
-            'ProjectionExpression'     => '#legacy, #id',
-            'ExpressionAttributeNames' => [
-                '#legacy' => 'legacy_id',
-                '#id'     => 'id',
-            ],
-        ]);
+        $arrendadorId = $this->parseArrendadorId($pk);
+        $inmuebleId   = $this->parseInmuebleSk($sk);
 
-        if (empty($result['Item'])) {
+        if ($inmuebleId === null) {
             return null;
         }
 
-        $data = $this->marshaler->unmarshalItem($result['Item']);
+        $inmueble = $this->obtenerPorLegacyId($inmuebleId);
+        if ($inmueble === null) {
+            return null;
+        }
 
-        return $this->extraerLegacyId($data);
+        if ($arrendadorId !== null && (int) ($inmueble['id_arrendador'] ?? 0) !== $arrendadorId) {
+            return null;
+        }
+
+        return $inmueble['id'] ?? null;
     }
 
+    /**
+     * @param array<string, mixed> $data
+     */
     public function crear(array $data): bool
     {
-        /**
-         * 🚩 ATENCIÓN:
-         * Esta función ya fue actualizada a DynamoDB.
-         * NO volver a modificar para MySQL.
-         */
-        $sk = 'INM#' . uniqid();
+        $sql = 'INSERT INTO inmuebles (
+                    id_arrendador,
+                    id_asesor,
+                    direccion_inmueble,
+                    tipo,
+                    renta,
+                    mantenimiento,
+                    monto_mantenimiento,
+                    deposito,
+                    estacionamiento,
+                    mascotas,
+                    comentarios
+                ) VALUES (
+                    :id_arrendador,
+                    :id_asesor,
+                    :direccion,
+                    :tipo,
+                    :renta,
+                    :mantenimiento,
+                    :monto_mantenimiento,
+                    :deposito,
+                    :estacionamiento,
+                    :mascotas,
+                    :comentarios
+                )';
 
-        // 1️⃣ Construir item de inmueble
-        $item = [
-            'pk'                 => ['S' => $data['pk']], // ej: ARR#557
-            'sk'                 => ['S' => $sk],
-            'tipo'               => ['S' => $data['tipo']],
-            'direccion_inmueble' => ['S' => $data['direccion_inmueble']],
-            'renta'              => ['N' => (string) $data['renta']],
-            'mantenimiento'      => ['S' => $data['mantenimiento']],
-            'estacionamiento'    => ['N' => (string) $data['estacionamiento']],
-            'mascotas'           => ['S' => strtoupper((string) $data['mascotas'])],
-            'fecha_registro'     => ['S' => date('Y-m-d H:i:s')],
-        ];
-
-        if (isset($data['monto_mantenimiento']) && $data['monto_mantenimiento'] !== null && $data['monto_mantenimiento'] !== '') {
-            $item['monto_mantenimiento'] = ['N' => (string) $data['monto_mantenimiento']];
+        $stmt = $this->db->prepare($sql);
+        $stmt->bindValue(':id_arrendador', $data['id_arrendador'], PDO::PARAM_INT);
+        if (isset($data['id_asesor']) && $data['id_asesor'] !== null) {
+            $stmt->bindValue(':id_asesor', $data['id_asesor'], PDO::PARAM_INT);
+        } else {
+            $stmt->bindValue(':id_asesor', null, PDO::PARAM_NULL);
         }
+        $stmt->bindValue(':direccion', (string) $data['direccion_inmueble']);
+        $stmt->bindValue(':tipo', (string) $data['tipo']);
+        $stmt->bindValue(':renta', (string) $data['renta']);
+        $stmt->bindValue(':mantenimiento', (string) $data['mantenimiento']);
+        $stmt->bindValue(':monto_mantenimiento', (string) $data['monto_mantenimiento']);
+        $stmt->bindValue(':deposito', (string) $data['deposito']);
+        $stmt->bindValue(':estacionamiento', (int) $data['estacionamiento'], PDO::PARAM_INT);
+        $stmt->bindValue(':mascotas', (string) $data['mascotas']);
+        $stmt->bindValue(':comentarios', (string) ($data['comentarios'] ?? ''));
 
-        if (isset($data['deposito']) && $data['deposito'] !== null && $data['deposito'] !== '') {
-            $item['deposito'] = ['N' => (string) $data['deposito']];
-        }
+        $ok = $stmt->execute();
 
-        if (!empty($data['comentarios'])) {
-            $item['comentarios'] = ['S' => $data['comentarios']];
-        }
-
-        if (!empty($data['asesor'])) {
-            $item['asesor'] = ['S' => $data['asesor']];
-        }
-
-        try {
-            // 2️⃣ Guardar inmueble
-            $this->client->putItem([
-                'TableName' => $this->table,
-                'Item'      => $item,
-            ]);
-
-            // 3️⃣ Actualizar arrendador → agregar inmueble a inmuebles_ids
-            $this->client->updateItem([
-                'TableName' => $this->table,
-                'Key' => [
-                    'pk' => ['S' => $data['pk']],      // ARR#557
-                    'sk' => ['S' => 'PROFILE']
-                ],
-                'UpdateExpression' => 'SET inmuebles_ids = list_append(if_not_exists(inmuebles_ids, :empty_list), :new_inm)',
-                'ExpressionAttributeValues' => [
-                    ':new_inm'    => ['L' => [['S' => $sk]]],
-                    ':empty_list' => ['L' => []]
-                ]
-            ]);
-
+        if ($ok) {
             $this->inmueblesCache = null;
-
-            return true;
-        } catch (\Throwable $e) {
-            error_log("❌ Error guardando inmueble en Dynamo: " . $e->getMessage());
-            return false;
         }
+
+        return (bool) $ok;
     }
 
+    /**
+     * @param array<string, mixed> $data
+     */
+    public function actualizarPorId(int $id, array $data): bool
+    {
+        $sql = 'UPDATE inmuebles SET
+                    id_arrendador = :id_arrendador,
+                    id_asesor = :id_asesor,
+                    direccion_inmueble = :direccion,
+                    tipo = :tipo,
+                    renta = :renta,
+                    mantenimiento = :mantenimiento,
+                    monto_mantenimiento = :monto_mantenimiento,
+                    deposito = :deposito,
+                    estacionamiento = :estacionamiento,
+                    mascotas = :mascotas,
+                    comentarios = :comentarios
+                WHERE id = :id';
 
+        $stmt = $this->db->prepare($sql);
+        $stmt->bindValue(':id_arrendador', $data['id_arrendador'], PDO::PARAM_INT);
+        if (isset($data['id_asesor']) && $data['id_asesor'] !== null) {
+            $stmt->bindValue(':id_asesor', $data['id_asesor'], PDO::PARAM_INT);
+        } else {
+            $stmt->bindValue(':id_asesor', null, PDO::PARAM_NULL);
+        }
+        $stmt->bindValue(':direccion', (string) $data['direccion_inmueble']);
+        $stmt->bindValue(':tipo', (string) $data['tipo']);
+        $stmt->bindValue(':renta', (string) $data['renta']);
+        $stmt->bindValue(':mantenimiento', (string) $data['mantenimiento']);
+        $stmt->bindValue(':monto_mantenimiento', (string) $data['monto_mantenimiento']);
+        $stmt->bindValue(':deposito', (string) $data['deposito']);
+        $stmt->bindValue(':estacionamiento', (int) $data['estacionamiento'], PDO::PARAM_INT);
+        $stmt->bindValue(':mascotas', (string) $data['mascotas']);
+        $stmt->bindValue(':comentarios', (string) ($data['comentarios'] ?? ''));
+        $stmt->bindValue(':id', $id, PDO::PARAM_INT);
 
+        $ok = $stmt->execute();
+
+        if ($ok) {
+            $this->inmueblesCache = null;
+        }
+
+        return (bool) $ok;
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     */
     public function actualizarPorPkSk(string $pk, string $sk, array $data): bool
     {
-        try {
-            $setParts = [
-                'tipo = :tipo',
-                'direccion_inmueble = :direccion',
-                'renta = :renta',
-                'mantenimiento = :mantenimiento',
-                'estacionamiento = :estacionamiento',
-                'mascotas = :mascotas',
-            ];
-
-            $values = [
-                ':tipo'           => ['S' => (string) $data['tipo']],
-                ':direccion'      => ['S' => (string) $data['direccion_inmueble']],
-                ':renta'          => ['N' => (string) $data['renta']],
-                ':mantenimiento'  => ['S' => (string) $data['mantenimiento']],
-                ':estacionamiento' => ['N' => (string) (int) $data['estacionamiento']],
-                ':mascotas'       => ['S' => strtoupper((string) $data['mascotas'])],
-            ];
-
-            $remove = [];
-
-            if (isset($data['monto_mantenimiento']) && $data['monto_mantenimiento'] !== null && $data['monto_mantenimiento'] !== '') {
-                $setParts[] = 'monto_mantenimiento = :monto_mantenimiento';
-                $values[':monto_mantenimiento'] = ['N' => (string) $data['monto_mantenimiento']];
-            } else {
-                $remove[] = 'monto_mantenimiento';
-            }
-
-            if (isset($data['deposito']) && $data['deposito'] !== null && $data['deposito'] !== '') {
-                $setParts[] = 'deposito = :deposito';
-                $values[':deposito'] = ['N' => (string) $data['deposito']];
-            } else {
-                $remove[] = 'deposito';
-            }
-
-            if (!empty($data['comentarios'])) {
-                $setParts[] = 'comentarios = :comentarios';
-                $values[':comentarios'] = ['S' => (string) $data['comentarios']];
-            } else {
-                $remove[] = 'comentarios';
-            }
-
-            if (!empty($data['asesor'])) {
-                $setParts[] = 'asesor = :asesor';
-                $values[':asesor'] = ['S' => (string) $data['asesor']];
-            } else {
-                $remove[] = 'asesor';
-            }
-
-            $updateExpression = 'SET ' . implode(', ', $setParts);
-            $remove = array_unique(array_filter($remove));
-            if (!empty($remove)) {
-                $updateExpression .= ' REMOVE ' . implode(', ', $remove);
-            }
-
-            $params = [
-                'TableName' => $this->table,
-                'Key'       => [
-                    'pk' => ['S' => $pk],
-                    'sk' => ['S' => $sk],
-                ],
-                'UpdateExpression'          => $updateExpression,
-                'ExpressionAttributeValues' => $values,
-            ];
-
-            $this->client->updateItem($params);
-
-            return true;
-        } catch (\Throwable $e) {
-            error_log('❌ Error actualizando inmueble en Dynamo: ' . $e->getMessage());
+        $id = $this->obtenerIdPorLlaves($pk, $sk);
+        if ($id === null) {
             return false;
         }
+
+        return $this->actualizarPorId($id, $data);
     }
 
     public function eliminar(string $pk, string $sk): bool
     {
-        try {
-            // 1️⃣ Eliminar el item del inmueble
-            $this->client->deleteItem([
-                'TableName' => $this->table,
-                'Key' => [
-                    'pk' => ['S' => $pk],
-                    'sk' => ['S' => $sk],
-                ],
-            ]);
-
-            // 2️⃣ Obtener el PROFILE del arrendador para localizar el índice del inmueble en inmuebles_ids
-            $result = $this->client->getItem([
-                'TableName' => $this->table,
-                'Key' => [
-                    'pk' => ['S' => $pk],
-                    'sk' => ['S' => 'PROFILE'],
-                ],
-                'ProjectionExpression' => 'inmuebles_ids'
-            ]);
-
-            if (!isset($result['Item']['inmuebles_ids']['L'])) {
-                // No hay lista de inmuebles_ids, nada más que hacer
-                return true;
-            }
-
-            $lista = $result['Item']['inmuebles_ids']['L'];
-            $index = null;
-
-            foreach ($lista as $i => $val) {
-                if (isset($val['S']) && $val['S'] === $sk) {
-                    $index = $i;
-                    break;
-                }
-            }
-
-            if ($index === null) {
-                // El inmueble no estaba en la lista
-                return true;
-            }
-
-            // 3️⃣ Eliminar el inmueble del array inmuebles_ids por índice
-            $this->client->updateItem([
-                'TableName' => $this->table,
-                'Key' => [
-                    'pk' => ['S' => $pk],
-                    'sk' => ['S' => 'PROFILE'],
-                ],
-                'UpdateExpression' => "REMOVE inmuebles_ids[$index]"
-            ]);
-
-            $this->inmueblesCache = null;
-
-            return true;
-        } catch (\Throwable $e) {
-            error_log("❌ Error al eliminar inmueble: " . $e->getMessage());
+        $id = $this->obtenerIdPorLlaves($pk, $sk);
+        if ($id === null) {
             return false;
         }
-    }
 
+        $stmt = $this->db->prepare('DELETE FROM inmuebles WHERE id = :id');
+        $stmt->bindValue(':id', $id, PDO::PARAM_INT);
+        $ok = $stmt->execute();
 
-    public function obtenerPorArrendador(int|string $idArrendador): array
-    {
-        $pk = is_numeric($idArrendador)
-            ? 'arr#' . (int) $idArrendador
-            : (string) $idArrendador;
-
-        $pk = mb_strtolower(trim($pk), 'UTF-8');
-        if ($pk === '') {
-            return [];
+        if ($ok) {
+            $this->inmueblesCache = null;
         }
 
-        $profileResult = $this->client->getItem([
-            'TableName'            => $this->table,
-            'Key'                  => [
-                'pk' => ['S' => $pk],
-                'sk' => ['S' => self::ARRENDADOR_PROFILE_SK],
-            ],
-            'ProjectionExpression' => 'inmuebles_ids',
-        ]);
-
-        $inmuebleSks = [];
-        foreach (($profileResult['Item']['inmuebles_ids']['L'] ?? []) as $value) {
-            if (isset($value['S'])) {
-                $sk = trim((string) $value['S']);
-                if ($sk !== '') {
-                    $inmuebleSks[$sk] = $sk;
-                }
-            }
-        }
-
-        if ($inmuebleSks === []) {
-            return [];
-        }
-
-        $items = [];
-
-        foreach (array_chunk(array_values($inmuebleSks), 25) as $chunk) {
-            $keys = [];
-            foreach ($chunk as $sk) {
-                $keys[] = [
-                    'pk' => ['S' => $pk],
-                    'sk' => ['S' => $sk],
-                ];
-            }
-
-            foreach ($this->batchGet($keys) as $item) {
-                $inmueble = $this->normalizarItem($item);
-                $skValue = (string) ($inmueble['sk'] ?? '');
-                if ($skValue === '') {
-                    continue;
-                }
-
-                $items[$skValue] = $inmueble;
-            }
-
-            usleep(250000);
-        }
-
-        $items = array_filter(
-            $items,
-            static fn(array $inmueble): bool => mb_strtolower((string)($inmueble['pk'] ?? ''), 'UTF-8') === $pk
-        );
-
-        $items = array_values($items);
-
-        usort(
-            $items,
-            static function (array $a, array $b): int {
-                return strcasecmp((string)($a['direccion_inmueble'] ?? ''), (string)($b['direccion_inmueble'] ?? ''));
-            }
-        );
-
-        foreach ($items as &$inmueble) {
-            $pkValue = (string)($inmueble['pk'] ?? '');
-            $skValue = (string)($inmueble['sk'] ?? '');
-            if ($pkValue !== '' && $skValue !== '') {
-                $inmueble['id_virtual'] = $pkValue . '|' . $skValue;
-            }
-
-            $legacyId = $inmueble['legacy_id'] ?? $inmueble['id'] ?? null;
-            if (is_numeric($legacyId)) {
-                $inmueble['id'] = (int) $legacyId;
-            }
-        }
-        unset($inmueble);
-
-        return $items;
+        return (bool) $ok;
     }
 
     /* Helpers opcionales de filtrado */
@@ -938,4 +467,126 @@ class InmuebleModel
 
         return array_slice($filtered, $offset, $limite);
     }
+
+    private function formatearMonto(mixed $valor): string
+    {
+        if ($valor === null || $valor === '') {
+            return '0.00';
+        }
+
+        if (is_numeric($valor)) {
+            return number_format((float) $valor, 2, '.', '');
+        }
+
+        $texto = trim((string) $valor);
+        $texto = str_replace(['$', ' '], '', $texto);
+        if (preg_match('/^\d{1,3}(\.\d{3})+,\d{2}$/', $texto)) {
+            $texto = str_replace('.', '', $texto);
+            $texto = str_replace(',', '.', $texto);
+        } else {
+            $texto = str_replace(',', '', $texto);
+        }
+
+        if (!str_contains($texto, '.')) {
+            $texto .= '.00';
+        } else {
+            $parts = explode('.', $texto, 2);
+            $dec   = substr($parts[1] . '00', 0, 2);
+            $texto = $parts[0] . '.' . $dec;
+        }
+
+        if (!preg_match('/^\d+(\.\d{2})$/', $texto)) {
+            return '0.00';
+        }
+
+        return $texto;
+    }
+
+    private function obtenerPorLegacyId(int $legacyId): ?array
+    {
+        $sql = $this->baseSelect() . ' WHERE i.id = :id LIMIT 1';
+        $row = $this->fetch($sql, [':id' => $legacyId]);
+
+        return $row ? $this->mapInmueble($row) : null;
+    }
+
+    private function baseSelect(): string
+    {
+        return 'SELECT
+                    i.id,
+                    i.id_arrendador,
+                    i.id_asesor,
+                    i.direccion_inmueble,
+                    i.tipo,
+                    i.renta,
+                    i.mantenimiento,
+                    i.monto_mantenimiento,
+                    i.deposito,
+                    i.estacionamiento,
+                    i.mascotas,
+                    i.comentarios,
+                    i.fecha_registro,
+                    arr.nombre_arrendador,
+                    ase.nombre_asesor
+                FROM inmuebles i
+                INNER JOIN arrendadores arr ON arr.id = i.id_arrendador
+                LEFT JOIN asesores ase ON ase.id = i.id_asesor';
+    }
+
+    private function parseArrendadorId(int|string|null $valor): ?int
+    {
+        if ($valor === null) {
+            return null;
+        }
+
+        if (is_int($valor)) {
+            return $valor > 0 ? $valor : null;
+        }
+
+        $trimmed = trim((string) $valor);
+        if ($trimmed === '') {
+            return null;
+        }
+
+        if (ctype_digit($trimmed)) {
+            $int = (int) $trimmed;
+
+            return $int > 0 ? $int : null;
+        }
+
+        if (preg_match('/^arr#(\d+)$/i', $trimmed, $matches)) {
+            $int = (int) $matches[1];
+
+            return $int > 0 ? $int : null;
+        }
+
+        return null;
+    }
+
+    private function parseInmuebleSk(?string $sk): ?int
+    {
+        if ($sk === null) {
+            return null;
+        }
+
+        $trimmed = trim($sk);
+        if ($trimmed === '') {
+            return null;
+        }
+
+        if (ctype_digit($trimmed)) {
+            $int = (int) $trimmed;
+
+            return $int > 0 ? $int : null;
+        }
+
+        if (preg_match('/^INM#(\d+)$/i', $trimmed, $matches)) {
+            $int = (int) $matches[1];
+
+            return $int > 0 ? $int : null;
+        }
+
+        return null;
+    }
+
 }
