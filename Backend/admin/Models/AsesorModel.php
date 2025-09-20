@@ -4,44 +4,19 @@ declare(strict_types=1);
 
 namespace App\Models;
 
-require_once __DIR__ . '/../Core/Dynamo.php';
+require_once __DIR__ . '/../Core/Database.php';
 
-use App\Core\Dynamo;
-use Aws\DynamoDb\DynamoDbClient;
-use Aws\DynamoDb\Exception\DynamoDbException;
-use Aws\DynamoDb\Marshaler;
+use App\Core\Database;
+use PDO;
 use RuntimeException;
 
-/**
- * Modelo de Asesores basado en DynamoDB.
- *
- * pk: ase#<id>
- * sk: profile
- *
- * Atributos principales
- * - id (N)
- * - nombre_asesor (S)
- * - email (S)
- * - celular (S, opcional)
- * - fecha_registro (S, ISO8601)
- * - inquilinos_id (SS) → lista de PKs de inquilinos asociados
- */
-class AsesorModel
+class AsesorModel extends Database
 {
-    private const PK_PREFIX  = 'ase#';
-    private const COUNTER_PK = 'meta#asesor';
-    private const COUNTER_SK = 'counter';
-    private const PROFILE_SK = 'profile';
-
-    private DynamoDbClient $client;
-    private Marshaler $marshaler;
-    private string $table;
+    private const PK_PREFIX = 'ase#';
 
     public function __construct()
     {
-        $this->client    = Dynamo::client();
-        $this->marshaler = Dynamo::marshaler();
-        $this->table     = Dynamo::table();
+        parent::__construct();
     }
 
     private function buildPk(int $id): string
@@ -49,62 +24,47 @@ class AsesorModel
         return self::PK_PREFIX . $id;
     }
 
-    private function ensurePk(array &$item): void
-    {
-        if (!isset($item['pk']) && isset($item['id'])) {
-            $item['pk'] = $this->buildPk((int) $item['id']);
-        }
-    }
-
     /**
-     * Normaliza un registro de asesor proveniente de Dynamo.
-     *
-     * @param array<string, mixed> $item
+     * @param array<string, mixed> $row
      * @return array<string, mixed>
      */
-    private function normalizeAsesor(array $item): array
+    private function mapAsesor(array $row): array
     {
-        if (isset($item['id'])) {
-            $item['id'] = (int) $item['id'];
-        } elseif (!empty($item['pk']) && preg_match('/^ase#(\d+)$/i', (string) $item['pk'], $matches)) {
-            $item['id'] = (int) $matches[1];
+        $id = (int) ($row['id'] ?? 0);
+        if ($id <= 0) {
+            throw new RuntimeException('Registro de asesor inválido.');
         }
 
-        $this->ensurePk($item);
-
-        if (!empty($item['inquilinos_id']) && is_array($item['inquilinos_id'])) {
-            $item['inquilinos_id'] = array_values(array_map('strval', $item['inquilinos_id']));
-        } else {
-            $item['inquilinos_id'] = [];
-        }
-
-        $item['inquilinos_total']    = count($item['inquilinos_id']);
-        $item['arrendadores_total'] = (int) ($item['arrendadores_total'] ?? 0);
-
-        return $item;
+        return [
+            'id'                  => $id,
+            'pk'                  => $this->buildPk($id),
+            'sk'                  => 'profile',
+            'nombre_asesor'       => (string) ($row['nombre_asesor'] ?? ''),
+            'email'               => (string) ($row['email'] ?? ''),
+            'celular'             => (string) ($row['celular'] ?? ''),
+            'telefono'            => (string) ($row['telefono'] ?? ''),
+            'arrendadores_total'  => (int) ($row['arrendadores_total'] ?? 0),
+            'inquilinos_total'    => (int) ($row['inquilinos_total'] ?? 0),
+        ];
     }
 
-    private function nextId(): int
+    private function baseSelect(): string
     {
-        $result = $this->client->updateItem([
-            'TableName' => $this->table,
-            'Key'       => [
-                'pk' => ['S' => self::COUNTER_PK],
-                'sk' => ['S' => self::COUNTER_SK],
-            ],
-            'UpdateExpression'          => 'ADD last_id :inc',
-            'ExpressionAttributeValues' => [
-                ':inc' => ['N' => '1'],
-            ],
-            'ReturnValues' => 'UPDATED_NEW',
-        ]);
-
-        $value = $result['Attributes']['last_id']['N'] ?? null;
-        if ($value === null) {
-            throw new RuntimeException('No fue posible generar el ID del asesor.');
-        }
-
-        return (int) $value;
+        return 'SELECT a.id, a.nombre_asesor, a.email, a.celular, a.telefono,
+                       COALESCE(arr.total_arrendadores, 0) AS arrendadores_total,
+                       COALESCE(inq.total_inquilinos, 0) AS inquilinos_total
+                FROM asesores a
+                LEFT JOIN (
+                    SELECT id_asesor, COUNT(*) AS total_arrendadores
+                    FROM arrendadores
+                    WHERE id_asesor IS NOT NULL
+                    GROUP BY id_asesor
+                ) arr ON arr.id_asesor = a.id
+                LEFT JOIN (
+                    SELECT id_asesor, COUNT(*) AS total_inquilinos
+                    FROM inquilinos
+                    GROUP BY id_asesor
+                ) inq ON inq.id_asesor = a.id';
     }
 
     /**
@@ -112,60 +72,18 @@ class AsesorModel
      */
     public function all(): array
     {
-        $asesores = [];
-        $lastKey  = null;
+        $sql  = $this->baseSelect() . ' ORDER BY LOWER(a.nombre_asesor) ASC';
+        $rows = $this->fetchAll($sql);
 
-        do {
-            $params = [
-                'TableName'                 => $this->table,
-                'FilterExpression'          => 'begins_with(pk, :pk) AND sk = :sk',
-                'ExpressionAttributeValues' => [
-                    ':pk' => ['S' => self::PK_PREFIX],
-                    ':sk' => ['S' => self::PROFILE_SK],
-                ],
-            ];
-
-            if ($lastKey) {
-                $params['ExclusiveStartKey'] = $lastKey;
-            }
-
-            $result = $this->client->scan($params);
-            foreach ($result['Items'] ?? [] as $item) {
-                $asesores[] = $this->normalizeAsesor($this->marshaler->unmarshalItem($item));
-            }
-
-            $lastKey = $result['LastEvaluatedKey'] ?? null;
-        } while ($lastKey);
-
-        $asesores = $this->attachAssignmentsSummary($asesores);
-
-        usort(
-            $asesores,
-            static fn(array $a, array $b): int => strcasecmp((string) ($a['nombre_asesor'] ?? ''), (string) ($b['nombre_asesor'] ?? ''))
-        );
-
-        return $asesores;
+        return array_map(fn(array $row): array => $this->mapAsesor($row), $rows);
     }
 
     public function find(int $id): ?array
     {
-        $result = $this->client->getItem([
-            'TableName' => $this->table,
-            'Key'       => [
-                'pk' => ['S' => $this->buildPk($id)],
-                'sk' => ['S' => self::PROFILE_SK],
-            ],
-        ]);
+        $sql = $this->baseSelect() . ' WHERE a.id = :id LIMIT 1';
+        $row = $this->fetch($sql, [':id' => $id]);
 
-        if (empty($result['Item'])) {
-            return null;
-        }
-
-        $asesor = $this->normalizeAsesor($this->marshaler->unmarshalItem($result['Item']));
-
-        $withAssignments = $this->attachAssignmentsSummary([$asesor]);
-
-        return $withAssignments[0] ?? $asesor;
+        return $row ? $this->mapAsesor($row) : null;
     }
 
     /**
@@ -174,65 +92,26 @@ class AsesorModel
      */
     public function batchGetByPk(array $pks): array
     {
-        $unique = [];
+        $ids = [];
         foreach ($pks as $pk) {
-            $value = trim((string) $pk);
-            if ($value === '') {
-                continue;
+            if (preg_match('/^ase#(\d+)$/i', (string) $pk, $matches)) {
+                $ids[(int) $matches[1]] = (int) $matches[1];
             }
-            $unique[$value] = $value;
         }
 
-        if ($unique === []) {
+        if ($ids === []) {
             return [];
         }
 
-        $asesores = [];
-
-        foreach (array_chunk(array_values($unique), 25) as $chunk) {
-            $keys = array_map(
-                static fn(string $pk): array => [
-                    'pk' => ['S' => $pk],
-                    'sk' => ['S' => self::PROFILE_SK],
-                ],
-                $chunk
-            );
-
-            $request = ['RequestItems' => [$this->table => ['Keys' => $keys]]];
-
-            do {
-                $response = $this->client->batchGetItem($request);
-
-                foreach ($response['Responses'][$this->table] ?? [] as $item) {
-                    $asesor = $this->normalizeAsesor($this->marshaler->unmarshalItem($item));
-                    $pkValue = (string) ($asesor['pk'] ?? '');
-                    if ($pkValue !== '') {
-                        $asesores[$pkValue] = $asesor;
-                    }
-                }
-
-                if (!empty($response['UnprocessedKeys'][$this->table]['Keys'])) {
-                    $request = ['RequestItems' => [$this->table => ['Keys' => $response['UnprocessedKeys'][$this->table]['Keys']]]];
-                } else {
-                    break;
-                }
-            } while (true);
-
-            usleep(250000);
-        }
-
-        if ($asesores === []) {
-            return [];
-        }
-
-        $withSummary = $this->attachAssignmentsSummary(array_values($asesores));
+        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+        $sql          = $this->baseSelect() . " WHERE a.id IN ($placeholders)";
+        $stmt         = $this->db->prepare($sql);
+        $stmt->execute(array_values($ids));
 
         $result = [];
-        foreach ($withSummary as $asesor) {
-            $pkValue = (string) ($asesor['pk'] ?? '');
-            if ($pkValue !== '') {
-                $result[$pkValue] = $asesor;
-            }
+        foreach ($stmt->fetchAll() as $row) {
+            $asesor = $this->mapAsesor($row);
+            $result[$asesor['pk']] = $asesor;
         }
 
         return $result;
@@ -243,68 +122,85 @@ class AsesorModel
      */
     public function search(string $q, int $offset = 0, int $limit = 20): array
     {
-        $query    = trim($q);
-        $asesores = $this->all();
+        $query  = trim($q);
+        $offset = max(0, $offset);
+        $limit  = max(1, $limit);
 
         if ($query === '') {
-            return array_slice($asesores, $offset, $limit);
+            return array_slice($this->all(), $offset, $limit);
         }
 
-        $needle = mb_strtolower($query, 'UTF-8');
-        $filtered = array_values(array_filter(
-            $asesores,
-            static function (array $asesor) use ($needle): bool {
-                foreach (['nombre_asesor', 'email', 'celular'] as $field) {
-                    $value = mb_strtolower((string) ($asesor[$field] ?? ''), 'UTF-8');
-                    if ($value !== '' && mb_strpos($value, $needle, 0, 'UTF-8') !== false) {
-                        return true;
-                    }
-                }
-                return false;
-            }
-        ));
+        $needle = '%' . mb_strtolower($query, 'UTF-8') . '%';
+        $sql    = $this->baseSelect() . '
+                WHERE LOWER(a.nombre_asesor) LIKE :needle
+                   OR LOWER(a.email) LIKE :needle
+                   OR LOWER(a.celular) LIKE :needle
+                ORDER BY LOWER(a.nombre_asesor) ASC
+                LIMIT ' . $limit . ' OFFSET ' . $offset;
 
-        return array_slice($filtered, $offset, $limit);
+        $stmt = $this->db->prepare($sql);
+        $stmt->bindValue(':needle', $needle, PDO::PARAM_STR);
+        $stmt->execute();
+
+        return array_map(fn(array $row): array => $this->mapAsesor($row), (array) $stmt->fetchAll());
     }
 
     public function searchCount(string $q): int
     {
-        return count($this->search($q, 0, PHP_INT_MAX));
+        $query = trim($q);
+        if ($query === '') {
+            $row = $this->fetch('SELECT COUNT(*) AS total FROM asesores');
+            return (int) ($row['total'] ?? 0);
+        }
+
+        $needle = '%' . mb_strtolower($query, 'UTF-8') . '%';
+        $sql    = 'SELECT COUNT(*) AS total
+                   FROM asesores
+                   WHERE LOWER(nombre_asesor) LIKE :needle
+                      OR LOWER(email) LIKE :needle
+                      OR LOWER(celular) LIKE :needle';
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->bindValue(':needle', $needle, PDO::PARAM_STR);
+        $stmt->execute();
+        $row = $stmt->fetch();
+
+        return (int) ($row['total'] ?? 0);
     }
 
     public function existsByEmailOrPhone(string $email, ?string $celular = null): bool
     {
         $email = mb_strtolower(trim($email), 'UTF-8');
-        $celular = $celular ? mb_strtolower(trim($celular), 'UTF-8') : null;
+        $cel   = $celular !== null ? trim($celular) : null;
 
-        $expr = 'email = :email';
-        $eav = [':email' => ['S' => $email]];
+        $conditions = ['LOWER(email) = :email'];
+        $params     = [':email' => $email];
 
-        if ($celular) {
-            $expr .= ' OR celular = :celular';
-            $eav[':celular'] = ['S' => $celular];
+        if ($cel !== null && $cel !== '') {
+            $conditions[]     = 'celular = :celular';
+            $conditions[]     = 'telefono = :celular';
+            $params[':celular'] = $cel;
         }
 
-        $result = $this->client->scan([
-            'TableName' => $this->table,
-            'FilterExpression' => $expr,
-            'ExpressionAttributeValues' => $eav,
-            'Limit' => 1,
-        ]);
+        $sql = 'SELECT 1 FROM asesores WHERE ' . implode(' OR ', $conditions) . ' LIMIT 1';
+        $stmt = $this->db->prepare($sql);
+        foreach ($params as $key => $value) {
+            $stmt->bindValue($key, $value, PDO::PARAM_STR);
+        }
+        $stmt->execute();
 
-        return !empty($result['Items']);
+        return $stmt->fetchColumn() !== false;
     }
-
 
     /**
      * @param array<string, mixed> $data
      */
     public function create(array $data): int
     {
-        $nombre    = trim((string) ($data['nombre_asesor'] ?? ''));
-        $emailRaw  = trim((string) ($data['email'] ?? ''));
-        $email     = mb_strtolower($emailRaw, 'UTF-8');
+        $nombre = trim((string) ($data['nombre_asesor'] ?? ''));
+        $email  = mb_strtolower(trim((string) ($data['email'] ?? '')), 'UTF-8');
         $cel    = trim((string) ($data['celular'] ?? ''));
+
         if ($nombre === '' || $email === '') {
             throw new RuntimeException('Nombre y email son obligatorios.');
         }
@@ -317,43 +213,20 @@ class AsesorModel
             throw new RuntimeException('El correo electrónico del asesor ya existe.');
         }
 
-        for ($attempt = 0; $attempt < 5; $attempt++) {
-            $id = $this->nextId();
-
-            if ($this->find($id) !== null) {
-                continue;
-            }
-
-            $pk = $this->buildPk($id);
-            $item = [
-                'pk'             => ['S' => $pk],
-                'sk'             => ['S' => self::PROFILE_SK],
-                'id'             => ['N' => (string) $id],
-                'nombre_asesor'  => ['S' => $nombre],
-                'email'          => ['S' => $email],
-                'fecha_registro' => ['S' => date('c')],
-            ];
-
-            if ($cel !== '') {
-                $item['celular'] = ['S' => $cel];
-            }
-
-            try {
-                $this->client->putItem([
-                    'TableName'           => $this->table,
-                    'Item'                => $item,
-                    'ConditionExpression' => 'attribute_not_exists(pk) AND attribute_not_exists(sk)',
-                ]);
-
-                return $id;
-            } catch (DynamoDbException $e) {
-                if ($e->getAwsErrorCode() !== 'ConditionalCheckFailedException') {
-                    throw new RuntimeException('No se pudo guardar el asesor: ' . $e->getMessage(), 0, $e);
-                }
-            }
+        $telefono = trim((string) ($data['telefono'] ?? ''));
+        if ($telefono === '') {
+            $telefono = $cel;
         }
 
-        throw new RuntimeException('No se pudo generar un identificador único para el asesor.');
+        $stmt = $this->db->prepare('INSERT INTO asesores (nombre_asesor, email, celular, telefono)
+            VALUES (:nombre, :email, :celular, :telefono)');
+        $stmt->bindValue(':nombre', $nombre, PDO::PARAM_STR);
+        $stmt->bindValue(':email', $email, PDO::PARAM_STR);
+        $stmt->bindValue(':celular', $cel, PDO::PARAM_STR);
+        $stmt->bindValue(':telefono', $telefono, PDO::PARAM_STR);
+        $stmt->execute();
+
+        return (int) $this->lastInsertId();
     }
 
     /**
@@ -361,10 +234,10 @@ class AsesorModel
      */
     public function update(int $id, array $data): bool
     {
-        $nombre    = trim((string) ($data['nombre_asesor'] ?? ''));
-        $emailRaw  = trim((string) ($data['email'] ?? ''));
-        $email     = mb_strtolower($emailRaw, 'UTF-8');
+        $nombre = trim((string) ($data['nombre_asesor'] ?? ''));
+        $email  = mb_strtolower(trim((string) ($data['email'] ?? '')), 'UTF-8');
         $cel    = trim((string) ($data['celular'] ?? ''));
+
         if ($nombre === '' || $email === '') {
             throw new RuntimeException('Nombre y email son obligatorios.');
         }
@@ -377,51 +250,24 @@ class AsesorModel
             throw new RuntimeException('El correo electrónico del asesor ya existe.');
         }
 
-        $setParts = ['#nombre = :nombre', '#email = :email'];
-        $remove   = ['#telefono'];
-        $values   = [
-            ':nombre' => ['S' => $nombre],
-            ':email'  => ['S' => $email],
-        ];
-        $names    = [
-            '#nombre' => 'nombre_asesor',
-            '#email'  => 'email',
-            '#telefono' => 'telefono',
-        ];
-
-        if ($cel !== '') {
-            $setParts[]         = '#celular = :celular';
-            $values[':celular'] = ['S' => $cel];
-            $names['#celular']  = 'celular';
-        } else {
-            $remove[]           = '#celular';
-            $names['#celular']  = 'celular';
+        $telefono = trim((string) ($data['telefono'] ?? ''));
+        if ($telefono === '') {
+            $telefono = $cel;
         }
 
-        $expressions = [];
-        if (!empty($setParts)) {
-            $expressions[] = 'SET ' . implode(', ', $setParts);
-        }
-        if (!empty($remove)) {
-            $expressions[] = 'REMOVE ' . implode(', ', $remove);
-        }
+        $stmt = $this->db->prepare('UPDATE asesores
+            SET nombre_asesor = :nombre,
+                email         = :email,
+                celular       = :celular,
+                telefono      = :telefono
+            WHERE id = :id');
+        $stmt->bindValue(':nombre', $nombre, PDO::PARAM_STR);
+        $stmt->bindValue(':email', $email, PDO::PARAM_STR);
+        $stmt->bindValue(':celular', $cel, PDO::PARAM_STR);
+        $stmt->bindValue(':telefono', $telefono, PDO::PARAM_STR);
+        $stmt->bindValue(':id', $id, PDO::PARAM_INT);
 
-        try {
-            $this->client->updateItem([
-                'TableName'                 => $this->table,
-                'Key'                       => [
-                    'pk' => ['S' => $this->buildPk($id)],
-                    'sk' => ['S' => self::PROFILE_SK],
-                ],
-                'UpdateExpression'          => implode(' ', $expressions),
-                'ExpressionAttributeNames'  => $names,
-                'ExpressionAttributeValues' => $values,
-            ]);
-        } catch (DynamoDbException $e) {
-            throw new RuntimeException('No se pudo actualizar el asesor: ' . $e->getMessage(), 0, $e);
-        }
-
-        return true;
+        return $stmt->execute();
     }
 
     public function delete(int $id): bool
@@ -430,272 +276,101 @@ class AsesorModel
             return false;
         }
 
-        try {
-            $this->client->deleteItem([
-                'TableName' => $this->table,
-                'Key'       => [
-                    'pk' => ['S' => $this->buildPk($id)],
-                    'sk' => ['S' => self::PROFILE_SK],
-                ],
-            ]);
-        } catch (DynamoDbException $e) {
-            throw new RuntimeException('No se pudo eliminar el asesor: ' . $e->getMessage(), 0, $e);
-        }
+        $stmt = $this->db->prepare('DELETE FROM asesores WHERE id = :id');
+        $stmt->bindValue(':id', $id, PDO::PARAM_INT);
+        $stmt->execute();
 
-        return true;
+        return $stmt->rowCount() > 0;
     }
 
     /**
-     * @return array<int, array{id:int, nombre_asesor:string}>
+     * @return array<int, array{id:int,nombre_asesor:string}>
      */
     public function forSelect(): array
     {
-        return array_map(
-            static fn(array $asesor): array => [
-                'id'            => (int) ($asesor['id'] ?? 0),
-                'nombre_asesor' => (string) ($asesor['nombre_asesor'] ?? ''),
-            ],
-            $this->all()
-        );
+        $rows = $this->fetchAll('SELECT id, nombre_asesor FROM asesores ORDER BY LOWER(nombre_asesor) ASC');
+
+        return array_map(static function (array $row): array {
+            return [
+                'id'            => (int) ($row['id'] ?? 0),
+                'nombre_asesor' => (string) ($row['nombre_asesor'] ?? ''),
+            ];
+        }, $rows);
     }
 
     public function existsByName(string $nombre_asesor, ?int $excludeId = null): bool
     {
-        $lastKey = null;
+        $nombre = mb_strtolower(trim($nombre_asesor), 'UTF-8');
+        if ($nombre === '') {
+            return false;
+        }
 
-        do {
-            $params = [
-                'TableName'                 => $this->table,
-                'FilterExpression'          => 'begins_with(pk, :pk) AND sk = :sk AND nombre_asesor = :nombre',
-                'ExpressionAttributeValues' => [
-                    ':pk'     => ['S' => self::PK_PREFIX],
-                    ':sk'     => ['S' => self::PROFILE_SK],
-                    ':nombre' => ['S' => $nombre_asesor],
-                ],
-            ];
+        $sql    = 'SELECT 1 FROM asesores WHERE LOWER(nombre_asesor) = :nombre';
+        $params = [':nombre' => $nombre];
 
-            if ($lastKey) {
-                $params['ExclusiveStartKey'] = $lastKey;
-            }
+        if ($excludeId !== null) {
+            $sql .= ' AND id <> :exclude';
+            $params[':exclude'] = $excludeId;
+        }
 
-            $result = $this->client->scan($params);
-            foreach ($result['Items'] ?? [] as $item) {
-                $asesor = $this->normalizeAsesor($this->marshaler->unmarshalItem($item));
-                if ($excludeId === null || (int) ($asesor['id'] ?? 0) !== $excludeId) {
-                    return true;
-                }
-            }
+        $sql .= ' LIMIT 1';
 
-            $lastKey = $result['LastEvaluatedKey'] ?? null;
-        } while ($lastKey);
+        $stmt = $this->db->prepare($sql);
+        foreach ($params as $key => $value) {
+            $type = $key === ':exclude' ? PDO::PARAM_INT : PDO::PARAM_STR;
+            $stmt->bindValue($key, $value, $type);
+        }
+        $stmt->execute();
 
-        return false;
+        return $stmt->fetchColumn() !== false;
     }
 
     public function existsByEmail(string $email, ?int $excludeId = null): bool
     {
-        $emailLookup = mb_strtolower(trim($email), 'UTF-8');
-        $lastKey = null;
-
-        do {
-            $params = [
-                'TableName'                 => $this->table,
-                'FilterExpression'          => 'begins_with(pk, :pk) AND sk = :sk',
-                'ExpressionAttributeValues' => [
-                    ':pk'    => ['S' => self::PK_PREFIX],
-                    ':sk'    => ['S' => self::PROFILE_SK],
-                ],
-            ];
-
-            if ($lastKey) {
-                $params['ExclusiveStartKey'] = $lastKey;
-            }
-
-            $result = $this->client->scan($params);
-            foreach ($result['Items'] ?? [] as $item) {
-                $asesor = $this->normalizeAsesor($this->marshaler->unmarshalItem($item));
-                $emailActual = mb_strtolower((string) ($asesor['email'] ?? ''), 'UTF-8');
-                if ($emailActual === $emailLookup && ($excludeId === null || (int) ($asesor['id'] ?? 0) !== $excludeId)) {
-                    return true;
-                }
-            }
-
-            $lastKey = $result['LastEvaluatedKey'] ?? null;
-        } while ($lastKey);
-
-        return false;
-    }
-
-    /**
-     * @param array<int, array<string, mixed>> $asesores
-     * @return array<int, array<string, mixed>>
-     */
-    private function attachAssignmentsSummary(array $asesores): array
-    {
-        if (empty($asesores)) {
-            return $asesores;
+        $normalized = mb_strtolower(trim($email), 'UTF-8');
+        if ($normalized === '') {
+            return false;
         }
 
-        $pks = [];
-        foreach ($asesores as $asesor) {
-            $id = (int) ($asesor['id'] ?? 0);
-            $pk = (string) ($asesor['pk'] ?? '');
-            if ($pk === '' && $id > 0) {
-                $pk = $this->buildPk($id);
-            }
-            if ($pk !== '') {
-                $pks[$pk] = true;
-            }
+        $sql    = 'SELECT 1 FROM asesores WHERE LOWER(email) = :email';
+        $params = [':email' => $normalized];
+
+        if ($excludeId !== null) {
+            $sql .= ' AND id <> :exclude';
+            $params[':exclude'] = $excludeId;
         }
 
-        $uniquePks = array_keys($pks);
+        $sql .= ' LIMIT 1';
 
-        if (count($uniquePks) === 1) {
-            $arrendadores = $this->countArrendadores($uniquePks[0]);
-            $inquilinos   = $this->countInquilinos($uniquePks[0]);
-        } else {
-            $arrendadores = $this->countArrendadores();
-            $inquilinos   = $this->countInquilinos();
+        $stmt = $this->db->prepare($sql);
+        foreach ($params as $key => $value) {
+            $type = $key === ':exclude' ? PDO::PARAM_INT : PDO::PARAM_STR;
+            $stmt->bindValue($key, $value, $type);
         }
+        $stmt->execute();
 
-        foreach ($asesores as &$asesor) {
-            $id = (int) ($asesor['id'] ?? 0);
-            $pk = (string) ($asesor['pk'] ?? '');
-
-            if ($pk === '' && $id > 0) {
-                $pk          = $this->buildPk($id);
-                $asesor['pk'] = $pk;
-            }
-
-            $asesor['arrendadores_total'] = $arrendadores[$pk] ?? (int) ($asesor['arrendadores_total'] ?? 0);
-            $asesor['inquilinos_total']   = $inquilinos[$pk] ?? (is_array($asesor['inquilinos_id']) ? count($asesor['inquilinos_id']) : 0);
-        }
-
-        unset($asesor);
-
-        return $asesores;
-    }
-
-    /**
-     * @return array<string, int>
-     */
-    private function countArrendadores(?string $targetPk = null): array
-    {
-        $counts = [];
-        $lastKey = null;
-
-        $values = [
-            ':pk' => ['S' => 'arr#'],
-            ':sk' => ['S' => self::PROFILE_SK],
-        ];
-
-        do {
-            $params = [
-                'TableName'                 => $this->table,
-                'FilterExpression'          => 'begins_with(pk, :pk) AND sk = :sk',
-                'ExpressionAttributeValues' => $values,
-                'ProjectionExpression'      => '#asesor, asesor_pk, asesor_id',
-                'ExpressionAttributeNames'  => ['#asesor' => 'asesor'],
-            ];
-
-            if ($lastKey !== null) {
-                $params['ExclusiveStartKey'] = $lastKey;
-            }
-
-            $result = $this->client->scan($params);
-            foreach ($result['Items'] ?? [] as $item) {
-                $arrendador = $this->marshaler->unmarshalItem($item);
-
-                $asesorPk = '';
-                if (!empty($arrendador['asesor'])) {
-                    $asesorPk = (string) $arrendador['asesor'];
-                } elseif (!empty($arrendador['asesor_pk'])) {
-                    $asesorPk = (string) $arrendador['asesor_pk'];
-                } elseif (!empty($arrendador['asesor_id'])) {
-                    $asesorPk = $this->buildPk((int) $arrendador['asesor_id']);
-                }
-
-                if ($asesorPk === '') {
-                    continue;
-                }
-
-                if ($targetPk !== null && $asesorPk !== $targetPk) {
-                    continue;
-                }
-
-                $counts[$asesorPk] = ($counts[$asesorPk] ?? 0) + 1;
-            }
-
-            $lastKey = $result['LastEvaluatedKey'] ?? null;
-        } while ($lastKey);
-
-        return $counts;
-    }
-
-    /**
-     * @return array<string, int>
-     */
-    private function countInquilinos(?string $targetPk = null): array
-    {
-        $counts = [];
-        $lastKey = null;
-
-        $values = [
-            ':pk' => ['S' => 'inq#'],
-            ':sk' => ['S' => self::PROFILE_SK],
-        ];
-
-        do {
-            $params = [
-                'TableName'                 => $this->table,
-                'FilterExpression'          => 'begins_with(pk, :pk) AND sk = :sk',
-                'ExpressionAttributeValues' => $values,
-                'ProjectionExpression'      => 'asesor_pk, asesor_id, #asesor',
-                'ExpressionAttributeNames'  => ['#asesor' => 'asesor'],
-            ];
-
-            if ($lastKey !== null) {
-                $params['ExclusiveStartKey'] = $lastKey;
-            }
-
-            $result = $this->client->scan($params);
-            foreach ($result['Items'] ?? [] as $item) {
-                $inquilino = $this->marshaler->unmarshalItem($item);
-
-                $asesorPk = '';
-                if (!empty($inquilino['asesor_pk'])) {
-                    $asesorPk = (string) $inquilino['asesor_pk'];
-                } elseif (!empty($inquilino['asesor']['pk'])) {
-                    $asesorPk = (string) $inquilino['asesor']['pk'];
-                } elseif (!empty($inquilino['asesor_id'])) {
-                    $asesorPk = $this->buildPk((int) $inquilino['asesor_id']);
-                }
-
-                if ($asesorPk === '') {
-                    continue;
-                }
-
-                if ($targetPk !== null && $asesorPk !== $targetPk) {
-                    continue;
-                }
-
-                $counts[$asesorPk] = ($counts[$asesorPk] ?? 0) + 1;
-            }
-
-            $lastKey = $result['LastEvaluatedKey'] ?? null;
-        } while ($lastKey);
-
-        return $counts;
+        return $stmt->fetchColumn() !== false;
     }
 
     public function hasUsage(int $id): bool
     {
-        $asesor = $this->find($id);
-        if (!$asesor) {
-            return false;
+        $checks = [
+            'SELECT 1 FROM inquilinos WHERE id_asesor = :id LIMIT 1',
+            'SELECT 1 FROM arrendadores WHERE id_asesor = :id LIMIT 1',
+            'SELECT 1 FROM inmuebles WHERE id_asesor = :id LIMIT 1',
+            'SELECT 1 FROM polizas WHERE id_asesor = :id LIMIT 1',
+        ];
+
+        foreach ($checks as $sql) {
+            $stmt = $this->db->prepare($sql);
+            $stmt->bindValue(':id', $id, PDO::PARAM_INT);
+            $stmt->execute();
+            if ($stmt->fetchColumn() !== false) {
+                return true;
+            }
         }
 
-        return !empty($asesor['inquilinos_id']);
+        return false;
     }
 
     /**
@@ -703,40 +378,24 @@ class AsesorModel
      */
     public function indicadores(int $id): array
     {
+        $arrendadores = $this->fetch('SELECT COUNT(*) AS total FROM arrendadores WHERE id_asesor = :id', [':id' => $id]);
+        $inmuebles    = $this->fetch('SELECT COUNT(*) AS total FROM inmuebles WHERE id_asesor = :id', [':id' => $id]);
+        $polizas      = $this->fetch('SELECT COUNT(*) AS total FROM polizas WHERE id_asesor = :id', [':id' => $id]);
+
         return [
-            'arrendadores' => 0,
-            'inmuebles'    => 0,
-            'polizas'      => 0,
+            'arrendadores' => (int) ($arrendadores['total'] ?? 0),
+            'inmuebles'    => (int) ($inmuebles['total'] ?? 0),
+            'polizas'      => (int) ($polizas['total'] ?? 0),
         ];
     }
 
     public function agregarInquilino(int $idAsesor, string $inquilinoPk): void
     {
-        $this->client->updateItem([
-            'TableName' => $this->table,
-            'Key'       => [
-                'pk' => ['S' => $this->buildPk($idAsesor)],
-                'sk' => ['S' => self::PROFILE_SK],
-            ],
-            'UpdateExpression'          => 'ADD inquilinos_id :nuevo',
-            'ExpressionAttributeValues' => [
-                ':nuevo' => ['SS' => [$inquilinoPk]],
-            ],
-        ]);
+        // La relación se mantiene en la tabla `inquilinos`, no se requiere acción adicional aquí.
     }
 
     public function removerInquilino(int $idAsesor, string $inquilinoPk): void
     {
-        $this->client->updateItem([
-            'TableName' => $this->table,
-            'Key'       => [
-                'pk' => ['S' => $this->buildPk($idAsesor)],
-                'sk' => ['S' => self::PROFILE_SK],
-            ],
-            'UpdateExpression'          => 'DELETE inquilinos_id :quitar',
-            'ExpressionAttributeValues' => [
-                ':quitar' => ['SS' => [$inquilinoPk]],
-            ],
-        ]);
+        // La relación se mantiene en la tabla `inquilinos`, no se requiere acción adicional aquí.
     }
 }
