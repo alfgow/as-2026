@@ -105,10 +105,10 @@ class ArrendadorController
         header('Content-Type: application/json');
 
         try {
-            $idArrendador = $_POST['id_arrendador'] ?? null;
-            $tipo         = $_POST['tipo'] ?? null;
+            $idArrendador = isset($_POST['id_arrendador']) ? (int)$_POST['id_arrendador'] : 0;
+            $tipo         = trim((string)($_POST['tipo'] ?? ''));
 
-            if (!$idArrendador || !$tipo || empty($_FILES['archivo'])) {
+            if ($idArrendador <= 0 || $tipo === '' || empty($_FILES['archivo'])) {
                 echo json_encode(['ok' => false, 'error' => 'Datos incompletos']);
                 return;
             }
@@ -121,137 +121,37 @@ class ArrendadorController
                 return;
             }
 
-            // 🔧 Normalizar arrays
-            if (!isset($arr['archivos']) || !is_array($arr['archivos'])) {
-                $arr['archivos'] = [];
-            }
-            if (!isset($arr['archivos_ids']) || !is_array($arr['archivos_ids'])) {
-                $arr['archivos_ids'] = [];
-            }
-
             // Normalizar nombre para carpeta en S3
-            $nombreNorm = \App\Helpers\S3Helper::buildPersonKeyFromParts(
+            $nombreNorm = S3Helper::buildPersonKeyFromParts(
                 $arr['profile']['nombre_arrendador'] ?? '',
-                $arr['profile']['apellidop_arrendador'] ?? '',
-                $arr['profile']['apellidom_arrendador'] ?? ''
+                '',
+                ''
             );
 
             // Extensión archivo nuevo
-            $ext      = strtolower(pathinfo($_FILES['archivo']['name'], PATHINFO_EXTENSION));
-            $nuevoKey = "{$idArrendador}_{$nombreNorm}/" . strtolower($tipo) . "_{$nombreNorm}.{$ext}";
+            $ext = strtolower(pathinfo($_FILES['archivo']['name'], PATHINFO_EXTENSION));
+            $ext = preg_replace('/[^a-z0-9]/', '', $ext) ?: 'dat';
+            $folder  = $idArrendador . '_' . ($nombreNorm ?: 'arrendador');
+            $nuevoKey = sprintf('%s/%s_%s.%s', $folder, strtolower($tipo), $nombreNorm ?: 'arrendador', $ext);
 
-            $s3     = new \App\Helpers\S3Helper('arrendadores');
-            $client = \App\Core\Dynamo::client();
-            $table  = \App\Core\Dynamo::table();
+            $s3 = new S3Helper('arrendadores');
 
-            // Buscar archivo previo de este tipo
-            $previo = null;
-            foreach ($arr['archivos'] as $a) {
-                if ($a['tipo'] === $tipo) {
-                    $previo = $a;
-                    break;
+            $previo = $this->model->obtenerArchivoPorTipo($idArrendador, $tipo);
+            if ($previo && !empty($previo['s3_key'])) {
+                try {
+                    $s3->deleteFile($previo['s3_key']);
+                } catch (\Throwable $e) {
+                    error_log('⚠️ No se pudo borrar archivo previo de S3: ' . $e->getMessage());
                 }
             }
 
-            // Si existe previo → borrar en Dynamo + S3
-            $replaceMode = false;
-            if ($previo) {
-                $replaceMode = true;
-                $oldSk  = $previo['sk'];
-                $oldKey = $previo['s3_key'];
-
-                // Borrar de Dynamo (item independiente)
-                try {
-                    $client->deleteItem([
-                        'TableName' => $table,
-                        'Key' => [
-                            'pk' => ['S' => "arr#{$idArrendador}"],
-                            'sk' => ['S' => $oldSk]
-                        ]
-                    ]);
-                } catch (\Exception $e) {
-                    error_log("⚠️ No se pudo borrar de Dynamo: " . $e->getMessage());
-                }
-
-                // Borrar de S3
-                try {
-                    $s3->deleteFile($oldKey);
-                } catch (\Exception $e) {
-                    error_log("⚠️ No se pudo borrar de S3: " . $e->getMessage());
-                }
-            }
-
-            // Subir nuevo archivo a S3
             $okUpload = $s3->uploadFileWithKey($_FILES['archivo'], $nuevoKey);
             if (!$okUpload) {
                 echo json_encode(['ok' => false, 'error' => 'No se pudo subir a S3']);
                 return;
             }
 
-            // Guardar nuevo archivo como item independiente
-            $newFileId = "arrfile#" . uniqid();
-            $client->putItem([
-                'TableName' => $table,
-                'Item' => [
-                    'pk'           => ['S' => "arr#{$idArrendador}"],
-                    'sk'           => ['S' => $newFileId],
-                    'tipo'         => ['S' => $tipo],
-                    's3_key'       => ['S' => $nuevoKey],
-                    'fecha_subida' => ['S' => date('Y-m-d H:i:s')],
-                ]
-            ]);
-
-            // 🔹 Actualizar profile.archivos_ids
-            if ($replaceMode) {
-                // Traer lista actualizada de Dynamo
-                $result = $client->getItem([
-                    'TableName' => $table,
-                    'Key' => [
-                        'pk' => ['S' => "arr#{$idArrendador}"],
-                        'sk' => ['S' => 'profile']
-                    ]
-                ]);
-
-                $currentIds = [];
-                if (!empty($result['Item']['archivos_ids']['L'])) {
-                    foreach ($result['Item']['archivos_ids']['L'] as $id) {
-                        $currentIds[] = $id['S'];
-                    }
-                }
-
-                // Quitar el viejo SK y agregar el nuevo
-                $currentIds = array_values(
-                    array_filter($currentIds, fn($id) => $id !== $previo['sk'])
-                );
-                $currentIds[] = $newFileId;
-
-                // SET con lista completa corregida
-                $client->updateItem([
-                    'TableName' => $table,
-                    'Key' => [
-                        'pk' => ['S' => "arr#{$idArrendador}"],
-                        'sk' => ['S' => 'profile']
-                    ],
-                    'UpdateExpression' => 'SET archivos_ids = :ids',
-                    'ExpressionAttributeValues' => [
-                        ':ids' => ['L' => array_map(fn($id) => ['S' => $id], $currentIds)]
-                    ]
-                ]);
-            } else {
-                // Nuevo archivo → usar append
-                $client->updateItem([
-                    'TableName' => $table,
-                    'Key' => [
-                        'pk' => ['S' => "arr#{$idArrendador}"],
-                        'sk' => ['S' => 'profile']
-                    ],
-                    'UpdateExpression' => 'SET archivos_ids = list_append(if_not_exists(archivos_ids, :empty), :new)',
-                    'ExpressionAttributeValues' => [
-                        ':new'   => ['L' => [['S' => $newFileId]]],
-                        ':empty' => ['L' => []]
-                    ]
-                ]);
-            }
+            $this->model->guardarArchivo($idArrendador, $tipo, $nuevoKey);
 
             echo json_encode(['ok' => true, 's3_key' => $nuevoKey]);
         } catch (\Throwable $e) {
@@ -264,10 +164,10 @@ class ArrendadorController
         header('Content-Type: application/json');
 
         try {
-            $idArrendador = $_POST['id_arrendador'] ?? null;
-            $tipo         = $_POST['tipo'] ?? null;
+            $idArrendador = isset($_POST['id_arrendador']) ? (int)$_POST['id_arrendador'] : 0;
+            $tipo         = trim((string)($_POST['tipo'] ?? ''));
 
-            if (!$idArrendador || !$tipo) {
+            if ($idArrendador <= 0 || $tipo === '') {
                 echo json_encode(['ok' => false, 'error' => 'Datos incompletos']);
                 return;
             }
@@ -351,7 +251,7 @@ class ArrendadorController
     }
 
     /**
-     * Actualiza comentarios (Dynamo)
+     * Actualiza comentarios (MySQL)
      */
     public function actualizarComentarios(): void
     {
