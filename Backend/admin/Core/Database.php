@@ -9,7 +9,7 @@ use PDOException;
  * Clase base de conexión a MySQL usando PDO.
  *
  * Características:
- * - Lee configuración desde admin/config/credentials.local.php
+ * - Lee configuración desde admin/config/credentials.php (auto fallback a credentials.local.php o variables de entorno)
  * - Charset utf8mb4.
  * - Prepares nativos (ATTR_EMULATE_PREPARES = false).
  * - Helpers para consultas, transacciones y lastInsertId.
@@ -45,8 +45,13 @@ class Database
      */
     protected function getConnection(): PDO
     {
-        $credentials = require __DIR__ . '/../config/credentials.local.php';
-        $dbConfig    = $credentials['database'] ?? [];
+        $credentials = require __DIR__ . '/../config/credentials.php';
+
+        if (!is_array($credentials)) {
+            throw new PDOException('El archivo de credenciales debe retornar un arreglo PHP.');
+        }
+
+        $dbConfig = $credentials['database'] ?? [];
 
         $host    = (string) ($dbConfig['host'] ?? 'localhost');
         $port    = (string) ($dbConfig['port'] ?? '3306');
