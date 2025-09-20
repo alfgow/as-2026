@@ -5,7 +5,6 @@ namespace App\Models;
 require_once __DIR__ . '/../Core/Database.php';
 use App\Core\Database;
 use PDO;
-use PDOException;
 
 /**
  * Modelo Financiero
@@ -34,25 +33,6 @@ class FinancieroModel extends Database
        ========================================================== */
 
     /**
-     * Compat: resumen por "mes" en formato 'mm YYYY'.
-     * Recomendación: usar obtenerResumenPorAnioMes().
-     *
-     * @return array{total_mes:string|float|null, polizas_mes:string|int|null}
-     */
-    public function obtenerResumenMensual(string $mes): array
-    {
-        $sql = "SELECT
-                    COALESCE(SUM(ganancia_neta),0) AS total_mes,
-                    COUNT(*)                       AS polizas_mes
-                FROM ventasvillanuevagarcia
-                WHERE mes_venta = ?";
-        $stmt = $this->db->prepare($sql);
-        $stmt->execute([$mes]);
-        $row = $stmt->fetch(PDO::FETCH_ASSOC);
-        return $row ?: ['total_mes' => 0, 'polizas_mes' => 0];
-    }
-
-    /**
      * Recomendado: resumen por año/mes usando fecha_venta.
      * @return array{total_mes:float, polizas_mes:int}
      */
@@ -74,13 +54,13 @@ class FinancieroModel extends Database
     }
 
     /**
-     * Ingresos anuales (usa year_venta explícito).
+     * Ingresos anuales usando fecha_venta como fuente de verdad.
      */
     public function obtenerIngresosAnuales(string $anio): float
     {
         $sql = "SELECT COALESCE(SUM(ganancia_neta),0) AS total_anual
                 FROM ventasvillanuevagarcia
-                WHERE year_venta = :y";
+                WHERE YEAR(fecha_venta) = :y";
         $stmt = $this->db->prepare($sql);
         $stmt->execute([':y' => $anio]);
         $resultado = $stmt->fetch(PDO::FETCH_ASSOC) ?: ['total_anual' => 0];
@@ -107,28 +87,6 @@ class FinancieroModel extends Database
         $stmt = $this->db->prepare($sql);
         $stmt->execute([':y' => $anio]);
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
-    }
-
-    /**
-     * Sumatorias por canal (Arrendamiento Seguro vs. otros) para un "mes" ('mm YYYY').
-     * Recomendado: usar variante por año/mes (ver abajo).
-     */
-    public function obtenerSumatoriasPorCanal(string $mes): array
-    {
-        $sql = "SELECT
-                    COALESCE(SUM(CASE WHEN canal_venta = 'Arrendamiento Seguro'
-                        THEN ganancia_neta ELSE 0 END),0) AS total_arrendamiento,
-                    COALESCE(SUM(CASE WHEN canal_venta <> 'Arrendamiento Seguro'
-                        THEN ganancia_neta ELSE 0 END),0) AS total_inmobiliaria
-                FROM ventasvillanuevagarcia
-                WHERE mes_venta = :mes";
-        $stmt = $this->db->prepare($sql);
-        $stmt->execute([':mes' => $mes]);
-        $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: ['total_arrendamiento' => 0, 'total_inmobiliaria' => 0];
-        return [
-            'total_arrendamiento' => (float)$row['total_arrendamiento'],
-            'total_inmobiliaria'  => (float)$row['total_inmobiliaria'],
-        ];
     }
 
     /**
