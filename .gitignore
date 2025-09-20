@@ -1,8 +1,70 @@
-vendor/
-*.zip
-.env
-config/
-config/*
-output/
+# --- Dependencias ---
+/vendor/
+/node_modules/
+/aws-sdk-php/
+/Backend/admin/aws-sdk-php/
 
+# --- Archivos sensibles ---
+.env
+.env.local
+.env.*.local
+Backend/admin/config/credentials.local.php
+Backend/admin/config/credentials.php
+
+# --- Archivos de configuración que sí se versionan ---
+# (Ejemplo: awsconfig.php, s3config.php, etc. SÍ suben al repo)
+
+# --- Archivos temporales / salida ---
+*.zip
+*.log
+*.cache
+*.lock
+*.tmp
+*.swp
+*.swo
+*.bak
+*.DS_Store
+Thumbs.db
+output/
 assets/json.json
+
+# --- Configuración de IDE ---
+.vscode/
+.idea/
+*.code-workspace
+
+# --- Docker / contenedores ---
+/docker-compose.override.yml
+/.docker
+/.dockerignore
+*.pid
+
+# --- Codex / playgrounds / experimentos ---
+codex-playground/
+playground/
+tmp/
+sandbox/
+admin/migration/
+
+# --- Archivos de compilación o binarios ---
+*.so
+*.out
+*.exe
+*.dll
+*.class
+*.jar
+
+# --- PHPUnit / coverage ---
+/phpunit.xml
+/phpunit.xml.dist
+/coverage/
+/.phpunit.result.cache
+
+# --- Composer ---
+/composer.lock
+/composer.phar
+
+# --- Cachés de PHP ---
+/Backend/storage/cache/
+/Backend/storage/logs/
+/Backend/storage/framework/sessions/

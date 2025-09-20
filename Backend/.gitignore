@@ -1,17 +1,21 @@
-# Credenciales locales (no versionar)
-admin/config/credentials.local.php
-admin/migration/
-codex-playground/
-.vscode/
-
-# --- Sistema base ---
+# --- Dependencias ---
 /vendor/
 /node_modules/
-/.env
+/aws-sdk-php/
+/Backend/admin/aws-sdk-php/
+
+# --- Archivos sensibles ---
+.env
 .env.local
 .env.*.local
+Backend/admin/config/credentials.local.php
+Backend/admin/config/credentials.php
 
-# --- Archivos temporales ---
+# --- Archivos de configuración que sí se versionan ---
+# (Ejemplo: awsconfig.php, s3config.php, etc. SÍ suben al repo)
+
+# --- Archivos temporales / salida ---
+*.zip
 *.log
 *.cache
 *.lock
@@ -21,6 +25,8 @@ codex-playground/
 *.bak
 *.DS_Store
 Thumbs.db
+output/
+assets/json.json
 
 # --- Configuración de IDE ---
 .vscode/
@@ -38,6 +44,7 @@ codex-playground/
 playground/
 tmp/
 sandbox/
+admin/migration/
 
 # --- Archivos de compilación o binarios ---
 *.so
@@ -56,11 +63,6 @@ sandbox/
 # --- Composer ---
 /composer.lock
 /composer.phar
-
-# --- AWS SDK / Credenciales ---
-/aws-sdk-php/
-config/awsconfig.php
-config/s3config.php
 
 # --- Cachés de PHP ---
 /Backend/storage/cache/
