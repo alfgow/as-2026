@@ -5,6 +5,37 @@ $appUrl = $credentials['app']['url'] ?? 'https://crm.arrendamientoseguro.app';
 
 define('APP_URL', $appUrl);
 
+if (!function_exists('admin_base_url')) {
+    function admin_base_url(string $path = ''): string
+    {
+        static $baseUrl;
+
+        if ($baseUrl === null) {
+            $envBaseUrl = getenv('ADMIN_BASE_URL');
+
+            if ($envBaseUrl !== false) {
+                $envBaseUrl = trim($envBaseUrl);
+            }
+
+            if (!empty($envBaseUrl)) {
+                $baseUrl = $envBaseUrl;
+            } elseif (defined('APP_URL') && APP_URL !== '') {
+                $baseUrl = APP_URL;
+            } else {
+                $baseUrl = '/as-2026/Backend/admin';
+            }
+        }
+
+        $normalizedBase = rtrim($baseUrl, '/');
+
+        if ($path === '') {
+            return $normalizedBase;
+        }
+
+        return $normalizedBase . '/' . ltrim($path, '/');
+    }
+}
+
 $aws = $credentials['aws'] ?? [];
 $ses = $aws['ses'] ?? [];
 
