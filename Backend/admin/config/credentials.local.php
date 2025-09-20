@@ -1,0 +1,48 @@
+<?php
+return [
+    'app' => [
+        'url' => 'https://tu-dominio.com',
+    ],
+    'database' => [
+        'host'     => '',
+        'port'     => 3306,
+        'name'     => '',
+        'user'     => '',
+        'password' => '',
+        'charset'  => '',
+        'ssl_ca'   => null,
+    ],
+    'aws' => [
+        // Claves globales por defecto. Puedes sobreescribirlas por servicio.
+        'access_key' => '',
+        'secret_key' => '',
+        's3' => [
+            'inquilinos' => [
+                'bucket' => '',
+                'region' => '',
+            ],
+            'arrendadores' => [
+                'bucket' => '',
+                'region' => '',
+            ],
+            'blog' => [
+                'bucket' => '',
+                'region' => '',
+            ],
+        ],
+        'bedrock' => [
+            'region'                => '',
+            'model_id'             => '',
+            'guardrail_identifier' => '',
+            'guardrail_version'    => '1',
+        ],
+        'ses' => [
+            'region' => '',
+            'sender' => '',
+            'reply_to' => '',
+        ],
+    ],
+    'verificamex' => [
+        'token' => '',
+    ],
+];

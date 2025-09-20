@@ -8,7 +8,11 @@
 .env
 .env.local
 .env.*.local
-Backend/admin/config/credentials.local.php
+
+# Ignorar el archivo pero permitir la versión inicial vacía
+/Backend/admin/config/credentials.local.php
+!/Backend/admin/config/credentials.local.php
+
 
 
 # --- Archivos de configuración que sí se versionan ---
