@@ -1,5 +1,18 @@
+<?php
+$adminIdentityBase = '/';
+if (function_exists('admin_url')) {
+    $adminIdentityBase = admin_url();
+} elseif (function_exists('admin_base_url')) {
+    $adminIdentityBase = admin_base_url();
+}
+
+$adminIdentityBase = rtrim((string) $adminIdentityBase, '/');
+if ($adminIdentityBase === '') {
+    $adminIdentityBase = '/';
+}
+?>
 <section class="relative min-h-screen flex items-center justify-center bg-white/5 backdrop-blur-md border border-white/20 rounded-2xl shadow-[0_8px_32px_0_rgba(31,38,135,0.37)] py-8 md:py-16 px-2">
-    <input type="hidden" id="baseUrl" value="<?= $baseUrl ?>">
+    <input type="hidden" id="baseUrl" value="<?= htmlspecialchars($adminIdentityBase, ENT_QUOTES, 'UTF-8') ?>">
   <!-- Fondo visual animado -->
   <div class="absolute inset-0 -z-10">
     <div class="absolute left-0 top-1/2 -translate-y-1/2 w-48 h-48 bg-indigo-900/30 blur-3xl rounded-full"></div>
@@ -149,4 +162,4 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-<script src="<?= $baseUrl ?>/assets/validacionIdentidad.js"></script>
+<script src="<?= asset_url('validacionIdentidad.js') ?>"></script>

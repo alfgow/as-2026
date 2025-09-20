@@ -11,7 +11,22 @@ const ineReverso = document.getElementById("ineReverso");
 const selfie = document.getElementById("selfie");
 const btnValidar = document.getElementById("btn-validar-identidad");
 const resultados = document.getElementById("resultadosValidacion");
-const baseUrl = document.getElementById("baseUrl").value;
+const baseUrlInput = document.getElementById("baseUrl");
+const baseUrl = baseUrlInput ? baseUrlInput.value : '';
+const identityAdminBase = (window.ADMIN_BASE || window.baseUrl || baseUrl || '').replace(/\/$/, '');
+const joinIdentityAdminUrl = (path = '') => {
+        const normalizedPath = path
+                ? path.startsWith('/')
+                        ? path
+                        : `/${path}`
+                : '';
+
+        if (!identityAdminBase) {
+                return normalizedPath || '/';
+        }
+
+        return `${identityAdminBase}${normalizedPath}`;
+};
 
 // --- Modal de imagen fullscreen ---
 window.abrirModalImagen = function (src, titulo) {
@@ -88,10 +103,9 @@ function archivoPresenteOImagenDemo(input, previewId) {
 	const imagenCargada = preview?.src?.length > 0;
 	return !!fileCargado || imagenCargada;
 }
-const BASE_URL = "http://localhost/as-2026/Backend/admin" ?? "/";
 // --- Simula validación con archivo local json.json ---
 async function validarSimulado() {
-	const response = await fetch(`${BASE_URL}/assets/json.json`);
+        const response = await fetch(joinIdentityAdminUrl('assets/json.json'));
 
 	if (!response.ok) throw new Error("No se pudo cargar json.json");
 	const json = await response.json();

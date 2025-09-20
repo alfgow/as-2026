@@ -6,7 +6,7 @@ $s3 = new S3Helper('blog');
 
 <div class="flex justify-between items-center mb-6">
     <h1 class="text-2xl font-bold">Entradas del Blog</h1>
-    <a href="/as-2026/Backend/admin/blog/create"
+    <a href="<?= admin_url('blog/create') ?>"
        class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded shadow">
         + Nueva Entrada
     </a>
@@ -42,7 +42,8 @@ $s3 = new S3Helper('blog');
                     ?>
                 </div>
                 <div class="mt-auto flex gap-2">
-                    <a href="/as-2026/Backend/admin/blog/edit?id=<?= $post['id'] ?>"
+                    <?php $postId = (string)($post['id'] ?? ''); ?>
+                    <a href="<?= admin_url('blog/edit') . '?id=' . urlencode($postId) ?>"
                        class="flex-1 text-center py-1.5 bg-indigo-600 hover:bg-indigo-700 rounded text-white text-sm transition">Editar</a>
                     <!-- Si quieres eliminar, añade aquí -->
                     <!--
