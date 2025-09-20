@@ -36,15 +36,14 @@ class FinancieroController
         }
 
         // Ej: compats legadas
-        $mesConsulta  = date('m Y', strtotime($mesSeleccionado)); // "07 2025"
         $anioConsulta = (int)date('Y', strtotime($mesSeleccionado));
         $mesNumerico  = (int)date('m', strtotime($mesSeleccionado));
 
         // --- Consultas al modelo ---
         $ingresosPorMesRaw   = $this->model->obtenerIngresosPorMes((string)$anioConsulta) ?? [];
-        $resumen             = $this->model->obtenerResumenMensual($mesConsulta) ?? ['total_mes' => 0, 'polizas_mes' => 0];
+        $resumen             = $this->model->obtenerResumenPorAnioMes($anioConsulta, $mesNumerico) ?? ['total_mes' => 0, 'polizas_mes' => 0];
         $ingresosAcumulados  = $this->model->obtenerIngresosAnuales((string)$anioConsulta) ?? 0.0;
-        $sumatorias          = $this->model->obtenerSumatoriasPorCanal($mesConsulta) ?? ['total_arrendamiento' => 0, 'total_inmobiliaria' => 0];
+        $sumatorias          = $this->model->obtenerSumatoriasPorCanalAnioMes($anioConsulta, $mesNumerico) ?? ['total_arrendamiento' => 0, 'total_inmobiliaria' => 0];
 
         // --- Variables planas para la vista ---
         $ingresosMes        = (float)($resumen['total_mes'] ?? 0);
