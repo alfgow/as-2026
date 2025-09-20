@@ -190,28 +190,49 @@ use App\Helpers\TextHelper;
                     $nombreInquilino = $v['nombre_inquilino_completo'] ?? '—';
                     $direccion       = $v['direccion_inmueble'] ?? '—';
 
-                    // Construye fecha usando día 1 por defecto
-                    $mes  = str_pad((string)($v['mes_vencimiento'] ?? ''), 2, '0', STR_PAD_LEFT);
-                    $anio = (string)($v['year_vencimiento'] ?? '');
-                    $fechaVencimientoStr = "{$anio}-{$mes}-01";
-
-                    // Días restantes
-                    try {
-                        $fechaVencimiento = new DateTime($fechaVencimientoStr);
-                        $hoy = new DateTime();
-                        $dias = $hoy->diff($fechaVencimiento)->days;
-                        if ($fechaVencimiento < $hoy) {
-                            $dias = '-' . $dias;
+                    $fechaVencimiento = null;
+                    if (!empty($v['fecha_fin'])) {
+                        try {
+                            $fechaVencimiento = new DateTime((string)$v['fecha_fin']);
+                        } catch (\Throwable $e) {
+                            $fechaVencimiento = null;
                         }
-                    } catch (\Throwable $e) {
-                        $fechaVencimientoStr = 'Fecha inválida';
+                    }
+
+                    if ($fechaVencimiento === null) {
+                        $mes  = $v['mes_vencimiento'] ?? '';
+                        $anio = $v['year_vencimiento'] ?? '';
+
+                        if ($mes !== '' && $anio !== '') {
+                            $mesFormateado = str_pad((string)$mes, 2, '0', STR_PAD_LEFT);
+                            $fechaConstruida = sprintf('%s-%s-01', (string)$anio, $mesFormateado);
+
+                            try {
+                                $fechaVencimiento = new DateTime($fechaConstruida);
+                            } catch (\Throwable $e) {
+                                $fechaVencimiento = null;
+                            }
+                        }
+                    }
+
+                    if ($fechaVencimiento instanceof DateTimeInterface) {
+                        $fechaFormateada = TextHelper::titleCase($fechaVencimiento->format('d/m/Y'));
+                        $hoy = new DateTime();
+                        $diasRestantes = $hoy->diff($fechaVencimiento)->days;
+                        if ($fechaVencimiento < $hoy) {
+                            $dias = '-' . $diasRestantes;
+                        } else {
+                            $dias = (string)$diasRestantes;
+                        }
+                    } else {
+                        $fechaFormateada = '—';
                         $dias = '—';
                     }
                     ?>
                     <tr class="border-b border-gray-700 hover:bg-gray-700 transition">
                         <td class="py-2 px-4"><?= TextHelper::titleCase((string)$nombreInquilino) ?></td>
                         <td class="py-2 px-4"><?= TextHelper::titleCase((string)$direccion) ?></td>
-                        <td class="py-2 px-4"><?= TextHelper::titleCase(date('d/m/Y', strtotime($fechaVencimientoStr))) ?></td>
+                        <td class="py-2 px-4"><?= htmlspecialchars($fechaFormateada) ?></td>
                         <td class="py-2 px-4">
                             <span class="px-3 py-1 rounded-full bg-red-600 bg-opacity-20 text-red-500 text-xs font-bold">
                                 <?= htmlspecialchars((string)$dias) ?>
