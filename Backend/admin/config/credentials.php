@@ -11,7 +11,7 @@ if (file_exists($localFile)) {
 
 return [
     'app' => [
-        'url' => getenv('APP_URL') ?: 'https://crm.arrendamientoseguro.app',
+        'url' => getenv('APP_URL') ?: null,
     ],
     'database' => [
         'host'     => getenv('DB_HOST') ?: 'localhost',
