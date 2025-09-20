@@ -32,7 +32,7 @@
     La página que buscas no existe, fue movida o nunca estuvo aquí.<br>
     Regresa al panel y sigue explorando.
   </p>
-  <a href="/as-2026/Backend/admin/dashboard"
+  <a href="<?= admin_url('dashboard') ?>"
     class="inline-block px-8 py-3 rounded-2xl bg-[var(--rosa-fuerte)] text-white font-semibold shadow-xl hover:bg-[var(--rosa-acento)] hover:text-[var(--texto-oscuro)] focus:outline-none focus:ring-2 focus:ring-[var(--rosa-fuerte)] focus:ring-offset-2
     transition-all duration-200 animate-bounce">
     Volver al Dashboard

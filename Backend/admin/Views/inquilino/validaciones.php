@@ -11,9 +11,27 @@ $nombreCompleto = trim(
 $nombre = $h($nombreCompleto ?: 'Nombre Apellido');
 $slug    = $h($inquilino['slug'] ?? 'slug-ejemplo');
 $idInq   = (int)($inquilino['id'] ?? 0);
-$ADMIN_BASE = $admin_base_url ?? '/as-2026/Backend/admin';
+$helperBaseUrl = null;
+if (function_exists('admin_base_url')) {
+    $helperBaseUrl = admin_base_url();
+} elseif (function_exists('admin_url')) {
+    $helperBaseUrl = admin_url();
+}
+
+if (!is_string($helperBaseUrl) || trim($helperBaseUrl) === '') {
+    $helperBaseUrl = '/';
+}
+
+$ADMIN_BASE = $admin_base_url ?? $helperBaseUrl;
 if (!is_string($ADMIN_BASE) || trim($ADMIN_BASE) === '') {
-    $ADMIN_BASE = '/as-2026/Backend/admin';
+    $ADMIN_BASE = $helperBaseUrl;
+}
+
+$ADMIN_BASE = rtrim($ADMIN_BASE, '/');
+$resolvedBaseUrl = $baseUrl ?? $helperBaseUrl;
+$resolvedBaseUrl = rtrim((string) $resolvedBaseUrl, '/');
+if ($resolvedBaseUrl === '') {
+    $resolvedBaseUrl = '/';
 }
 $idInquilino = (int)($inquilino['id'] ?? $idInquilino ?? 0);
 $apP         = $inquilino['apellidop_inquilino'] ?? '';
@@ -773,8 +791,8 @@ function chipColor($valor)
     </div>
     <script>
         // Contexto global de validaciones
-        window.baseUrl = <?= json_encode($baseUrl ?? '/as-2026/Backend/admin') ?>;
-        window.ADMIN_BASE = <?= json_encode($ADMIN_BASE ?? '/as-2026/Backend/admin') ?>;
+        window.baseUrl = <?= json_encode($resolvedBaseUrl) ?>;
+        window.ADMIN_BASE = <?= json_encode($ADMIN_BASE) ?>;
 
         // 👇 aseguramos que siempre se definan correctamente
         window.ID_INQ = <?= (int)($inquilino['id'] ?? 0) ?>;
@@ -789,14 +807,14 @@ function chipColor($valor)
         };
     </script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-    <script src="<?= $baseUrl ?>/assets/validaciones-core.js"></script>
-    <script src="<?= $baseUrl ?>/assets/validaciones-archivos.js"></script>
-    <script src="<?= $baseUrl ?>/assets/validaciones-rostro.js"></script>
-    <script src="<?= $baseUrl ?>/assets/validaciones-identidad.js"></script>
-    <script src="<?= $baseUrl ?>/assets/validaciones-pago.js"></script>
-    <script src="<?= $baseUrl ?>/assets/validaciones-modal.js"></script>
-    <script src="<?= $baseUrl ?>/assets/validaciones-botones.js"></script>
-    <script src="<?= $baseUrl ?>/assets/validaciones-demandas.js"></script>
+    <script src="<?= asset_url('validaciones-core.js') ?>"></script>
+    <script src="<?= asset_url('validaciones-archivos.js') ?>"></script>
+    <script src="<?= asset_url('validaciones-rostro.js') ?>"></script>
+    <script src="<?= asset_url('validaciones-identidad.js') ?>"></script>
+    <script src="<?= asset_url('validaciones-pago.js') ?>"></script>
+    <script src="<?= asset_url('validaciones-modal.js') ?>"></script>
+    <script src="<?= asset_url('validaciones-botones.js') ?>"></script>
+    <script src="<?= asset_url('validaciones-demandas.js') ?>"></script>
     <script>
         (function() {
             const modal = document.getElementById('archivo-preview-modal');
