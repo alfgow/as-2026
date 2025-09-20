@@ -47,29 +47,22 @@ class InmuebleController
     }
 
     /**
-     * Listado con búsqueda y paginación básica
+     * Vista principal con buscador de inmuebles.
      */
     public function index(): void
     {
-        $porPagina = 10;
-        $pagina = isset($_GET['page']) ? max(1, (int)$_GET['page']) : 1;
-        $token = isset($_GET['token']) ? trim((string) $_GET['token']) : null;
-
-        $query = trim((string)($_GET['q'] ?? ''));
+        $query = trim((string) ($_GET['q'] ?? ''));
+        $resultado = ['items' => [], 'consumedCapacity' => 0.0];
 
         if ($query !== '') {
-            $resultado = $this->model->buscarPaginaDynamo($query, $porPagina, $token);
-        } else {
-            $resultado = $this->model->obtenerPaginaDynamo($porPagina, $token);
+            $resultado = $this->model->buscarPorDireccion($query);
         }
 
         $inmuebles = $resultado['items'] ?? [];
-        $hasMore = (bool) ($resultado['hasMore'] ?? false);
-        $nextToken = $resultado['nextToken'] ?? null;
         $rcuUsed = (float) ($resultado['consumedCapacity'] ?? 0.0);
 
         $title = 'Inmuebles - AS';
-        $headerTitle = 'Listado de inmuebles';
+        $headerTitle = 'Inmuebles';
         $contentView = __DIR__ . '/../Views/inmuebles/index.php';
         include __DIR__ . '/../Views/layouts/main.php';
     }

@@ -1,178 +1,116 @@
-<div class="flex justify-between items-center mb-6">
-    <h1 class="text-2xl font-bold text-indigo-200">Inmuebles</h1>
-    <a href="<?= $baseUrl ?>/inmuebles/crear" class="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white shadow">
-        Nuevo
-    </a>
-</div>
+<div class="flex flex-col items-center justify-center mt-16">
+    <h1 class="text-3xl font-bold text-indigo-200 mb-6">Inmuebles</h1>
 
-<!-- Buscador de inmuebles -->
-<form method="get" action="<?= $baseUrl ?>/inmuebles" class="mb-6 flex flex-wrap gap-4 items-center">
-    <input
-        type="text"
-        name="q"
-        placeholder="Buscar dirección o arrendador"
-        value="<?= htmlspecialchars($_GET['q'] ?? '') ?>"
-        class="w-full sm:w-64 px-3 py-2 rounded-lg bg-[#232336] border border-indigo-800 placeholder-indigo-400 text-indigo-100"
-    />
-    <button class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg">Buscar</button>
-</form>
+    <form method="get" action="<?= $baseUrl ?>/inmuebles" class="flex flex-wrap gap-4 justify-center mb-10">
+        <input
+            type="text"
+            name="q"
+            placeholder="Buscar dirección, colonia o arrendador"
+            value="<?= htmlspecialchars($_GET['q'] ?? '') ?>"
+            class="w-80 px-4 py-2 rounded-lg bg-[#232336] border border-indigo-800 placeholder-indigo-400 text-indigo-100 text-center"
+            autofocus />
+        <button class="px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg shadow transition">
+            Buscar
+        </button>
+    </form>
 
-<div class="overflow-x-auto bg-white/5 backdrop-blur-md border border-white/20 rounded-2xl">
-    <table class="min-w-full text-sm divide-y divide-gray-700">
-        <thead class="bg-[#232336] text-indigo-200">
-            <tr>
-                <th class="px-4 py-3 text-left">Dirección</th>
-                <th class="px-4 py-3">Tipo</th>
-                <th class="px-4 py-3">Renta</th>
-                <th class="px-4 py-3">Arrendador</th>
-                <th class="px-4 py-3">Asesor</th>
-                <th class="px-4 py-3">Fecha</th>
-                <th class="px-4 py-3">Acciones</th>
-            </tr>
-        </thead>
-        <tbody class="divide-y divide-gray-700 text-indigo-100">
-            <?php if (empty($inmuebles)): ?>
-                <tr>
-                    <td colspan="7" class="px-4 py-6 text-center text-indigo-200">No se encontraron inmuebles.</td>
-                </tr>
-            <?php else: ?>
-                <?php foreach ($inmuebles as $inm): ?>
-                    <?php
-                        $pk = (string)($inm['pk'] ?? '');
-                        $sk = (string)($inm['sk'] ?? '');
+    <div class="w-full max-w-6xl px-4">
+        <?php if (!empty($_GET['q'])): ?>
+            <?php if (!empty($inmuebles)): ?>
+                <div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                    <?php foreach ($inmuebles as $inmueble): ?>
+                        <?php
+                            $pk = (string)($inmueble['pk'] ?? '');
+                            $sk = (string)($inmueble['sk'] ?? '');
+                            $legacyId = isset($inmueble['id']) ? (string)$inmueble['id'] : '';
 
-                        $legacyId = isset($inm['id']) ? (string)$inm['id'] : '';
-                        $rowKey = ($pk !== '' && $sk !== '') ? md5($pk . '|' . $sk) : $legacyId;
-                        if ($rowKey === '') {
-                            $rowKey = md5(json_encode($inm));
-                        }
-                        $rowId = 'row-' . $rowKey;
-                        $verUrl = ($pk !== '' && $sk !== '')
-                            ? $baseUrl . '/inmuebles/' . rawurlencode($pk) . '/' . rawurlencode($sk)
-                            : $baseUrl . '/inmuebles/' . $legacyId;
-                        $editUrl = ($pk !== '' && $sk !== '')
-                            ? $baseUrl . '/inmuebles/editar/' . rawurlencode($pk) . '/' . rawurlencode($sk)
-                            : $baseUrl . '/inmuebles/editar/' . $legacyId;
-                    ?>
-                    <tr id="<?= htmlspecialchars($rowId, ENT_QUOTES, 'UTF-8') ?>">
+                            $verUrl = ($pk !== '' && $sk !== '')
+                                ? $baseUrl . '/inmuebles/' . rawurlencode($pk) . '/' . rawurlencode($sk)
+                                : ($legacyId !== '' ? $baseUrl . '/inmuebles/' . $legacyId : '#');
 
-                        <td class="px-4 py-2 whitespace-nowrap"><?= htmlspecialchars($inm['direccion_inmueble']) ?></td>
-                        <td class="px-4 py-2 text-center"><?= htmlspecialchars($inm['tipo']) ?></td>
-                        <td class="px-4 py-2 text-center">$<?= htmlspecialchars($inm['renta']) ?></td>
-                        <td class="px-4 py-2 text-center"><?= htmlspecialchars($inm['nombre_arrendador']) ?></td>
-                        <td class="px-4 py-2 text-center"><?= htmlspecialchars($inm['nombre_asesor']) ?></td>
-                        <td class="px-4 py-2 text-center">
-                            <?= date('d M Y, H:i', strtotime($inm['fecha_registro'])) ?>
-                        </td>
-                        <td class="px-4 py-2 text-center">
-                            <div class="flex gap-2 justify-center">
+                            $editarUrl = ($pk !== '' && $sk !== '')
+                                ? $baseUrl . '/inmuebles/editar/' . rawurlencode($pk) . '/' . rawurlencode($sk)
+                                : ($legacyId !== '' ? $baseUrl . '/inmuebles/editar/' . $legacyId : '#');
 
-                                <a href="<?= htmlspecialchars($verUrl, ENT_QUOTES, 'UTF-8') ?>" class="text-green-400 hover:text-green-300" title="Ver">
+                            $direccion = trim((string)($inmueble['direccion_inmueble'] ?? '')) ?: 'Sin dirección';
+                            $tipo = trim((string)($inmueble['tipo'] ?? ''));
+                            $renta = trim((string)($inmueble['renta'] ?? ''));
+                            $arrendador = trim((string)($inmueble['nombre_arrendador'] ?? ''));
+                            $asesor = trim((string)($inmueble['nombre_asesor'] ?? ''));
+                            $fecha = !empty($inmueble['fecha_registro'])
+                                ? date('d M Y, H:i', strtotime((string)$inmueble['fecha_registro']))
+                                : null;
+                        ?>
 
-                                    <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                        <path d="M15 12H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                    </svg>
-                                </a>
-
-                                <a href="<?= htmlspecialchars($editUrl, ENT_QUOTES, 'UTF-8') ?>" class="text-pink-400 hover:text-pink-300" title="Editar">
-
-                                    <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                        <path d="M11 5H6a2 2 0 00-2 2v12a2 2 0 002 2h12a2 2 0 002-2v-5M18.5 2.5a2.121 2.121 0 113 3L12 15l-4 1 1-4 9.5-9.5z" />
-                                    </svg>
-                                </a>
-
-                                <?php if ($pk !== '' && $sk !== ''): ?>
-                                <button
-                                    data-pk="<?= htmlspecialchars($pk, ENT_QUOTES, 'UTF-8') ?>"
-                                    data-sk="<?= htmlspecialchars($sk, ENT_QUOTES, 'UTF-8') ?>"
-                                    data-row-id="<?= htmlspecialchars($rowId, ENT_QUOTES, 'UTF-8') ?>"
-
-                                    class="btn-eliminar text-red-400 hover:text-red-300"
-                                    title="Eliminar"
-                                >
-                                    <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                        <path d="M6 18L18 6M6 6l12 12" />
-                                    </svg>
-                                </button>
+                        <div class="bg-white/5 backdrop-blur-md border border-white/20 rounded-2xl p-5 shadow flex flex-col gap-3">
+                            <div>
+                                <h3 class="text-lg font-bold text-indigo-200 mb-1">
+                                    <?= htmlspecialchars($direccion) ?>
+                                </h3>
+                                <?php if ($tipo !== ''): ?>
+                                    <p class="text-sm text-indigo-300">
+                                        Tipo: <span class="text-indigo-100"><?= htmlspecialchars($tipo) ?></span>
+                                    </p>
                                 <?php endif; ?>
                             </div>
-                        </td>
-                    </tr>
-                <?php endforeach; ?>
+
+                            <?php if ($arrendador !== '' || $asesor !== ''): ?>
+                                <div class="text-sm text-indigo-300 space-y-1">
+                                    <?php if ($arrendador !== ''): ?>
+                                        <p>Arrendador: <span class="text-indigo-100"><?= htmlspecialchars($arrendador) ?></span></p>
+                                    <?php endif; ?>
+                                    <?php if ($asesor !== ''): ?>
+                                        <p>Asesor: <span class="text-indigo-100"><?= htmlspecialchars($asesor) ?></span></p>
+                                    <?php endif; ?>
+                                </div>
+                            <?php endif; ?>
+
+                            <?php if ($renta !== ''): ?>
+                                <p class="text-sm text-indigo-300">
+                                    Renta mensual: <span class="text-indigo-100">$<?= htmlspecialchars($renta) ?></span>
+                                </p>
+                            <?php endif; ?>
+
+                            <?php if ($fecha): ?>
+                                <p class="text-xs text-indigo-400">Registrado el <?= htmlspecialchars($fecha) ?></p>
+                            <?php endif; ?>
+
+                            <div class="flex flex-wrap gap-3 pt-2">
+                                <?php if ($verUrl !== '#'): ?>
+                                    <a href="<?= htmlspecialchars($verUrl, ENT_QUOTES, 'UTF-8') ?>"
+                                        class="flex-1 text-center px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm shadow transition">
+                                        Ver detalle
+                                    </a>
+                                <?php endif; ?>
+                                <?php if ($editarUrl !== '#'): ?>
+                                    <a href="<?= htmlspecialchars($editarUrl, ENT_QUOTES, 'UTF-8') ?>"
+                                        class="flex-1 text-center px-4 py-2 bg-pink-500 hover:bg-pink-400 text-white rounded-lg text-sm shadow transition">
+                                        Editar
+                                    </a>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+                <?php if (!empty($rcuUsed)): ?>
+                    <p class="mt-6 text-xs text-indigo-300 text-center">
+                        RCU utilizadas en la búsqueda: <?= number_format((float)$rcuUsed, 2) ?>
+                    </p>
+                <?php endif; ?>
+            <?php else: ?>
+                <p class="text-indigo-300 text-center">No se encontraron inmuebles para la búsqueda.</p>
             <?php endif; ?>
-        </tbody>
-    </table>
-</div>
-
-
-<div class="mt-6 flex flex-col md:flex-row md:items-center md:justify-between gap-3 text-sm text-indigo-200">
-    <span>Página <?= (int)($pagina ?? 1) ?> · Mostrando <?= count($inmuebles) ?> de <?= (int)($porPagina ?? 10) ?> registros solicitados</span>
-    <span>RCU utilizadas en esta consulta: <?= number_format((float)($rcuUsed ?? 0), 2) ?></span>
-</div>
-
-<?php if (!empty($hasMore) && !empty($nextToken)): ?>
-    <?php
-        $queryParams = $_GET;
-        unset($queryParams['token'], $queryParams['page']);
-        $queryParams['token'] = $nextToken;
-        $queryParams['page'] = ($pagina ?? 1) + 1;
-        $nextUrl = $baseUrl . '/inmuebles?' . http_build_query($queryParams);
-    ?>
-    <div class="mt-6 flex justify-center">
-        <a href="<?= htmlspecialchars($nextUrl, ENT_QUOTES, 'UTF-8') ?>" class="px-6 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white shadow">
-            Cargar más inmuebles
-        </a>
+        <?php endif; ?>
     </div>
-<?php elseif (($pagina ?? 1) > 1): ?>
-    <p class="mt-6 text-center text-indigo-200">No hay más inmuebles para mostrar.</p>
-<?php endif; ?>
-
-
-
+</div>
 
 <script>
-    document.querySelectorAll('.btn-eliminar').forEach(btn => {
-        btn.addEventListener('click', () => {
-
-            const pk = btn.dataset.pk;
-            const sk = btn.dataset.sk;
-            const rowId = btn.dataset.rowId;
-            if (!pk || !sk) {
-                return;
-            }
-
-            Swal.fire({
-                title: '¿Eliminar inmueble?',
-                icon: 'warning',
-                showCancelButton: true,
-                confirmButtonColor: '#ef4444',
-                confirmButtonText: 'Sí, eliminar',
-                cancelButtonText: 'Cancelar',
-                background: '#1e1e2f',
-                color: '#fff'
-            }).then(res => {
-                if (res.isConfirmed) {
-                    fetch('<?= $baseUrl ?>/inmuebles/delete', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-
-                        body: 'pk=' + encodeURIComponent(pk) + '&sk=' + encodeURIComponent(sk)
-
-                    })
-                    .then(r => r.json())
-                    .then(data => {
-                        if (data.ok) {
-                            const row = document.getElementById(rowId);
-                            if (row) {
-                                row.remove();
-                            }
-                            Swal.fire('Eliminado', '', 'success');
-                        } else {
-                            Swal.fire('Error', 'No se pudo eliminar', 'error');
-                        }
-                    });
-                }
+    document.addEventListener('DOMContentLoaded', () => {
+        const form = document.querySelector('form[action$="/inmuebles"]');
+        if (form) {
+            form.addEventListener('submit', () => {
+                showLoader("Buscando inmuebles...");
             });
-        });
+        }
     });
 </script>
