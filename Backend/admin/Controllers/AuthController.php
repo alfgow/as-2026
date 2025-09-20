@@ -3,6 +3,8 @@
 namespace App\Controllers;
 
 require_once __DIR__ . '/../Helpers/url.php';
+require_once __DIR__ . '/../Helpers/SessionHelper.php';
+
 require_once __DIR__ . '/../Models/UserModel.php';
 
 use App\Models\UserModel;
@@ -55,11 +57,10 @@ class AuthController
 
     public function login()
     {
-        $this->startSessionIfNeeded();
+        \App\Helpers\SessionHelper::start(); // en vez de startSessionIfNeeded()
 
         if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-            // ⚠️ Si tu router mapea GET /login a este método, esto haría bucle.
-            // Asegúrate que GET /login → showLoginForm, POST /login → login
+            // ⚠️ Evitar bucle: solo POST debería entrar aquí
             $this->redirect('/login');
         }
 
@@ -75,9 +76,10 @@ class AuthController
         $loginUser = $userModel->findByUser($user);
 
         if ($loginUser && !empty($loginUser['password']) && password_verify($password, $loginUser['password'])) {
-            // 🔒 importante en login
+            // 🔒 seguridad: regenerar ID de sesión
             session_regenerate_id(true);
 
+            // Guardar datos mínimos del usuario
             $_SESSION['user'] = [
                 'id'            => $loginUser['id'],
                 'nombre'        => $loginUser['nombre_usuario'],
@@ -86,13 +88,20 @@ class AuthController
                 'corto_usuario' => $loginUser['corto_usuario'],
                 'email'         => $loginUser['mail_usuario'] ?? '',
             ];
+
+            // Flash de bienvenida
             $_SESSION['flash'] = '¡Bienvenido, ' . htmlspecialchars($loginUser['nombre_usuario']) . '!';
 
+            // Marcar hora de última actividad (importante para timeout)
+            $_SESSION['last_activity'] = time();
+
+            // Redirigir a la landing
             $this->redirect('/ia');
         } else {
             $this->showLoginForm('Credenciales incorrectas.');
         }
     }
+
 
     public function logout()
     {
