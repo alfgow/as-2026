@@ -53,12 +53,13 @@ class Database
 
         $dbConfig = $credentials['database'] ?? [];
 
-        $host    = (string) ($dbConfig['host'] ?? 'localhost');
-        $port    = (string) ($dbConfig['port'] ?? '3306');
-        $db      = (string) ($dbConfig['name'] ?? 'as-db');
-        $user    = (string) ($dbConfig['user'] ?? 'root');
-        $pass    = (string) ($dbConfig['password'] ?? '');
-        $charset = (string) ($dbConfig['charset'] ?? 'utf8mb4');
+        $host       = (string) ($dbConfig['host'] ?? 'localhost');
+        $port       = (string) ($dbConfig['port'] ?? '3306');
+        $db         = (string) ($dbConfig['name'] ?? 'as-db');
+        $user       = (string) ($dbConfig['user'] ?? 'root');
+        $pass       = (string) ($dbConfig['password'] ?? '');
+        $charsetRaw = (string) ($dbConfig['charset'] ?? 'utf8mb4');
+        $charset    = $this->sanitizeCharset($charsetRaw);
         $sslCa   = $dbConfig['ssl_ca'] ?? null; // Ruta al CA (ej. /etc/ssl/certs/rds-ca-2019-root.pem)
 
         $dsn = "mysql:host={$host};port={$port};dbname={$db};charset={$charset}";
@@ -140,5 +141,27 @@ class Database
         if ($this->db->inTransaction()) {
             $this->db->rollBack();
         }
+    }
+
+    private function sanitizeCharset(string $value): string
+    {
+        $trimmed = trim($value);
+
+        if ($trimmed === '') {
+            return 'utf8mb4';
+        }
+
+        $normalized = $trimmed;
+        $underscorePosition = strpos($normalized, '_');
+
+        if ($underscorePosition !== false) {
+            $normalized = substr($normalized, 0, $underscorePosition);
+        }
+
+        if ($normalized === '' || !ctype_alnum($normalized)) {
+            return 'utf8mb4';
+        }
+
+        return $normalized;
     }
 }
