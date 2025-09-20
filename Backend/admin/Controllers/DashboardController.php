@@ -29,6 +29,12 @@ AuthMiddleware::verificarSesion();
 
 class DashboardController
 {
+    public function __construct(
+        private readonly InquilinoModel $inquilinoModel = new InquilinoModel(),
+        private readonly PolizaModel $polizaModel = new PolizaModel(),
+    ) {
+    }
+
     /**
      * Muestra el Dashboard con KPIs, últimos inquilinos y vencimientos próximos.
      */
@@ -38,25 +44,34 @@ class DashboardController
         $title       = 'Dashboard - AS';
         $headerTitle = 'Panel de Control';
 
-        // ====== Modelos ======
-        $inquilinoModel = new InquilinoModel();
-        $polizaModel    = new PolizaModel();
-
         // ====== KPIs ======
-        // Total de inquilinos nuevos (status=1)
-        $totalInquilinosNuevos = (int) $inquilinoModel->contarInquilinosNuevos();
-
-        // Lista (máxima) de inquilinos nuevos con selfie desde S3
-        $inquilinosNuevos = (array) $inquilinoModel->getInquilinosNuevosConSelfie();
-
-        // Pólizas próximas a vencer
-        $vencimientosProximos = (array) $polizaModel->obtenerVencimientosProximos();
-
-        // Última póliza emitida (número de póliza o '0')
-        $ultimaPoliza = (string) $polizaModel->obtenerUltimaPolizaEmitida();
+        $totalInquilinosNuevos = $this->obtenerTotalInquilinosNuevos();
+        $inquilinosNuevos      = $this->obtenerInquilinosNuevosConSelfie();
+        $vencimientosProximos  = $this->obtenerVencimientosProximos();
+        $ultimaPoliza          = $this->obtenerUltimaPolizaEmitida();
 
         // ====== Render ======
         $contentView = __DIR__ . '/../Views/dashboard/index.php';
         include __DIR__ . '/../Views/layouts/main.php';
+    }
+
+    private function obtenerTotalInquilinosNuevos(): int
+    {
+        return (int) $this->inquilinoModel->contarInquilinosNuevos();
+    }
+
+    private function obtenerInquilinosNuevosConSelfie(): array
+    {
+        return (array) $this->inquilinoModel->getInquilinosNuevosConSelfie();
+    }
+
+    private function obtenerVencimientosProximos(): array
+    {
+        return (array) $this->polizaModel->obtenerVencimientosProximos();
+    }
+
+    private function obtenerUltimaPolizaEmitida(): string
+    {
+        return (string) $this->polizaModel->obtenerUltimaPolizaEmitida();
     }
 }
