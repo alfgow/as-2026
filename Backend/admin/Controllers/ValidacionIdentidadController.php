@@ -160,6 +160,8 @@ class ValidacionIdentidadController
             exit;
         }
 
+        $idInquilino = (int)($inquilino['id'] ?? 0);
+
         $nombreCompleto = trim(
             ($inquilino['nombre_inquilino'] ?? '') . ' ' .
                 ($inquilino['apellidop_inquilino'] ?? '') . ' ' .
@@ -171,15 +173,42 @@ class ValidacionIdentidadController
 
         // ✅ Generar presigned URLs para los archivos
         $archivos = $inquilino['archivos'] ?? [];
-        if (!empty($archivos)) {
-            foreach ($archivos as &$archivo) {
-                if (!empty($archivo['s3_key'])) {
-                    $archivo['url'] = $s3->getPresignedUrl($archivo['s3_key']);
-                }
-            }
-            unset($archivo);
-            $inquilino['archivos'] = $archivos;
+        if ($archivos === [] && $idInquilino > 0) {
+            $archivos = $inquilinoModel->obtenerArchivos($idInquilino);
         }
+
+        foreach ($archivos as &$archivo) {
+            if (!empty($archivo['s3_key'])) {
+                $archivo['url'] = $s3->getPresignedUrl($archivo['s3_key']);
+            }
+        }
+        unset($archivo);
+        $inquilino['archivos'] = $archivos;
+
+        // ✅ Normalizar validaciones desde MySQL
+        $validaciones = $inquilino['validaciones'] ?? [];
+        $validacionesData = [];
+        foreach ($validaciones as $tipo => $info) {
+            if (!is_array($info)) {
+                continue;
+            }
+
+            $payload = $info['json'] ?? [];
+            if (!is_array($payload)) {
+                $payload = [];
+            }
+
+            $validacionesData[$tipo] = [
+                'resumen'    => $info['resumen'] ?? null,
+                'payload'    => $payload,
+                'proceso'    => $info['proceso'] ?? null,
+                'updated_at' => $payload['updated_at']
+                    ?? $payload['fecha']
+                    ?? $payload['timestamp']
+                    ?? null,
+            ];
+        }
+        $inquilino['validaciones_data'] = $validacionesData;
 
         // Render directo (sin layout main)
         $contentView = __DIR__ . '/../Views/inquilino/validacion_identidad_resultado.php';
