@@ -3,7 +3,7 @@
   <h1 class="text-3xl font-bold text-indigo-200 mb-3">Nueva Entrada de Blog</h1>
   <p class="mb-7 text-indigo-400">Publica artículos con imágenes, categorías y contenido enriquecido. Optimiza para SEO.</p>
 
-  <form method="POST" action="<?= $baseUrl ?>/blog/store" enctype="multipart/form-data" class="bg-white/10 backdrop-blur-lg rounded-2xl shadow-2xl p-8 border border-indigo-900/20 space-y-7" id="blogForm">
+  <form method="POST" action="<?= admin_url('blog/store') ?>" enctype="multipart/form-data" class="bg-white/10 backdrop-blur-lg rounded-2xl shadow-2xl p-8 border border-indigo-900/20 space-y-7" id="blogForm">
 
     <!-- Título -->
     <div>
@@ -68,4 +68,4 @@
 </div>
 <!-- TinyMCE CDN con tu API Key -->
 <script src="https://cdn.tiny.cloud/1/g62vvex6kxlmgwndrpkcix8mabqfyep57qhfn3jwnwxg1iuf/tinymce/7/tinymce.min.js" referrerpolicy="origin"></script>
-<script src="<?= $baseUrl ?>/assets/blog.js"></script>
+<script src="<?= asset_url('blog.js') ?>"></script>

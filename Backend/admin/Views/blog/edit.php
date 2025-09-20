@@ -1,5 +1,5 @@
 <!-- admin/Views/blog/edit.php -->
- <?php
+<?php
 require_once __DIR__ . '/../../Helpers/S3Helper.php';
 use App\Helpers\S3Helper;
 $s3 = new S3Helper('blog');
@@ -9,7 +9,8 @@ $s3 = new S3Helper('blog');
   <h1 class="text-3xl font-bold text-indigo-200 mb-3">Editar Entrada de Blog</h1>
   <p class="mb-7 text-indigo-400">Modifica el contenido, imagen o etiquetas SEO de este artículo.</p>
 
-  <form method="POST" action="/as-2026/Backend/admin/blog/update?id=<?= $post['id'] ?>" enctype="multipart/form-data"
+  <?php $postId = (string)($post['id'] ?? ''); ?>
+  <form method="POST" action="<?= admin_url('blog/update') . '?id=' . urlencode($postId) ?>" enctype="multipart/form-data"
     class="bg-white/10 backdrop-blur-lg rounded-2xl shadow-2xl p-8 border border-indigo-900/20 space-y-7">
 
     <!-- Título -->
@@ -81,7 +82,7 @@ $s3 = new S3Helper('blog');
     </div>
 
     <div class="flex justify-between gap-4">
-      <a href="/as-2026/Backend/admin/blog" class="inline-block px-6 py-3 rounded-xl bg-indigo-800 hover:bg-indigo-700 text-white font-bold shadow transition text-base">Cancelar</a>
+      <a href="<?= admin_url('blog') ?>" class="inline-block px-6 py-3 rounded-xl bg-indigo-800 hover:bg-indigo-700 text-white font-bold shadow transition text-base">Cancelar</a>
       <button type="submit"
         class="px-8 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold shadow-lg transition text-base">
         Guardar cambios
