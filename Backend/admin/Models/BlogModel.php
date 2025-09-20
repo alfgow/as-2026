@@ -44,8 +44,7 @@ class BlogModel extends Database
     public function all(): array
     {
         $sql = "SELECT * FROM blog_posts ORDER BY created_at DESC";
-        $stmt = $this->db->query($sql);
-        return (array) $stmt->fetchAll(PDO::FETCH_ASSOC);
+        return $this->fetchAll($sql);
     }
 
     /**
@@ -53,10 +52,8 @@ class BlogModel extends Database
      */
     public function find(int $id): ?array
     {
-        $stmt = $this->db->prepare("SELECT * FROM blog_posts WHERE id = ? LIMIT 1");
-        $stmt->execute([$id]);
-        $row = $stmt->fetch(PDO::FETCH_ASSOC);
-        return $row ?: null;
+        $sql = "SELECT * FROM blog_posts WHERE id = ? LIMIT 1";
+        return $this->fetch($sql, [$id]);
     }
 
     /**
@@ -64,10 +61,8 @@ class BlogModel extends Database
      */
     public function findBySlug(string $slug): ?array
     {
-        $stmt = $this->db->prepare("SELECT * FROM blog_posts WHERE slug = ? LIMIT 1");
-        $stmt->execute([$slug]);
-        $row = $stmt->fetch(PDO::FETCH_ASSOC);
-        return $row ?: null;
+        $sql = "SELECT * FROM blog_posts WHERE slug = ? LIMIT 1";
+        return $this->fetch($sql, [$slug]);
     }
 
     /**
@@ -97,7 +92,7 @@ class BlogModel extends Database
      */
     public function searchCount(string $q): int
     {
-        $sql = "SELECT COUNT(*)
+        $sql = "SELECT COUNT(*) AS total
                 FROM blog_posts
                 WHERE titulo   LIKE :q
                    OR categoria LIKE :q
@@ -106,7 +101,8 @@ class BlogModel extends Database
         $like = "%{$q}%";
         $stmt->bindValue(':q', $like, PDO::PARAM_STR);
         $stmt->execute();
-        return (int) $stmt->fetchColumn();
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return (int) ($row['total'] ?? 0);
     }
 
     /**
@@ -152,8 +148,7 @@ class BlogModel extends Database
                    (titulo, contenido, categoria, etiquetas, imagen_key, created_at, updated_at, slug)
                 VALUES
                    (:titulo, :contenido, :categoria, :etiquetas, :imagen_key, NOW(), NOW(), :slug)";
-        $stmt = $this->db->prepare($sql);
-        $stmt->execute([
+        $this->execute($sql, [
             ':titulo'     => $titulo,
             ':contenido'  => $contenido,
             ':categoria'  => $categoria,
@@ -162,7 +157,7 @@ class BlogModel extends Database
             ':slug'       => $slug,
         ]);
 
-        return (int) $this->db->lastInsertId();
+        return (int) $this->lastInsertId();
     }
 
     /**
@@ -205,9 +200,8 @@ class BlogModel extends Database
                     slug       = :slug,
                     updated_at = NOW()
                 WHERE id = :id";
-        $stmt = $this->db->prepare($sql);
 
-        return $stmt->execute([
+        return $this->execute($sql, [
             ':titulo'     => $titulo,
             ':contenido'  => $contenido,
             ':categoria'  => $categoria,
@@ -215,7 +209,7 @@ class BlogModel extends Database
             ':imagen_key' => $imagenKey,
             ':slug'       => $slug,
             ':id'         => $id,
-        ]);
+        ]) > 0;
     }
 
     /**
@@ -223,8 +217,8 @@ class BlogModel extends Database
      */
     public function delete(int $id): bool
     {
-        $stmt = $this->db->prepare("DELETE FROM blog_posts WHERE id = ?");
-        return $stmt->execute([$id]);
+        $sql = "DELETE FROM blog_posts WHERE id = ?";
+        return $this->execute($sql, [$id]) > 0;
     }
 
     /* ====================
