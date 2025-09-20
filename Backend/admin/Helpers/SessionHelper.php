@@ -1,24 +1,26 @@
 <?php
+
 namespace App\Helpers;
 
 class SessionHelper
 {
     public static function startAndVerifyTimeout($timeoutSeconds = 60)
     {
-        $baseUrl = '/as-2026/Backend/admin' ?? '/';
+        require_once __DIR__ . '/../config/config.php';
+
         if (session_status() === PHP_SESSION_NONE) {
             session_start();
         }
         // Verifica si el usuario está logueado
         if (!isset($_SESSION['user'])) {
-            header("Location: $baseUrl/login");
+            header('Location: ' . \admin_base_url('login'));
             exit;
         }
         // Verifica tiempo de inactividad
         if (isset($_SESSION['last_activity']) && (time() - $_SESSION['last_activity']) > $timeoutSeconds) {
             session_unset();
             session_destroy();
-            header("Location: $baseUrl/login?expired=true");
+            header('Location: ' . \admin_base_url('login?expired=true'));
             exit;
         }
 
