@@ -565,7 +565,7 @@ class InquilinoController
     }
 
     /**
-     * Valida y sube un archivo a S3, registrándolo en Dynamo.
+     * Valida y sube un archivo a S3, registrándolo en MySQL.
      */
     private function manejarSubidaArchivo(
         int $idInquilino,
