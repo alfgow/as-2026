@@ -13,15 +13,6 @@ require_once __DIR__ . '/../Models/IAModel.php';
 
 use App\Models\IAModel;
 
-require_once __DIR__ . '/../Core/Database.php';
-
-use App\Core\Database;
-use PDO;
-
-require_once __DIR__ . '/../Models/InquilinoModel.php';
-
-use App\Models\InquilinoModel;
-
 class IAController
 {
     private $cfg;
@@ -223,15 +214,18 @@ class IAController
             }
 
             if ($term && mb_strlen($term, 'UTF-8') >= 2) {
-                $inqModel = new \App\Models\InquilinoModel();
-                $rows = $inqModel->buscarPorTexto($term, 1); // buscamos solo 1 match
+                if (!$this->iaModel) {
+                    return null;
+                }
+
+                $rows = $this->iaModel->buscarInquilinosPorTexto($term, 1);
 
                 if (!$rows) {
                     return $this->narrarConIA("No encontré inquilinos que coincidan con “{$term}”.");
                 }
 
                 $r = $rows[0];
-                $idInquilino = (int)$r['id'];
+                $idInquilino = (int) $r['id'];
 
                 // --- Info base del inquilino ---
                 $celular = (string) ($r['celular'] ?? '');
@@ -239,16 +233,7 @@ class IAController
                 $info = "Sí, tenemos registrado a {$r['nombre']} con correo {$r['email']}{$contacto}.";
 
                 // --- Pólizas vigentes ---
-                $db  = (new \App\Core\Database())->getDB();
-                $sql = "SELECT p.numero_poliza, p.monto_poliza, p.vigencia, i.direccion_inmueble, i.renta, a.nombre_arrendador AS arrendador
-                    FROM polizas p
-                    INNER JOIN inmuebles i ON p.id_inmueble = i.id
-                    INNER JOIN arrendadores a ON i.id_arrendador = a.id
-                    WHERE p.id_inquilino = :id AND p.estado = 1";
-                $stmt = $db->prepare($sql);
-                $stmt->bindParam(':id', $idInquilino, PDO::PARAM_INT);
-                $stmt->execute();
-                $polizas = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                $polizas = $this->iaModel->obtenerPolizasActivasPorInquilino($idInquilino);
 
                 if ($polizas) {
                     foreach ($polizas as $p) {
@@ -264,19 +249,17 @@ class IAController
 
                 // Guardamos la interacción con contexto
                 $contexto = json_encode(['inquilino_id' => $idInquilino]);
-                if ($this->iaModel) {
-                    $this->iaModel->registrarInteraccion([
-                        'usuario_id'  => null,
-                        'modelo_key'  => 'direct',
-                        'modelo_id'   => 'direct-ia-narrative',
-                        'prompt'      => $prompt,
-                        'respuesta'   => $info,
-                        'duration_ms' => 0,
-                        'ip'          => $_SERVER['REMOTE_ADDR'] ?? null,
-                        'user_agent'  => $_SERVER['HTTP_USER_AGENT'] ?? null,
-                        'contexto'    => $contexto
-                    ]);
-                }
+                $this->iaModel->registrarInteraccion([
+                    'usuario_id'  => null,
+                    'modelo_key'  => 'direct',
+                    'modelo_id'   => 'direct-ia-narrative',
+                    'prompt'      => $prompt,
+                    'respuesta'   => $info,
+                    'duration_ms' => 0,
+                    'ip'          => $_SERVER['REMOTE_ADDR'] ?? null,
+                    'user_agent'  => $_SERVER['HTTP_USER_AGENT'] ?? null,
+                    'contexto'    => $contexto
+                ]);
 
                 return $info;
             }

@@ -6,7 +6,6 @@ require_once __DIR__ . '/../Core/Database.php';
 
 use App\Core\Database;
 use PDO;
-use PDOException;
 
 class IAModel extends Database
 {
@@ -197,5 +196,111 @@ class IAModel extends Database
         $stmt->execute();
 
         return (int)$stmt->fetchColumn();
+    }
+
+    /**
+     * Busca inquilinos en MySQL utilizando nombre, correo, teléfono o identificadores.
+     * Devuelve un arreglo normalizado compatible con la versión anterior basada en Dynamo.
+     */
+    public function buscarInquilinosPorTexto(string $term, int $limit = 10): array
+    {
+        $term = trim($term);
+        if ($term === '') {
+            return [];
+        }
+
+        $limit = max(1, $limit);
+
+        $conditions = [
+            "CONCAT_WS(' ', i.nombre_inquilino, i.apellidop_inquilino, i.apellidom_inquilino) LIKE :term_like",
+            'i.email LIKE :term_like',
+            'i.celular LIKE :term_like',
+            'COALESCE(i.rfc, "") LIKE :term_like',
+            'COALESCE(i.curp, "") LIKE :term_like',
+        ];
+
+        $params = [
+            ':term_like' => '%' . $term . '%',
+        ];
+
+        if (filter_var($term, FILTER_VALIDATE_EMAIL)) {
+            $conditions[] = 'i.email = :email_exact';
+            $params[':email_exact'] = $term;
+        }
+
+        $digits = preg_replace('/\D+/', '', $term);
+        if ($digits !== '' && strlen($digits) >= 4) {
+            $conditions[] = "REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(i.celular, ' ', ''), '-', ''), '+', ''), '(', ''), ')', '') LIKE :phone_like";
+            $params[':phone_like'] = '%' . $digits . '%';
+        }
+
+        if (ctype_digit($term)) {
+            $conditions[] = 'i.id = :id_exact';
+            $params[':id_exact'] = (int) $term;
+        }
+
+        $where = implode(' OR ', array_unique($conditions));
+
+        $sql = "SELECT
+                    i.id,
+                    TRIM(CONCAT_WS(' ', i.nombre_inquilino, i.apellidop_inquilino, i.apellidom_inquilino)) AS nombre,
+                    i.email,
+                    COALESCE(i.celular, '') AS celular,
+                    COALESCE(NULLIF(i.tipo, ''), 'inquilino') AS tipo
+                FROM inquilinos i
+                WHERE i.status = 1
+                  AND ({$where})
+                ORDER BY i.updated_at DESC
+                LIMIT :lim";
+
+        $stmt = $this->db->prepare($sql);
+
+        foreach ($params as $key => $value) {
+            if ($key === ':id_exact') {
+                $stmt->bindValue($key, $value, PDO::PARAM_INT);
+            } else {
+                $stmt->bindValue($key, $value);
+            }
+        }
+
+        $stmt->bindValue(':lim', $limit, PDO::PARAM_INT);
+        $stmt->execute();
+
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+        return array_map(static function (array $row): array {
+            return [
+                'id'      => (int) $row['id'],
+                'nombre'  => (string) ($row['nombre'] ?? ''),
+                'email'   => (string) ($row['email'] ?? ''),
+                'celular' => (string) ($row['celular'] ?? ''),
+                'tipo'    => (string) ($row['tipo'] ?? 'inquilino'),
+            ];
+        }, $rows);
+    }
+
+    /**
+     * Obtiene las pólizas activas de un inquilino con la información relevante del inmueble.
+     */
+    public function obtenerPolizasActivasPorInquilino(int $inquilinoId): array
+    {
+        $sql = "SELECT
+                    p.numero_poliza,
+                    p.monto_poliza,
+                    p.vigencia,
+                    inm.direccion_inmueble,
+                    inm.renta,
+                    arr.nombre_arrendador AS arrendador
+                FROM polizas p
+                INNER JOIN inmuebles inm ON p.id_inmueble = inm.id
+                INNER JOIN arrendadores arr ON inm.id_arrendador = arr.id
+                WHERE p.id_inquilino = :id
+                  AND p.estado = 1";
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->bindValue(':id', $inquilinoId, PDO::PARAM_INT);
+        $stmt->execute();
+
+        return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
     }
 }
