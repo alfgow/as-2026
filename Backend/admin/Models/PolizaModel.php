@@ -3,12 +3,8 @@
 namespace App\Models;
 
 require_once __DIR__ . '/../Core/Database.php';
-require_once __DIR__ . '/../Core/Dynamo.php';
 
 use App\Core\Database;
-use App\Core\Dynamo;
-use Aws\DynamoDb\DynamoDbClient;
-use Aws\DynamoDb\Marshaler;
 use PDO;
 
 /**
@@ -21,24 +17,19 @@ use PDO;
  */
 class PolizaModel extends Database
 {
-    private DynamoDbClient $client;
-    private Marshaler $marshaler;
-    private string $table;
+    private const ARRENDADOR_PK_PREFIX = 'arr#';
+    private const INMUEBLE_SK_PREFIX   = 'INM#';
 
     public function __construct()
     {
         parent::__construct();
-
-        $this->client    = Dynamo::client();
-        $this->marshaler = Dynamo::marshaler();
-        $this->table     = Dynamo::table();
     }
 
     /**
      * @param array<int, array<string, mixed>> $polizas
      * @return array<int, array<string, mixed>>
      */
-    private function adjuntarInmueblesDesdeDynamo(array $polizas): array
+    private function adjuntarInmueblesDesdeMysql(array $polizas): array
     {
         if ($polizas === []) {
             return [];
@@ -52,42 +43,9 @@ class PolizaModel extends Database
             }
         }
 
-        $llaves = $ids === []
+        $inmuebles = $ids === []
             ? []
-            : $this->obtenerLlavesInmueblesPorIds(array_values($ids));
-
-        $keyToId = [];
-        $keys = [];
-
-        foreach ($llaves as $id => $llave) {
-            $pk = trim((string)($llave['pk'] ?? ''));
-            $sk = trim((string)($llave['sk'] ?? ''));
-
-            if ($pk === '' || $sk === '') {
-                continue;
-            }
-
-            $keys[] = ['pk' => $pk, 'sk' => $sk];
-            $keyToId[mb_strtolower($pk . '|' . $sk, 'UTF-8')] = $id;
-        }
-
-        $items = $keys === [] ? [] : $this->batchGetInmuebles($keys);
-
-        $datos = [];
-        foreach ($items as $item) {
-            $normalizado = $this->normalizarInmuebleDynamo($item);
-            $pk = (string)($normalizado['pk'] ?? '');
-            $sk = (string)($normalizado['sk'] ?? '');
-
-            if ($pk === '' || $sk === '') {
-                continue;
-            }
-
-            $clave = mb_strtolower($pk . '|' . $sk, 'UTF-8');
-            if (isset($keyToId[$clave])) {
-                $datos[$keyToId[$clave]] = $normalizado;
-            }
-        }
+            : $this->obtenerInmueblesPorIds(array_values($ids));
 
         $defaults = [
             'direccion_inmueble'       => 'SIN DIRECCIÓN',
@@ -105,22 +63,30 @@ class PolizaModel extends Database
             $poliza['inmueble_pk'] = '';
             $poliza['inmueble_sk'] = '';
 
-            $id = isset($poliza['id_inmueble']) ? (int) $poliza['id_inmueble'] : 0;
+            $idInmueble = isset($poliza['id_inmueble']) ? (int) $poliza['id_inmueble'] : 0;
 
-            if ($id > 0) {
-                if (isset($llaves[$id])) {
-                    $poliza['inmueble_pk'] = (string)($llaves[$id]['pk'] ?? '');
-                    $poliza['inmueble_sk'] = (string)($llaves[$id]['sk'] ?? '');
+            if ($idInmueble > 0 && isset($inmuebles[$idInmueble])) {
+                $info = $inmuebles[$idInmueble];
+
+                $poliza['direccion_inmueble'] = trim((string)($info['direccion_inmueble'] ?? '')) ?: $defaults['direccion_inmueble'];
+                $poliza['estacionamiento_inmueble'] = (int)($info['estacionamiento'] ?? $defaults['estacionamiento_inmueble']);
+                $poliza['monto_mantenimiento'] = $this->formatearMontoInmueble($info['monto_mantenimiento'] ?? $defaults['monto_mantenimiento']);
+
+                $mascotas = strtoupper((string)($info['mascotas'] ?? ''));
+                $poliza['mascotas_inmueble'] = $mascotas !== '' ? $mascotas : $defaults['mascotas_inmueble'];
+
+                $poliza['mantenimiento_inmueble'] = (string)($info['mantenimiento'] ?? $defaults['mantenimiento_inmueble']);
+
+                $idArrendador = isset($poliza['id_arrendador']) ? (int)$poliza['id_arrendador'] : 0;
+                if ($idArrendador <= 0) {
+                    $idArrendador = isset($info['id_arrendador']) ? (int)$info['id_arrendador'] : 0;
                 }
 
-                if (isset($datos[$id])) {
-                    $info = $datos[$id];
-                    $poliza['direccion_inmueble'] = (string)($info['direccion_inmueble'] ?? $defaults['direccion_inmueble']);
-                    $poliza['estacionamiento_inmueble'] = (int)($info['estacionamiento_inmueble'] ?? $defaults['estacionamiento_inmueble']);
-                    $poliza['monto_mantenimiento'] = (string)($info['monto_mantenimiento'] ?? $defaults['monto_mantenimiento']);
-                    $poliza['mascotas_inmueble'] = (string)($info['mascotas_inmueble'] ?? $defaults['mascotas_inmueble']);
-                    $poliza['mantenimiento_inmueble'] = (string)($info['mantenimiento_inmueble'] ?? $defaults['mantenimiento_inmueble']);
+                if ($idArrendador > 0) {
+                    $poliza['inmueble_pk'] = self::ARRENDADOR_PK_PREFIX . $idArrendador;
                 }
+
+                $poliza['inmueble_sk'] = self::INMUEBLE_SK_PREFIX . $idInmueble;
             }
         }
         unset($poliza);
@@ -130,9 +96,9 @@ class PolizaModel extends Database
 
     /**
      * @param array<int, int> $ids
-     * @return array<int, array<string, string>>
+     * @return array<int, array<string, mixed>>
      */
-    private function obtenerLlavesInmueblesPorIds(array $ids): array
+    private function obtenerInmueblesPorIds(array $ids): array
     {
         $ids = array_values(array_unique(array_map('intval', $ids)));
 
@@ -149,105 +115,39 @@ class PolizaModel extends Database
             $params[$placeholder] = $id;
         }
 
-        $sql = 'SELECT id, pk, sk FROM inmuebles WHERE id IN (' . implode(', ', $placeholders) . ')';
+        $sql = 'SELECT
+                    i.id,
+                    i.id_arrendador,
+                    i.direccion_inmueble,
+                    i.estacionamiento,
+                    i.monto_mantenimiento,
+                    i.mantenimiento,
+                    i.mascotas
+                FROM inmuebles i
+                WHERE i.id IN (' . implode(', ', $placeholders) . ')';
 
-        $stmt = $this->db->prepare($sql);
-        $stmt->execute($params);
+        $rows = $this->fetchAll($sql, $params);
 
         $map = [];
 
-        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+        foreach ($rows as $row) {
             $id = (int)($row['id'] ?? 0);
             if ($id <= 0) {
                 continue;
             }
 
             $map[$id] = [
-                'pk' => isset($row['pk']) ? (string)$row['pk'] : '',
-                'sk' => isset($row['sk']) ? (string)$row['sk'] : '',
+                'id'                 => $id,
+                'id_arrendador'      => isset($row['id_arrendador']) ? (int)$row['id_arrendador'] : 0,
+                'direccion_inmueble' => $row['direccion_inmueble'] ?? '',
+                'estacionamiento'    => isset($row['estacionamiento']) ? (int)$row['estacionamiento'] : 0,
+                'monto_mantenimiento'=> $row['monto_mantenimiento'] ?? null,
+                'mantenimiento'      => $row['mantenimiento'] ?? '',
+                'mascotas'           => $row['mascotas'] ?? '',
             ];
         }
 
         return $map;
-    }
-
-    /**
-     * @param array<int, array{pk: string, sk: string}> $keys
-     * @return array<int, array<string, mixed>>
-     */
-    private function batchGetInmuebles(array $keys): array
-    {
-        if ($keys === []) {
-            return [];
-        }
-
-        $items = [];
-
-        foreach (array_chunk($keys, 25) as $chunk) {
-            $request = ['RequestItems' => [$this->table => ['Keys' => []]]];
-
-            foreach ($chunk as $key) {
-                $request['RequestItems'][$this->table]['Keys'][] = [
-                    'pk' => ['S' => $key['pk']],
-                    'sk' => ['S' => $key['sk']],
-                ];
-            }
-
-            do {
-                try {
-                    $response = $this->client->batchGetItem($request);
-                } catch (\Throwable $e) {
-                    error_log('❌ Error consultando inmuebles en DynamoDB: ' . $e->getMessage());
-                    break;
-                }
-
-                foreach ($response['Responses'][$this->table] ?? [] as $item) {
-                    $items[] = $item;
-                }
-
-                if (!empty($response['UnprocessedKeys'][$this->table]['Keys'])) {
-                    $request = ['RequestItems' => [$this->table => ['Keys' => $response['UnprocessedKeys'][$this->table]['Keys']]]];
-                } else {
-                    $request = null;
-                }
-            } while ($request !== null);
-
-            usleep(250000);
-        }
-
-        return $items;
-    }
-
-    /**
-     * @param array<string, mixed> $item
-     * @return array<string, mixed>
-     */
-    private function normalizarInmuebleDynamo(array $item): array
-    {
-        $data = $this->marshaler->unmarshalItem($item);
-
-        $pk = (string)($data['pk'] ?? '');
-        $sk = (string)($data['sk'] ?? '');
-
-        $direccion = trim((string)($data['direccion_inmueble'] ?? ''));
-        if ($direccion === '') {
-            $direccion = 'SIN DIRECCIÓN';
-        }
-
-        $mascotas = strtoupper((string)($data['mascotas'] ?? 'NO'));
-        if ($mascotas === '') {
-            $mascotas = 'NO';
-        }
-
-        return [
-            'pk'                       => $pk,
-            'sk'                       => $sk,
-            'direccion_inmueble'       => $direccion,
-            'estacionamiento_inmueble' => isset($data['estacionamiento']) ? (int) $data['estacionamiento'] : 0,
-            'monto_mantenimiento'      => $this->formatearMontoInmueble($data['monto_mantenimiento'] ?? null),
-            'mascotas_inmueble'        => $mascotas,
-            'mantenimiento_inmueble'   => (string)($data['mantenimiento'] ?? ''),
-        ];
     }
 
     private function formatearMontoInmueble(mixed $valor): string
@@ -445,105 +345,15 @@ class PolizaModel extends Database
                 return null;
             }
 
-            $conInmueble = $this->adjuntarInmueblesDesdeDynamo([$row]);
+            $conInmueble = $this->adjuntarInmueblesDesdeMysql([$row]);
 
             return $conInmueble[0] ?? $row;
         }
 
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
-        return $this->adjuntarInmueblesDesdeDynamo($rows);
+        return $this->adjuntarInmueblesDesdeMysql($rows);
     }
-
-    /**
-     * Consulta DynamoDB para obtener pólizas activas filtradas por mes/año.
-     *
-     * Se utiliza scan paginado porque los perfiles POL# comparten partición; si el
-     * volumen crece será recomendable un GSI dedicado a mes/year para evitar escaneos.
-     *
-     * @return array<int, array<string, mixed>>
-     */
-    private function obtenerVencimientosDesdeDynamo(int $mes, int $anio): array
-    {
-        $items   = [];
-        $lastKey = null;
-
-        do {
-            $params = [
-                'TableName'                 => $this->table,
-                'FilterExpression'          => 'begins_with(pk, :pk) AND sk = :sk AND estado = :estado AND mes_vencimiento = :mes AND year_vencimiento = :anio',
-                'ExpressionAttributeValues' => [
-                    ':pk'     => ['S' => 'pol#'],
-                    ':sk'     => ['S' => 'profile'],
-                    ':estado' => ['S' => '1'],
-                    ':mes'    => ['N' => (string) $mes],
-                    ':anio'   => ['N' => (string) $anio],
-                ],
-            ];
-
-            if ($lastKey !== null) {
-                $params['ExclusiveStartKey'] = $lastKey;
-            }
-
-            try {
-                $result = $this->client->scan($params);
-            } catch (\Throwable $e) {
-                error_log('❌ Error consultando vencimientos en DynamoDB: ' . $e->getMessage());
-                break;
-            }
-
-            if (!empty($result['Items'])) {
-                foreach ($result['Items'] as $item) {
-                    $profile   = $this->marshaler->unmarshalItem($item);
-                    $items[] = $this->normalizarVencimientoDynamo($profile);
-                }
-            }
-
-            $lastKey = $result['LastEvaluatedKey'] ?? null;
-        } while ($lastKey !== null);
-
-        return $items;
-    }
-
-    /**
-     * Normaliza los campos retornados por Dynamo para que coincidan con las vistas legacy.
-     *
-     * @param array<string, mixed> $item
-     * @return array<string, mixed>
-     */
-    private function normalizarVencimientoDynamo(array $item): array
-    {
-        $normalizado = $item;
-
-        // Identificadores
-        $normalizado['numero_poliza'] = (string)($item['numero_poliza'] ?? '');
-        $normalizado['serie_poliza']  = (string)($item['serie_poliza'] ?? '');
-        $normalizado['tipo_poliza']   = (string)($item['tipo_poliza'] ?? '');
-        $normalizado['estado']        = (string)($item['estado'] ?? '');
-        $normalizado['vigencia']      = (string)($item['vigencia'] ?? '');
-        $normalizado['fecha_poliza']  = (string)($item['fecha_poliza'] ?? '');
-        $normalizado['fecha_fin']     = (string)($item['fecha_fin'] ?? '');
-
-        // Fechas de vencimiento
-        $normalizado['mes_vencimiento']  = isset($item['mes_vencimiento']) ? (int) $item['mes_vencimiento'] : 0;
-        $normalizado['year_vencimiento'] = isset($item['year_vencimiento']) ? (int) $item['year_vencimiento'] : 0;
-
-        // Montos
-        $normalizado['monto_renta']  = isset($item['monto_renta']) ? (float) $item['monto_renta'] : 0.0;
-        $normalizado['monto_poliza'] = isset($item['monto_poliza']) ? (float) $item['monto_poliza'] : 0.0;
-
-        // 🔥 Nombres de personas
-        $normalizado['nombre_inquilino_completo'] = (string)($item['nombre_inquilino_completo'] ?? $item['inquilino'] ?? '—');
-        $normalizado['nombre_arrendador']         = (string)($item['nombre_arrendador'] ?? $item['arrendador'] ?? '—');
-        $normalizado['nombre_fiador']             = (string)($item['nombre_fiador'] ?? $item['fiador'] ?? '—');
-        $normalizado['nombre_asesor']             = (string)($item['nombre_asesor'] ?? $item['asesor'] ?? '—');
-
-        // 🔥 Dirección
-        $normalizado['direccion_inmueble'] = (string)($item['direccion_inmueble'] ?? $item['inmueble'] ?? '—');
-
-        return $normalizado;
-    }
-
 
     /* =========================================================
      *           VENCIMIENTOS / CONSULTAS CLAVE
@@ -569,16 +379,14 @@ class PolizaModel extends Database
 
     public function obtenerVencimientosPorMesAnio(int $mes, int $anio): array
     {
-        $items = $this->obtenerVencimientosDesdeDynamo($mes, $anio);
+        $condiciones = 'p.estado = :estado AND p.mes_vencimiento = :mes AND p.year_vencimiento = :anio';
+        $parametros  = [
+            ':estado' => '1',
+            ':mes'    => $mes,
+            ':anio'   => $anio,
+        ];
 
-        usort($items, static function (array $a, array $b): int {
-            $fechaA = (string)($a['fecha_poliza'] ?? '');
-            $fechaB = (string)($b['fecha_poliza'] ?? '');
-
-            return strcmp($fechaA, $fechaB);
-        });
-
-        return $items;
+        return $this->obtenerPolizasConFiltros($condiciones, $parametros, false, ' ORDER BY p.fecha_poliza ASC');
     }
 
     public function obtenerPorNumero(int|string $numero): ?array
