@@ -9,7 +9,7 @@
 .env.local
 .env.*.local
 Backend/admin/config/credentials.local.php
-Backend/admin/config/credentials.php
+
 
 # --- Archivos de configuración que sí se versionan ---
 # (Ejemplo: awsconfig.php, s3config.php, etc. SÍ suben al repo)
