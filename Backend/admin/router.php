@@ -9,21 +9,28 @@ require_once __DIR__ . '/config/config.php';
 require_once __DIR__ . '/Helpers/url.php';
 require_once __DIR__ . '/aws-sdk-php/aws-autoloader.php';
 
-$uri  = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
-$base = admin_base_url();
-// $uri  = str_replace($base, '', $uri);
-$uri  = str_replace($base, '', $uri);
-$uri  = rtrim($uri, '/'); // Evita problemas con barras al final
+$requestedPath = parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH) ?? '';
+$requestedPath = $requestedPath !== '' ? $requestedPath : '/';
+
+$adminBaseUrl  = admin_base_url();
+$adminBasePath = parse_url($adminBaseUrl, PHP_URL_PATH) ?? '';
+$adminBasePath = rtrim($adminBasePath, '/');
+
+$uri = $requestedPath;
+
+if ($adminBasePath !== '' && str_starts_with($uri, $adminBasePath)) {
+    $uri = substr($uri, strlen($adminBasePath));
+}
+
+$uri = $uri === '/' ? '' : '/' . ltrim($uri, '/');
+
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 // Rutas públicas (NO requieren sesión)
 
-// Ajusta solo esta constante si cambia el prefijo
-$ADMIN_BASE = admin_base_url();
-
 // Flags
-$isAdmin    = str_starts_with($uri, $ADMIN_BASE);
-$isLogin    = ($uri === "$ADMIN_BASE/login");
-$isCallback = ($uri === "$ADMIN_BASE/validaciones/demandas/callback");
+$isAdmin    = $adminBasePath === '' ? true : str_starts_with($requestedPath, $adminBasePath);
+$isLogin    = ($uri === '/login');
+$isCallback = ($uri === '/validaciones/demandas/callback');
 
 // Si estoy en el área admin y NO es /login ni el callback,
 // y no hay sesión → redirige a /login (una sola vez).
