@@ -5,19 +5,20 @@ ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
 
 session_start();
+require_once __DIR__ . '/config/config.php';
 require_once __DIR__ . '/Helpers/url.php';
 require_once __DIR__ . '/aws-sdk-php/aws-autoloader.php';
 
 $uri  = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
-$base = '/as-2026/Backend/admin';
-// $base = 'https://crm.arrendamientoseguro.app'; // Cambia aquí si tu base cambia en prod/dev
+$base = admin_base_url();
+// $uri  = str_replace($base, '', $uri);
 $uri  = str_replace($base, '', $uri);
 $uri  = rtrim($uri, '/'); // Evita problemas con barras al final
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 // Rutas públicas (NO requieren sesión)
 
 // Ajusta solo esta constante si cambia el prefijo
-$ADMIN_BASE = '/as-2026/Backend/admin';
+$ADMIN_BASE = admin_base_url();
 
 // Flags
 $isAdmin    = str_starts_with($uri, $ADMIN_BASE);
@@ -27,14 +28,14 @@ $isCallback = ($uri === "$ADMIN_BASE/validaciones/demandas/callback");
 // Si estoy en el área admin y NO es /login ni el callback,
 // y no hay sesión → redirige a /login (una sola vez).
 if ($isAdmin && !$isLogin && !$isCallback && empty($_SESSION['user_id'])) {
-    header("Location: $ADMIN_BASE/login", true, 302);
+    header('Location: ' . admin_base_url('login'), true, 302);
     exit;
 }
 
 // Redirección a login si no está autenticado
 $publicRoutes = ['/login'];
 if (!isset($_SESSION['user']) && !in_array($uri, $publicRoutes)) {
-    header('Location: ' . $base . '/login');
+    header('Location: ' . admin_base_url('login'));
     exit;
 }
 
