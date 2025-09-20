@@ -7,7 +7,7 @@ require_once __DIR__ . '/../Middleware/AuthMiddleware.php';
 use App\Middleware\AuthMiddleware;
 AuthMiddleware::verificarSesion();
 require_once __DIR__ . '/../Helpers/MailHelper.php';
-        use App\Helpers\MailHelper;
+use App\Helpers\MailHelper;
 require_once __DIR__ . '/../Models/ProspectAccessModel.php';
 use App\Models\ProspectAccessModel;
 
