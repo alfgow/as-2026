@@ -87,6 +87,9 @@
 - Paginación y filtros con persistencia de parámetros
 - Identidad visual consistente en todo el sistema
 
+## ✅ Verificación manual reciente
+- Con `DB_CHARSET=utf8mb4_0900_ai_ci` en `admin/config/credentials.php`, la aplicación establece la conexión MySQL correctamente y ejecuta consultas sin errores.
+
 ---
 
 ## 🧠 Enfoque visual y de UX
@@ -94,3 +97,4 @@
 - Componentes visuales con `glassmorphism`
 - Secciones separadas por tarjetas
 - Experiencia clara, profesional y accesible
+
