@@ -6,15 +6,15 @@ class AuthMiddleware
 {
     public static function verificarSesion($timeoutSeconds = 1800)
     {
+        require_once __DIR__ . '/../config/config.php';
+
         if (session_status() === PHP_SESSION_NONE) {
             session_start();
         }
 
-        $baseUrl = '/as-2026/Backend/admin' ?? '/';
-
         // Si no hay usuario logueado
         if (empty($_SESSION['user'])) {
-            header("Location: $baseUrl/login");
+            header('Location: ' . \admin_base_url('login'));
             exit;
         }
 
@@ -22,7 +22,7 @@ class AuthMiddleware
         if (isset($_SESSION['last_activity']) && (time() - $_SESSION['last_activity']) > $timeoutSeconds) {
             session_unset();
             session_destroy();
-            header("Location: /login?expired=true");
+            header('Location: ' . \admin_base_url('login?expired=true'));
             exit;
         }
 
