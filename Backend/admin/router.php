@@ -34,7 +34,12 @@ $isCallback = ($uri === '/validaciones/demandas/callback');
 
 // Si estoy en el área admin y NO es /login ni el callback,
 // y no hay sesión → redirige a /login (una sola vez).
-if ($isAdmin && !$isLogin && !$isCallback && empty($_SESSION['user_id'])) {
+if (
+    $isAdmin
+    && !$isLogin
+    && !$isCallback
+    && (!isset($_SESSION['user']) || empty($_SESSION['user']['id']))
+) {
     header('Location: ' . admin_base_url('login'), true, 302);
     exit;
 }
