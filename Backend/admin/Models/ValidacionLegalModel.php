@@ -5,7 +5,6 @@ namespace App\Models;
 require_once __DIR__ . '/../Core/Database.php';
 
 use App\Core\Database;
-use PDO;
 
 class ValidacionLegalModel extends Database
 {
@@ -91,8 +90,7 @@ class ValidacionLegalModel extends Database
              query_usada, resultado, clasificacion, status, searched_at)
             VALUES (:id_inq, :nombre, :ap_p, :ap_m, :curp, :rfc,
              :query, :resultado, :clasif, :status, NOW())";
-        $stmt = $this->db->prepare($sql);
-        $stmt->execute([
+        $this->execute($sql, [
             ':id_inq'    => $idInquilino,
             ':nombre'    => $nombreSolo,
             ':ap_p'      => $apellido_p,
@@ -112,8 +110,7 @@ class ValidacionLegalModel extends Database
                        inv_demandas_resumen = '⚖️ No se encontraron coincidencias jurídicas para este inquilino.',
                        updated_at = NOW()
                    WHERE id_inquilino = :id LIMIT 1";
-            $stmtUpd = $this->db->prepare($sqlUpd);
-            $stmtUpd->execute([':id' => $idInquilino]);
+            $this->execute($sqlUpd, [':id' => $idInquilino]);
         }
 
         return [
@@ -132,11 +129,12 @@ class ValidacionLegalModel extends Database
         $sql = "UPDATE inquilinos_validaciones 
             SET proceso_inv_demandas = :estado, updated_at = NOW()
             WHERE id_inquilino = :id";
-        $stmt = $this->db->prepare($sql);
-        return $stmt->execute([
+        $this->execute($sql, [
             ':estado' => $estado,
-            ':id' => $idInquilino
+            ':id'     => $idInquilino,
         ]);
+
+        return true;
     }
 
     public function getProcesoDemandas(int $idInquilino): int
@@ -144,18 +142,14 @@ class ValidacionLegalModel extends Database
         $sql = "SELECT proceso_inv_demandas 
             FROM inquilinos_validaciones 
             WHERE id_inquilino = :id LIMIT 1";
-        $stmt = $this->db->prepare($sql);
-        $stmt->execute([':id' => $idInquilino]);
-        $row = $stmt->fetch(PDO::FETCH_ASSOC);
-        return $row ? (int)$row['proceso_inv_demandas'] : 1; // 1 = No iniciado
+        $row = $this->fetch($sql, [':id' => $idInquilino]);
+        return $row ? (int) $row['proceso_inv_demandas'] : 1; // 1 = No iniciado
     }
 
     public function obtenerValidaciones(int $idInquilino): array
     {
         $sql = "SELECT * FROM inquilinos_validaciones WHERE id_inquilino = :id LIMIT 1";
-        $stmt = $this->db->prepare($sql);
-        $stmt->execute([':id' => $idInquilino]);
-        return $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+        return $this->fetch($sql, [':id' => $idInquilino]) ?? [];
     }
 
 
@@ -168,9 +162,7 @@ class ValidacionLegalModel extends Database
         $sql = "SELECT * FROM validaciones_legal
                 WHERE id_inquilino = ?
                 ORDER BY searched_at DESC";
-        $stmt = $this->db->prepare($sql);
-        $stmt->execute([$idInquilino]);
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        return $this->fetchAll($sql, [$idInquilino]);
     }
 
     /**
@@ -182,9 +174,6 @@ class ValidacionLegalModel extends Database
                 WHERE id_inquilino = ?
                 ORDER BY searched_at DESC, id DESC
                 LIMIT 1";
-        $stmt = $this->db->prepare($sql);
-        $stmt->execute([$idInquilino]);
-        $row = $stmt->fetch(PDO::FETCH_ASSOC);
-        return $row ?: null;
+        return $this->fetch($sql, [$idInquilino]);
     }
 }
