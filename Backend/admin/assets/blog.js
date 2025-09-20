@@ -1,3 +1,18 @@
+const ADMIN_BASE = (window.ADMIN_BASE || window.baseurl || '').replace(/\/$/, '');
+const joinAdminUrl = (path = '') => {
+        const normalizedPath = path
+                ? path.startsWith('/')
+                        ? path
+                        : `/${path}`
+                : '';
+
+        if (!ADMIN_BASE) {
+                return normalizedPath || '/';
+        }
+
+        return `${ADMIN_BASE}${normalizedPath}`;
+};
+
 // Drag & drop image preview
 const dropzone = document.getElementById("dropzone");
 const fileInput = document.getElementById("image");
@@ -124,7 +139,7 @@ document.addEventListener("DOMContentLoaded", function () {
 						"Entrada de blog creada correctamente.",
 					confirmButtonText: "Ir al blog",
 				}).then(() => {
-					window.location.href = "/as-2026/Backend/admin/blog";
+                                        window.location.href = joinAdminUrl('blog');
 				});
 			} else {
 				Swal.fire({
