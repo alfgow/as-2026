@@ -4,31 +4,16 @@ declare(strict_types=1);
 
 namespace App\Models;
 
-require_once __DIR__ . '/../Core/Dynamo.php';
+require_once __DIR__ . '/../Core/Database.php';
 require_once __DIR__ . '/../Helpers/S3Helper.php';
 require_once __DIR__ . '/AsesorModel.php';
 
-use App\Core\Dynamo;
+use App\Core\Database;
 use App\Helpers\S3Helper;
-use Aws\DynamoDb\DynamoDbClient;
-use Aws\DynamoDb\Marshaler;
+use PDO;
 
-class InquilinoModel
+class InquilinoModel extends Database
 {
-    private DynamoDbClient $client;
-    private Marshaler $marshaler;
-    private string $table;
-
-    public function __construct()
-    {
-        $this->client    = Dynamo::client();
-        $this->marshaler = Dynamo::marshaler();
-        $this->table     = Dynamo::table();
-    }
-
-    /**
-     * Prefijos soportados para los distintos roles de personas.
-     */
     private const PREFIXES = [
         'arrendatario' => 'inq',
         'inquilino'    => 'inq',
@@ -37,40 +22,14 @@ class InquilinoModel
         'fiador'       => 'fia',
     ];
 
-    /**
-     * Devuelve la lista de prefijos soportados (inq/obl/fia).
-     */
-    private function supportedPrefixes(): array
+    public function __construct()
     {
-        return ['inq', 'obl', 'fia'];
+        parent::__construct();
     }
 
-    /**
-     * Construye el PK completo a partir de un prefijo y un identificador entero.
-     */
-    private function buildPk(string $prefix, int $id): string
-    {
-        return sprintf('%s#%d', $prefix, $id);
-    }
-
-    /**
-     * Obtiene la lista de PK candidatos para un ID numérico sin conocer su tipo.
-     */
-    private function candidatePksForId(int $id): array
-    {
-        $out = [];
-        foreach ($this->supportedPrefixes() as $prefix) {
-            $out[] = $this->buildPk($prefix, $id);
-        }
-        return $out;
-    }
-
-    /**
-     * Determina el prefijo a partir del tipo textual almacenado en Dynamo.
-     */
     private function prefixFromTipo(?string $tipo): string
     {
-        $tipo = strtolower(trim((string)$tipo));
+        $tipo = strtolower(trim((string) $tipo));
         foreach (self::PREFIXES as $key => $prefix) {
             if ($tipo === $key) {
                 return $prefix;
@@ -79,105 +38,29 @@ class InquilinoModel
         return 'inq';
     }
 
-    /**
-     * Ejecuta un getItem y regresa el array unmarshalled o null.
-     */
-    private function fetchItem(string $pk, string $sk = 'profile'): ?array
+    private function buildPk(int $id, ?string $tipo = null): string
     {
-        $result = $this->client->getItem([
-            'TableName' => $this->table,
-            'Key'       => [
-                'pk' => ['S' => $pk],
-                'sk' => ['S' => $sk],
-            ]
-        ]);
+        return sprintf('%s#%d', $this->prefixFromTipo($tipo), $id);
+    }
 
-        if (empty($result['Item'])) {
-            return null;
+    private function resolveIdFromPk(?string $pk, ?int $fallbackId = null): ?int
+    {
+        $pk = $pk !== null ? trim($pk) : '';
+        if ($pk !== '' && preg_match('/^(inq|obl|fia)#(\d+)$/i', $pk, $matches)) {
+            return (int) $matches[2];
         }
-
-        return $this->marshaler->unmarshalItem($result['Item']);
-    }
-
-    /**
-     * Convierte el profile bruto en un arreglo enriquecido con archivos/validaciones/pólizas.
-     */
-    private function hydrateProfile(array $profile): array
-    {
-        $pk = (string)($profile['pk'] ?? '');
-
-        $archivos = !empty($profile['archivos_ids']) && is_array($profile['archivos_ids'])
-            ? $this->obtenerItemsPorInquilino($pk, $profile['archivos_ids'])
-            : [];
-
-        $selfieUrl = $this->extraerSelfieUrl($archivos);
-
-        $validaciones = [];
-        if (!empty($profile['validaciones_ids']) && is_array($profile['validaciones_ids'])) {
-            $validaciones = $this->obtenerItemsPorInquilino($pk, $profile['validaciones_ids']);
+        if ($fallbackId !== null && $fallbackId > 0) {
+            return $fallbackId;
         }
-
-        $polizas = !empty($profile['polizas_ids']) && is_array($profile['polizas_ids'])
-            ? $this->obtenerPolizasPorIds($profile['polizas_ids'])
-            : [];
-
-        return [
-            'profile'      => $profile,
-            'archivos'     => $archivos,
-            'validaciones' => $validaciones,
-            'polizas'      => $polizas,
-            'selfie_url'   => $selfieUrl,
-        ];
+        return null;
     }
 
-    /**
-     * Devuelve el map de validaciones custom almacenado directamente en el profile (si existe).
-     */
-    private function getValidacionesSnapshot(string $pk): array
-    {
-        $result = $this->client->getItem([
-            'TableName' => $this->table,
-            'Key'       => [
-                'pk' => ['S' => $pk],
-                'sk' => ['S' => 'profile'],
-            ],
-            'ProjectionExpression' => 'validaciones_data',
-        ]);
-
-        if (empty($result['Item']['validaciones_data'])) {
-            return [];
-        }
-
-        return (array)$this->marshaler->unmarshalValue($result['Item']['validaciones_data']);
-    }
-
-    /**
-     * Persiste el snapshot de validaciones dentro del profile.
-     */
-    private function saveValidacionesSnapshot(string $pk, array $snapshot): void
-    {
-        $this->client->updateItem([
-            'TableName' => $this->table,
-            'Key'       => [
-                'pk' => ['S' => $pk],
-                'sk' => ['S' => 'profile'],
-            ],
-            'UpdateExpression'          => 'SET validaciones_data = :snapshot',
-            'ExpressionAttributeValues' => [
-                ':snapshot' => $this->marshaler->marshalValue($snapshot),
-            ],
-        ]);
-    }
-
-    /**
-     * Normaliza un valor JSON entrante (string o array) a array.
-     */
     private function normalizePayload($payload): array
     {
         if (is_string($payload)) {
             $decoded = json_decode($payload, true);
             if (json_last_error() === JSON_ERROR_NONE) {
-                return (array)$decoded;
+                return (array) $decoded;
             }
             return ['raw' => $payload];
         }
@@ -187,134 +70,372 @@ class InquilinoModel
         return [];
     }
 
-    /**
-     * Genera el resumen de validaciones esperado por los controladores legacy a partir de snapshot o items.
-     */
-    private function buildValidacionesOutput(array $profile, array $validacionesItems): array
+    private function encodeJson($payload): ?string
     {
-        $snapshot = (array)($profile['validaciones_data'] ?? []);
-        $output   = [];
-
-        $mapLegacy = [];
-        if (!empty($validacionesItems)) {
-            // Tomamos el primer registro legacy (son snapshots migrados del sistema anterior)
-            $legacy = $validacionesItems[0];
-            $mapLegacy = [
-                'archivos' => [
-                    'proceso' => (int)($legacy['proceso_validacion_archivos'] ?? 2),
-                    'resumen' => $legacy['validacion_archivos_resumen'] ?? null,
-                    'json'    => $this->normalizePayload($legacy['validacion_archivos_json'] ?? []),
-                ],
-                'rostro' => [
-                    'proceso' => (int)($legacy['proceso_validacion_rostro'] ?? 2),
-                    'resumen' => $legacy['validacion_rostro_resumen'] ?? null,
-                    'json'    => $this->normalizePayload($legacy['validacion_rostro_json'] ?? []),
-                ],
-                'identidad' => [
-                    'proceso' => (int)($legacy['proceso_validacion_id'] ?? 2),
-                    'resumen' => $legacy['validacion_id_resumen'] ?? null,
-                    'json'    => $this->normalizePayload($legacy['validacion_id_json'] ?? []),
-                ],
-                'documentos' => [
-                    'proceso' => (int)($legacy['proceso_validacion_documentos'] ?? 2),
-                    'resumen' => $legacy['validacion_documentos_resumen'] ?? null,
-                    'json'    => $this->normalizePayload($legacy['validacion_documentos_json'] ?? []),
-                ],
-                'ingresos' => [
-                    'proceso' => (int)($legacy['proceso_validacion_ingresos'] ?? 2),
-                    'resumen' => $legacy['validacion_ingresos_resumen'] ?? null,
-                    'json'    => $this->normalizePayload($legacy['validacion_ingresos_json'] ?? []),
-                ],
-                'pago_inicial' => [
-                    'proceso' => (int)($legacy['proceso_pago_inicial'] ?? 2),
-                    'resumen' => $legacy['pago_inicial_resumen'] ?? null,
-                    'json'    => $this->normalizePayload($legacy['pago_inicial_json'] ?? []),
-                ],
-                'demandas' => [
-                    'proceso' => (int)($legacy['proceso_inv_demandas'] ?? 2),
-                    'resumen' => $legacy['validacion_demandas_resumen'] ?? null,
-                    'json'    => $this->normalizePayload($legacy['validacion_demandas_json'] ?? []),
-                ],
-                'verificamex' => [
-                    'proceso' => (int)($legacy['proceso_validacion_verificamex'] ?? 2),
-                    'resumen' => $legacy['verificamex_resumen'] ?? null,
-                    'json'    => $this->normalizePayload($legacy['verificamex_json'] ?? []),
-                ],
-            ];
+        $data = $this->normalizePayload($payload);
+        if ($data === []) {
+            return null;
         }
-
-        // Mezclamos snapshot moderno con legacy (snapshot tiene prioridad).
-        $keys = array_unique(array_merge(array_keys($mapLegacy), array_keys($snapshot)));
-        foreach ($keys as $key) {
-            $entry = $snapshot[$key] ?? null;
-            if ($entry !== null) {
-                $payload = $entry['payload'] ?? $entry['json'] ?? [];
-                $output[$key] = [
-                    'proceso' => (int)($entry['proceso'] ?? 2),
-                    'resumen' => $entry['resumen'] ?? null,
-                    'json'    => $payload,
-                    'updated_at' => $entry['updated_at'] ?? null,
-                ];
-                continue;
-            }
-
-            if (isset($mapLegacy[$key])) {
-                $output[$key] = $mapLegacy[$key];
-            }
-        }
-
-        return $output;
+        return json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     }
 
-    /**
-     * Operación base para guardar una validación en el snapshot del inquilino.
-     */
-    private function saveValidation(int $id, string $tipo, int $proceso, $payload, ?string $resumen = null): bool
+    private function decodeJson($value): array
     {
-        $pk = $this->resolvePkById($id);
-        if (!$pk) {
-            return false;
+        if ($value === null || $value === '') {
+            return [];
         }
-
-        $snapshot = $this->getValidacionesSnapshot($pk);
-        $snapshot[$tipo] = [
-            'proceso'    => (int)$proceso,
-            'resumen'    => $resumen,
-            'payload'    => $this->normalizePayload($payload),
-            'updated_at' => date('c'),
+        if (is_array($value)) {
+            return $value;
+        }
+        if (is_string($value)) {
+            $decoded = json_decode($value, true);
+            if (json_last_error() === JSON_ERROR_NONE) {
+                return (array) $decoded;
+            }
+        }
+        return [];
+    }
+    private function defaultDireccion(): array
+    {
+        return [
+            'calle'         => '',
+            'num_exterior'  => '',
+            'num_interior'  => '',
+            'colonia'       => '',
+            'alcaldia'      => '',
+            'ciudad'        => '',
+            'codigo_postal' => '',
         ];
-
-        $this->saveValidacionesSnapshot($pk, $snapshot);
-        return true;
     }
 
-    /**
-     * Resuelve el PK real de un inquilino a partir de su ID.
-     */
-    private function resolvePkById(int $id): ?string
+    private function defaultTrabajo(): array
     {
-        foreach ($this->candidatePksForId($id) as $candidate) {
-            $item = $this->fetchItem($candidate);
-            if ($item !== null) {
-                return $candidate;
+        return [
+            'empresa'           => '',
+            'direccion_empresa' => '',
+            'telefono_empresa'  => '',
+            'puesto'            => '',
+            'antiguedad'        => '',
+            'sueldo'            => '',
+            'otrosingresos'     => '',
+            'nombre_jefe'       => '',
+            'tel_jefe'          => '',
+            'web_empresa'       => '',
+        ];
+    }
+
+    private function defaultFiador(): array
+    {
+        return [
+            'calle_inmueble'    => '',
+            'num_ext_inmueble'  => '',
+            'num_int_inmueble'  => '',
+            'colonia_inmueble'  => '',
+            'alcaldia_inmueble' => '',
+            'estado_inmueble'   => '',
+            'numero_escritura'  => '',
+            'numero_notario'    => '',
+            'estado_notario'    => '',
+            'folio_real'        => '',
+            's3_key'            => '',
+        ];
+    }
+
+    private function defaultHistorial(): array
+    {
+        return [
+            'renta_actualmente'        => '',
+            'arrendador_actual'        => '',
+            'cel_arrendador_actual'    => '',
+            'monto_renta_actual'       => '',
+            'tiempo_habitacion_actual' => '',
+            'motivo_arrendamiento'     => '',
+            'vive_actualmente'         => '',
+        ];
+    }
+
+    private function mapProfileRow(array $row): array
+    {
+        $id   = (int) ($row['id'] ?? 0);
+        $tipo = (string) ($row['tipo'] ?? 'inquilino');
+        $nombre = trim(sprintf(
+            '%s %s %s',
+            (string) ($row['nombre_inquilino'] ?? ''),
+            (string) ($row['apellidop_inquilino'] ?? ''),
+            (string) ($row['apellidom_inquilino'] ?? '')
+        ));
+
+        return [
+            'id'                   => $id,
+            'pk'                   => $id > 0 ? $this->buildPk($id, $tipo) : '',
+            'tipo'                 => $tipo,
+            'nombre_inquilino'     => (string) ($row['nombre_inquilino'] ?? ''),
+            'apellidop_inquilino'  => (string) ($row['apellidop_inquilino'] ?? ''),
+            'apellidom_inquilino'  => (string) ($row['apellidom_inquilino'] ?? ''),
+            'representante'        => (string) ($row['representante'] ?? ''),
+            'estadocivil'          => (string) ($row['estadocivil'] ?? ''),
+            'rfc'                  => (string) ($row['rfc'] ?? ''),
+            'curp'                 => (string) ($row['curp'] ?? ''),
+            'email'                => (string) ($row['email'] ?? ''),
+            'celular'              => (string) ($row['celular'] ?? ''),
+            'nacionalidad'         => (string) ($row['nacionalidad'] ?? ''),
+            'tipo_id'              => (string) ($row['tipo_id'] ?? ''),
+            'num_id'               => (string) ($row['num_id'] ?? ''),
+            'fecha'                => $row['fecha'] ?? null,
+            'conyuge'              => (string) ($row['conyuge'] ?? ''),
+            'device_id'            => (string) ($row['device_id'] ?? ''),
+            'ip'                   => (string) ($row['ip'] ?? ''),
+            'status'               => (string) ($row['status'] ?? ''),
+            'slug'                 => (string) ($row['slug'] ?? ''),
+            'updated_at'           => $row['updated_at'] ?? null,
+            'nombre'               => $nombre,
+            'asesor_id'            => isset($row['id_asesor']) ? (int) $row['id_asesor'] : null,
+        ];
+    }
+
+    private function buildFullProfile(array $row): array
+    {
+        $profile = $this->mapProfileRow($row);
+        $id      = $profile['id'];
+
+        $profile['direccion'] = $this->fetchDireccion($id);
+        $profile['trabajo']   = $this->fetchTrabajo($id);
+        $profile['fiador']    = $this->fetchFiador($id);
+        $profile['historial'] = $this->fetchHistorial($id);
+
+        return $profile;
+    }
+    private function fetchDireccion(int $id): array
+    {
+        $stmt = $this->db->prepare('SELECT * FROM inquilinos_direccion WHERE id_inquilino = :id ORDER BY id DESC LIMIT 1');
+        $stmt->execute([':id' => $id]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$row) {
+            return $this->defaultDireccion();
+        }
+
+        return [
+            'calle'         => (string) ($row['calle'] ?? ''),
+            'num_exterior'  => (string) ($row['num_exterior'] ?? ''),
+            'num_interior'  => (string) ($row['num_interior'] ?? ''),
+            'colonia'       => (string) ($row['colonia'] ?? ''),
+            'alcaldia'      => (string) ($row['alcaldia'] ?? ''),
+            'ciudad'        => (string) ($row['ciudad'] ?? ''),
+            'codigo_postal' => (string) ($row['codigo_postal'] ?? ''),
+        ];
+    }
+
+    private function fetchTrabajo(int $id): array
+    {
+        $stmt = $this->db->prepare('SELECT * FROM inquilinos_trabajo WHERE id_inquilino = :id ORDER BY id DESC LIMIT 1');
+        $stmt->execute([':id' => $id]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$row) {
+            return $this->defaultTrabajo();
+        }
+
+        return [
+            'empresa'           => (string) ($row['empresa'] ?? ''),
+            'direccion_empresa' => (string) ($row['direccion_empresa'] ?? ''),
+            'telefono_empresa'  => (string) ($row['telefono_empresa'] ?? ''),
+            'puesto'            => (string) ($row['puesto'] ?? ''),
+            'antiguedad'        => (string) ($row['antiguedad'] ?? ''),
+            'sueldo'            => (string) ($row['sueldo'] ?? ''),
+            'otrosingresos'     => (string) ($row['otrosingresos'] ?? ''),
+            'nombre_jefe'       => (string) ($row['nombre_jefe'] ?? ''),
+            'tel_jefe'          => (string) ($row['tel_jefe'] ?? ''),
+            'web_empresa'       => (string) ($row['web_empresa'] ?? ''),
+        ];
+    }
+
+    private function fetchFiador(int $id): array
+    {
+        $stmt = $this->db->prepare('SELECT * FROM inquilinos_fiador WHERE id_inquilino = :id ORDER BY id DESC LIMIT 1');
+        $stmt->execute([':id' => $id]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$row) {
+            return $this->defaultFiador();
+        }
+
+        return [
+            'calle_inmueble'    => (string) ($row['calle_inmueble'] ?? ''),
+            'num_ext_inmueble'  => (string) ($row['num_ext_inmueble'] ?? ''),
+            'num_int_inmueble'  => (string) ($row['num_int_inmueble'] ?? ''),
+            'colonia_inmueble'  => (string) ($row['colonia_inmueble'] ?? ''),
+            'alcaldia_inmueble' => (string) ($row['alcaldia_inmueble'] ?? ''),
+            'estado_inmueble'   => (string) ($row['estado_inmueble'] ?? ''),
+            'numero_escritura'  => (string) ($row['numero_escritura'] ?? ''),
+            'numero_notario'    => (string) ($row['numero_notario'] ?? ''),
+            'estado_notario'    => (string) ($row['estado_notario'] ?? ''),
+            'folio_real'        => (string) ($row['folio_real'] ?? ''),
+            's3_key'            => (string) ($row['s3_key'] ?? ''),
+        ];
+    }
+
+    private function fetchHistorial(int $id): array
+    {
+        $stmt = $this->db->prepare('SELECT * FROM inquilinos_historial_vivienda WHERE id_inquilino = :id ORDER BY id DESC LIMIT 1');
+        $stmt->execute([':id' => $id]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$row) {
+            return $this->defaultHistorial();
+        }
+
+        return [
+            'renta_actualmente'        => (string) ($row['renta_actualmente'] ?? ''),
+            'arrendador_actual'        => (string) ($row['arrendador_actual'] ?? ''),
+            'cel_arrendador_actual'    => (string) ($row['cel_arrendador_actual'] ?? ''),
+            'monto_renta_actual'       => (string) ($row['monto_renta_actual'] ?? ''),
+            'tiempo_habitacion_actual' => (string) ($row['tiempo_habitacion_actual'] ?? ''),
+            'motivo_arrendamiento'     => (string) ($row['motivo_arrendamiento'] ?? ''),
+            'vive_actualmente'         => (string) ($row['vive_actualmente'] ?? ''),
+        ];
+    }
+
+    private function extraerSelfieUrl(array $archivos): ?string
+    {
+        foreach ($archivos as $archivo) {
+            if (($archivo['tipo'] ?? '') === 'selfie') {
+                return $archivo['url'] ?? ($archivo['s3_key'] ?? null);
             }
         }
         return null;
     }
 
-    /**
-     * Expose PK resolution for controllers/services.
-     */
-    public function getPkById(int $id): ?string
+    private function obtenerPolizas(int $idInquilino): array
     {
-        return $this->resolvePkById($id);
+        $stmt = $this->db->prepare('SELECT * FROM polizas WHERE id_inquilino = :id ORDER BY fecha_poliza DESC, id_poliza DESC');
+        $stmt->execute([':id' => $idInquilino]);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        return $rows ?: [];
     }
 
-    /**
-     * Registers an uploaded file and appends it to archivos_ids.
-     *
-     * @return array Datos del archivo recién almacenado.
-     */
+    private function ensureValidacionesRow(int $idInquilino): void
+    {
+        $stmt = $this->db->prepare('SELECT id FROM inquilinos_validaciones WHERE id_inquilino = :id LIMIT 1');
+        $stmt->execute([':id' => $idInquilino]);
+        if ($stmt->fetch(PDO::FETCH_ASSOC)) {
+            return;
+        }
+
+        $insert = $this->db->prepare('INSERT INTO inquilinos_validaciones (id_inquilino) VALUES (:id)');
+        $insert->execute([':id' => $idInquilino]);
+    }
+
+    private function mapValidacionesRow(array $row): array
+    {
+        return [
+            'documentos' => [
+                'proceso' => (int) ($row['proceso_validacion_documentos'] ?? 2),
+                'resumen' => $row['validacion_documentos_resumen'] ?? null,
+                'json'    => $this->decodeJson($row['validacion_documentos_json'] ?? null),
+            ],
+            'archivos' => [
+                'proceso' => (int) ($row['proceso_validacion_archivos'] ?? 2),
+                'resumen' => $row['validacion_archivos_resumen'] ?? null,
+                'json'    => $this->decodeJson($row['validacion_archivos_json'] ?? null),
+            ],
+            'rostro' => [
+                'proceso' => (int) ($row['proceso_validacion_rostro'] ?? 2),
+                'resumen' => $row['validacion_rostro_resumen'] ?? null,
+                'json'    => $this->decodeJson($row['validacion_rostro_json'] ?? null),
+            ],
+            'identidad' => [
+                'proceso' => (int) ($row['proceso_validacion_id'] ?? 2),
+                'resumen' => $row['validacion_id_resumen'] ?? null,
+                'json'    => $this->decodeJson($row['validacion_id_json'] ?? null),
+            ],
+            'ingresos' => [
+                'proceso' => (int) ($row['proceso_validacion_ingresos'] ?? 2),
+                'resumen' => $row['validacion_ingresos_resumen'] ?? null,
+                'json'    => $this->decodeJson($row['validacion_ingresos_json'] ?? null),
+            ],
+            'pago_inicial' => [
+                'proceso' => (int) ($row['proceso_pago_inicial'] ?? 2),
+                'resumen' => $row['pago_inicial_resumen'] ?? null,
+                'json'    => $this->decodeJson($row['pago_inicial_json'] ?? null),
+            ],
+            'demandas' => [
+                'proceso' => (int) ($row['proceso_inv_demandas'] ?? 2),
+                'resumen' => $row['inv_demandas_resumen'] ?? null,
+                'json'    => $this->decodeJson($row['inv_demandas_json'] ?? null),
+            ],
+            'verificamex' => [
+                'proceso' => (int) ($row['proceso_validacion_verificamex'] ?? 2),
+                'resumen' => $row['verificamex_resumen'] ?? null,
+                'json'    => $this->decodeJson($row['verificamex_json'] ?? null),
+            ],
+        ];
+    }
+
+    private function saveValidation(int $idInquilino, string $tipo, int $proceso, $payload, ?string $resumen = null): bool
+    {
+        $idInquilino = max(0, $idInquilino);
+        if ($idInquilino <= 0) {
+            return false;
+        }
+
+        $map = [
+            'documentos'   => ['proceso_validacion_documentos', 'validacion_documentos_resumen', 'validacion_documentos_json'],
+            'archivos'     => ['proceso_validacion_archivos', 'validacion_archivos_resumen', 'validacion_archivos_json'],
+            'rostro'       => ['proceso_validacion_rostro', 'validacion_rostro_resumen', 'validacion_rostro_json'],
+            'identidad'    => ['proceso_validacion_id', 'validacion_id_resumen', 'validacion_id_json'],
+            'ingresos'     => ['proceso_validacion_ingresos', 'validacion_ingresos_resumen', 'validacion_ingresos_json'],
+            'pago_inicial' => ['proceso_pago_inicial', 'pago_inicial_resumen', 'pago_inicial_json'],
+            'demandas'     => ['proceso_inv_demandas', 'inv_demandas_resumen', 'inv_demandas_json'],
+            'verificamex'  => ['proceso_validacion_verificamex', 'verificamex_resumen', 'verificamex_json'],
+        ];
+
+        if (!isset($map[$tipo])) {
+            return false;
+        }
+
+        $this->ensureValidacionesRow($idInquilino);
+
+        [$procesoCol, $resumenCol, $jsonCol] = $map[$tipo];
+        $sql = sprintf(
+            'UPDATE inquilinos_validaciones SET %s = :proceso, %s = :resumen, %s = :json, updated_at = NOW() WHERE id_inquilino = :id',
+            $procesoCol,
+            $resumenCol,
+            $jsonCol
+        );
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->bindValue(':proceso', $proceso, PDO::PARAM_INT);
+        if ($resumen === null) {
+            $stmt->bindValue(':resumen', null, PDO::PARAM_NULL);
+        } else {
+            $stmt->bindValue(':resumen', $resumen, PDO::PARAM_STR);
+        }
+
+        $json = $this->encodeJson($payload);
+        if ($json === null) {
+            $stmt->bindValue(':json', null, PDO::PARAM_NULL);
+        } else {
+            $stmt->bindValue(':json', $json, PDO::PARAM_STR);
+        }
+
+        $stmt->bindValue(':id', $idInquilino, PDO::PARAM_INT);
+        return $stmt->execute();
+    }
+
+    public function getPkById(int $id): ?string
+    {
+        if ($id <= 0) {
+            return null;
+        }
+        $stmt = $this->db->prepare('SELECT tipo FROM inquilinos WHERE id = :id LIMIT 1');
+        $stmt->execute([':id' => $id]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$row) {
+            return null;
+        }
+        return $this->buildPk($id, (string) ($row['tipo'] ?? ''));
+    }
     public function registrarArchivo(
         int $idInquilino,
         string $tipo,
@@ -322,167 +443,78 @@ class InquilinoModel
         array $meta = [],
         ?string $forcedSuffix = null
     ): array {
-        $pk = $this->resolvePkById($idInquilino);
-        if (!$pk) {
-            throw new \RuntimeException('PK no encontrado para el inquilino.');
+        unset($forcedSuffix);
+
+        if ($idInquilino <= 0) {
+            throw new \RuntimeException('Inquilino inválido.');
         }
 
-        [$prefix] = explode('#', $pk . '#');
-        $prefix = strtolower($prefix ?: 'inq');
-
-        $suffix = $forcedSuffix !== null
-            ? strtolower(preg_replace('/[^a-z0-9]/', '', $forcedSuffix))
-            : strtolower(bin2hex(random_bytes(6)));
-
-        if ($suffix === '') {
-            $suffix = strtolower(bin2hex(random_bytes(6)));
+        $tipo = strtolower(trim($tipo));
+        if ($tipo === '') {
+            throw new \RuntimeException('Tipo de archivo inválido.');
         }
 
-        $sk = sprintf('%sfile#%s', $prefix, $suffix);
-        $now = date('c');
-
-        $item = [
-            'pk'            => $pk,
-            'sk'            => $sk,
-            'tipo'          => strtolower(trim($tipo)),
-            's3_key'        => $s3Key,
-            'uploaded_at'   => $now,
-        ];
-
-        if (!empty($meta['mime_type'])) {
-            $item['mime_type'] = strtolower((string)$meta['mime_type']);
-        }
-        if (!empty($meta['size'])) {
-            $item['size'] = (int)$meta['size'];
-        }
-        if (!empty($meta['original_name'])) {
-            $item['nombre_original'] = (string)$meta['original_name'];
-        }
-        if (!empty($meta['categoria'])) {
-            $item['categoria'] = strtolower((string)$meta['categoria']);
-        }
-
-        $item = array_filter($item, static fn($v) => $v !== null && $v !== '', ARRAY_FILTER_USE_BOTH);
-
-        $this->client->putItem([
-            'TableName' => $this->table,
-            'Item'      => $this->marshaler->marshalItem($item),
+        $stmt = $this->db->prepare('INSERT INTO inquilinos_archivos (id_inquilino, tipo, s3_key, mime_type, size) VALUES (:id, :tipo, :s3, :mime, :size)');
+        $stmt->execute([
+            ':id'   => $idInquilino,
+            ':tipo' => $tipo,
+            ':s3'   => $s3Key,
+            ':mime' => (string) ($meta['mime_type'] ?? ''),
+            ':size' => (int) ($meta['size'] ?? 0),
         ]);
 
-        $this->client->updateItem([
-            'TableName' => $this->table,
-            'Key'       => [
-                'pk' => ['S' => $pk],
-                'sk' => ['S' => 'profile'],
-            ],
-            'UpdateExpression'          => 'SET archivos_ids = list_append(if_not_exists(archivos_ids, :empty), :nuevo)',
-            'ExpressionAttributeValues' => [
-                ':empty' => ['L' => []],
-                ':nuevo' => ['L' => [['S' => $sk]]],
-            ],
-        ]);
+        $archivoId = (int) $this->db->lastInsertId();
+        $registro  = $this->obtenerArchivo($idInquilino, (string) $archivoId);
+        if (!$registro) {
+            $registro = [
+                'id'           => $archivoId,
+                'id_inquilino' => $idInquilino,
+                'tipo'         => $tipo,
+                's3_key'       => $s3Key,
+                'mime_type'    => (string) ($meta['mime_type'] ?? ''),
+                'size'         => (int) ($meta['size'] ?? 0),
+            ];
+        }
 
-        $item['pk'] = $pk;
-        $item['sk'] = $sk;
-        $item['id'] = $sk;
+        $registro['nombre_original'] = $meta['original_name'] ?? null;
+        $registro['categoria']       = $meta['categoria'] ?? null;
 
-        return $item;
+        return $registro;
     }
 
-    /**
-     * Recupera un archivo puntual por su SK.
-     */
     public function obtenerArchivo(int $idInquilino, string $archivoId): ?array
     {
-        $pk = $this->resolvePkById($idInquilino);
-        if (!$pk) {
+        $archivoId = (int) trim($archivoId);
+        if ($idInquilino <= 0 || $archivoId <= 0) {
             return null;
         }
 
-        $archivoId = trim($archivoId);
-        if ($archivoId === '') {
+        $stmt = $this->db->prepare('SELECT * FROM inquilinos_archivos WHERE id = :id AND id_inquilino = :inq LIMIT 1');
+        $stmt->execute([':id' => $archivoId, ':inq' => $idInquilino]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$row) {
             return null;
         }
 
-        $res = $this->client->getItem([
-            'TableName' => $this->table,
-            'Key'       => [
-                'pk' => ['S' => $pk],
-                'sk' => ['S' => $archivoId],
-            ],
-        ]);
-
-        if (empty($res['Item'])) {
-            return null;
-        }
-
-        return $this->marshaler->unmarshalItem($res['Item']);
+        $row['id'] = (int) $row['id'];
+        $row['id_inquilino'] = (int) $row['id_inquilino'];
+        return $row;
     }
 
-    /**
-     * Elimina un archivo (item + referencia en profile).
-     */
     public function eliminarArchivo(int $idInquilino, string $archivoId): bool
     {
-        $pk = $this->resolvePkById($idInquilino);
-        if (!$pk) {
+        $archivoId = (int) trim($archivoId);
+        if ($idInquilino <= 0 || $archivoId <= 0) {
             return false;
         }
 
-        $archivoId = trim($archivoId);
-        if ($archivoId === '') {
-            return false;
-        }
-
-        $this->client->deleteItem([
-            'TableName' => $this->table,
-            'Key'       => [
-                'pk' => ['S' => $pk],
-                'sk' => ['S' => $archivoId],
-            ],
-        ]);
-
-        $profile = $this->fetchItem($pk);
-        $currentIds = [];
-        if (!empty($profile['archivos_ids']) && is_array($profile['archivos_ids'])) {
-            foreach ($profile['archivos_ids'] as $id) {
-                $id = (string)$id;
-                if ($id !== '' && $id !== $archivoId) {
-                    $currentIds[] = $id;
-                }
-            }
-        }
-
-        if ($currentIds) {
-            $this->client->updateItem([
-                'TableName' => $this->table,
-                'Key'       => [
-                    'pk' => ['S' => $pk],
-                    'sk' => ['S' => 'profile'],
-                ],
-                'UpdateExpression'          => 'SET archivos_ids = :ids',
-                'ExpressionAttributeValues' => [
-                    ':ids' => $this->marshaler->marshalValue($currentIds),
-                ],
-            ]);
-        } else {
-            $this->client->updateItem([
-                'TableName' => $this->table,
-                'Key'       => [
-                    'pk' => ['S' => $pk],
-                    'sk' => ['S' => 'profile'],
-                ],
-                'UpdateExpression' => 'REMOVE archivos_ids',
-            ]);
-        }
-
-        return true;
+        $stmt = $this->db->prepare('DELETE FROM inquilinos_archivos WHERE id = :id AND id_inquilino = :inq');
+        $stmt->bindValue(':id', $archivoId, PDO::PARAM_INT);
+        $stmt->bindValue(':inq', $idInquilino, PDO::PARAM_INT);
+        return $stmt->execute();
     }
 
-    /**
-     * Buscar inquilinos/obligados/fiadores por nombre, email o celular
-     * Incluye archivos, validaciones, pólizas y selfie_url
-     */
     public function searchByTerm(string $q): array
     {
         $q = trim($q);
@@ -490,153 +522,73 @@ class InquilinoModel
             return [];
         }
 
-        $qLower = mb_strtolower($q, 'UTF-8');
+        $needle = '%' . mb_strtolower($q, 'UTF-8') . '%';
+        $sql = 'SELECT * FROM inquilinos WHERE '
+            . 'LOWER(CONCAT_WS(" ", nombre_inquilino, apellidop_inquilino, COALESCE(apellidom_inquilino, ""))) LIKE :needle '
+            . 'OR LOWER(email) LIKE :needle '
+            . 'OR LOWER(celular) LIKE :needle '
+            . 'OR LOWER(COALESCE(slug, "")) LIKE :needle '
+            . 'OR LOWER(COALESCE(rfc, "")) LIKE :needle '
+            . 'OR LOWER(COALESCE(curp, "")) LIKE :needle';
 
-        $inquilinos = [];
-        $lastKey = null;
+        $params = [':needle' => $needle];
+        if (ctype_digit($q)) {
+            $sql .= ' OR id = :idExact';
+            $params[':idExact'] = (int) $q;
+        }
 
-        do {
-            $params = [
-                'TableName'                 => $this->table,
-                'FilterExpression'          => '(begins_with(pk, :inq) OR begins_with(pk, :obl) OR begins_with(pk, :fia)) AND sk = :sk',
-                'ExpressionAttributeValues' => [
-                    ':inq' => ['S' => 'inq#'],
-                    ':obl' => ['S' => 'obl#'],
-                    ':fia' => ['S' => 'fia#'],
-                    ':sk'  => ['S' => 'profile'],
-                ]
-            ];
+        $sql .= ' ORDER BY updated_at DESC, id DESC LIMIT 50';
 
-            if ($lastKey) {
-                $params['ExclusiveStartKey'] = $lastKey;
-            }
-
-            $result = $this->client->scan($params);
-
-            foreach ($result['Items'] as $item) {
-                $profile = $this->marshaler->unmarshalItem($item);
-
-                $hayCoincidencia = false;
-                $fieldsToCheck = [
-                    (string)($profile['nombre'] ?? ''),
-                    (string)($profile['nombre_inquilino'] ?? ''),
-                    (string)($profile['apellidop_inquilino'] ?? ''),
-                    (string)($profile['apellidom_inquilino'] ?? ''),
-                    (string)($profile['email'] ?? ''),
-                    (string)($profile['celular'] ?? ''),
-                ];
-                foreach ($fieldsToCheck as $field) {
-                    if ($field !== '' && mb_stripos($field, $qLower, 0, 'UTF-8') !== false) {
-                        $hayCoincidencia = true;
-                        break;
-                    }
-                }
-
-                if (!$hayCoincidencia) {
-                    continue;
-                }
-
-                $inquilinos[] = $this->hydrateProfile($profile);
-            }
-
-            $lastKey = $result['LastEvaluatedKey'] ?? null;
-        } while ($lastKey);
-
-        return $inquilinos;
-    }
-
-
-    /**
-     * Helper para obtener items relacionados de un inquilino (archivos, validaciones, etc.)
-     */
-    private function obtenerItemsPorInquilino(string $pk, array $ids): array
-    {
-        $items = [];
-        foreach ($ids as $id) {
-            $res = $this->client->getItem([
-                'TableName' => $this->table,
-                'Key'       => [
-                    'pk' => ['S' => $pk],
-                    'sk' => ['S' => $id],
-                ]
-            ]);
-            if (!empty($res['Item'])) {
-                $items[] = $this->marshaler->unmarshalItem($res['Item']);
+        $stmt = $this->db->prepare($sql);
+        foreach ($params as $key => $value) {
+            if ($key === ':idExact') {
+                $stmt->bindValue($key, (int) $value, PDO::PARAM_INT);
+            } else {
+                $stmt->bindValue($key, $value, PDO::PARAM_STR);
             }
         }
-        return $items;
-    }
+        $stmt->execute();
 
-    /**
-     * Helper para obtener pólizas completas por sus IDs
-     */
-    private function obtenerPolizasPorIds(array $ids): array
-    {
-        $polizas = [];
-        foreach ($ids as $id) {
-            $res = $this->client->getItem([
-                'TableName' => $this->table,
-                'Key'       => [
-                    'pk' => ['S' => $id],
-                    'sk' => ['S' => 'profile'],
-                ]
-            ]);
-            if (!empty($res['Item'])) {
-                $polizas[] = $this->marshaler->unmarshalItem($res['Item']);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        $resultados = [];
+        foreach ($rows as $row) {
+            $full = $this->obtenerPorId((int) ($row['id'] ?? 0));
+            if ($full) {
+                $resultados[] = $full;
             }
         }
-        return $polizas;
-    }
 
-    /**
-     * Helper para detectar selfie_url dentro de archivos
-     */
-    private function extraerSelfieUrl(array $archivos): ?string
-    {
-        foreach ($archivos as $archivo) {
-            if (($archivo['tipo'] ?? '') === 'selfie') {
-                return $archivo['url']
-                    ?? ($archivo['s3_key'] ?? null);
-            }
-        }
-        return null;
+        return $resultados;
     }
-
-    /**
-     * Obtiene un inquilino completo (arrendatario/fiador/obligado) por ID.
-     */
     public function obtenerPorId(int $id): ?array
     {
         if ($id <= 0) {
             return null;
         }
 
-        foreach ($this->candidatePksForId($id) as $pk) {
-            $profile = $this->fetchItem($pk);
-            if ($profile !== null) {
-                $hydrated = $this->hydrateProfile($profile);
-                $combined = array_merge($profile, [
-                    'id'           => $id,
-                    'archivos'     => $hydrated['archivos'],
-                    'validaciones' => $hydrated['validaciones'],
-                    'polizas'      => $hydrated['polizas'],
-                    'selfie_url'   => $hydrated['selfie_url'],
-                ]);
-                $parts = $this->splitNombre($profile['nombre'] ?? '');
-                $combined['nombre_inquilino']    = $combined['nombre_inquilino']    ?? $parts['nombre'];
-                $combined['apellidop_inquilino'] = $combined['apellidop_inquilino'] ?? $parts['ap_paterno'];
-                $combined['apellidom_inquilino'] = $combined['apellidom_inquilino'] ?? $parts['ap_materno'];
-                $combined['profile'] = $profile;
-                return $combined;
-            }
+        $stmt = $this->db->prepare('SELECT * FROM inquilinos WHERE id = :id LIMIT 1');
+        $stmt->execute([':id' => $id]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$row) {
+            return null;
         }
 
-        return null;
+        $profile   = $this->buildFullProfile($row);
+        $archivos  = $this->obtenerArchivos($id);
+        $validaciones = $this->obtenerValidaciones($id);
+        $polizas   = $this->obtenerPolizas($id);
+        $selfieUrl = $this->extraerSelfieUrl($archivos);
+
+        $combined = $profile;
+        $combined['archivos']     = $archivos;
+        $combined['validaciones'] = $validaciones;
+        $combined['polizas']      = $polizas;
+        $combined['selfie_url']   = $selfieUrl;
+        $combined['profile']      = $profile;
+
+        return $combined;
     }
 
-    /**
-     * Busca el profile cuyo slug coincida con el solicitado.
-     */
     public function obtenerPorSlug(string $slug): ?array
     {
         $slug = strtolower(trim($slug));
@@ -644,107 +596,62 @@ class InquilinoModel
             return null;
         }
 
-        $lastKey = null;
-        do {
-            $params = [
-                'TableName'                 => $this->table,
-                'FilterExpression'          => 'sk = :sk AND #slug = :slug',
-                'ExpressionAttributeValues' => [
-                    ':sk'   => ['S' => 'profile'],
-                    ':slug' => ['S' => $slug],
-                ],
-                'ExpressionAttributeNames'  => ['#slug' => 'slug'],
-            ];
+        $stmt = $this->db->prepare('SELECT * FROM inquilinos WHERE LOWER(slug) = :slug LIMIT 1');
+        $stmt->execute([':slug' => $slug]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$row) {
+            return null;
+        }
 
-            if ($lastKey) {
-                $params['ExclusiveStartKey'] = $lastKey;
-            }
-
-            $result = $this->client->scan($params);
-
-            foreach ($result['Items'] as $item) {
-                $profile = $this->marshaler->unmarshalItem($item);
-                $hydrated = $this->hydrateProfile($profile);
-                $combined = array_merge($profile, [
-                    'id'           => (int)($profile['id'] ?? 0),
-                    'archivos'     => $hydrated['archivos'],
-                    'validaciones' => $hydrated['validaciones'],
-                    'polizas'      => $hydrated['polizas'],
-                    'selfie_url'   => $hydrated['selfie_url'],
-                ]);
-                $parts = $this->splitNombre($profile['nombre'] ?? '');
-                $combined['nombre_inquilino']    = $combined['nombre_inquilino']    ?? $parts['nombre'];
-                $combined['apellidop_inquilino'] = $combined['apellidop_inquilino'] ?? $parts['ap_paterno'];
-                $combined['apellidom_inquilino'] = $combined['apellidom_inquilino'] ?? $parts['ap_materno'];
-                $combined['profile'] = $profile;
-                return $combined;
-            }
-
-            $lastKey = $result['LastEvaluatedKey'] ?? null;
-        } while ($lastKey);
-
-        return null;
+        return $this->obtenerPorId((int) $row['id']);
     }
 
-    /**
-     * Obtiene todos los archivos relacionados a un inquilino.
-     */
     public function obtenerArchivos(int $idInquilino): array
     {
-        $pk = $this->resolvePkById($idInquilino);
-        if (!$pk) {
+        if ($idInquilino <= 0) {
             return [];
         }
 
-        $profile = $this->fetchItem($pk);
-        if (!$profile) {
-            return [];
-        }
+        $stmt = $this->db->prepare('SELECT * FROM inquilinos_archivos WHERE id_inquilino = :id ORDER BY created_at ASC, id ASC');
+        $stmt->execute([':id' => $idInquilino]);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
-        return !empty($profile['archivos_ids'])
-            ? $this->obtenerItemsPorInquilino($pk, $profile['archivos_ids'])
-            : [];
+        return array_map(function (array $row): array {
+            $row['id'] = (int) ($row['id'] ?? 0);
+            $row['id_inquilino'] = (int) ($row['id_inquilino'] ?? 0);
+            return $row;
+        }, $rows);
     }
 
-    /**
-     * Devuelve todos los archivos (incluyendo tipo y metadatos) de un inquilino.
-     */
     public function archivosPorInquilinoId(int $idInquilino): array
     {
         return $this->obtenerArchivos($idInquilino);
     }
 
-    /**
-     * Retorna únicamente los comprobantes de ingreso en formato PDF del inquilino.
-     */
     public function obtenerComprobantesIngreso(int $idInquilino): array
     {
         $archivos = $this->obtenerArchivos($idInquilino);
         $out = [];
         foreach ($archivos as $archivo) {
-            $tipo = strtolower((string)($archivo['tipo'] ?? ''));
-            if ($tipo !== 'comprobante_ingreso') {
-                continue;
+            $tipo = strtolower((string) ($archivo['tipo'] ?? ''));
+            if ($tipo === 'comprobante_ingreso') {
+                $out[] = $archivo;
             }
-            $out[] = $archivo;
         }
         return $out;
     }
 
-    /**
-     * Devuelve un mapa tipo => s3_key para los tipos solicitados.
-     */
     public function getArchivosByTipos(int $idInquilino, array $tipos): array
     {
-        $tipos = array_map(static fn($t) => strtolower(trim((string)$t)), $tipos);
+        $tipos = array_map(static fn($t) => strtolower(trim((string) $t)), $tipos);
         $tipos = array_filter($tipos, static fn($t) => $t !== '');
-        if (empty($tipos)) {
+        if ($tipos === []) {
             return [];
         }
 
         $result = [];
         foreach ($this->obtenerArchivos($idInquilino) as $archivo) {
-            $tipo = strtolower((string)($archivo['tipo'] ?? ''));
+            $tipo = strtolower((string) ($archivo['tipo'] ?? ''));
             if (in_array($tipo, $tipos, true)) {
                 $result[$tipo] = $archivo['s3_key'] ?? '';
             }
@@ -752,9 +659,6 @@ class InquilinoModel
         return $result;
     }
 
-    /**
-     * Devuelve un arreglo con los s3_key principales usados en validación de identidad.
-     */
     public function obtenerArchivosIdentidad(int $idInquilino): array
     {
         $archivos = $this->obtenerArchivos($idInquilino);
@@ -767,7 +671,7 @@ class InquilinoModel
         ];
 
         foreach ($archivos as $archivo) {
-            $tipo = strtolower((string)($archivo['tipo'] ?? ''));
+            $tipo = strtolower((string) ($archivo['tipo'] ?? ''));
             if (array_key_exists($tipo, $out)) {
                 $out[$tipo] = $archivo['s3_key'] ?? null;
             }
@@ -775,327 +679,220 @@ class InquilinoModel
 
         return array_filter($out, static fn($v) => $v !== null);
     }
-
-    /**
-     * Actualiza los datos personales principales de un inquilino identificado por su PK.
-     */
     public function actualizarDatosPersonalesPorPk(string $pk, array $data): bool
     {
-        $pk = trim($pk);
-        if ($pk === '') {
+        $id = $this->resolveIdFromPk($pk, isset($data['id']) ? (int) $data['id'] : null);
+        if ($id === null) {
             return false;
         }
 
-        $fields = [
-            'tipo',
-            'nombre_inquilino',
-            'apellidop_inquilino',
-            'apellidom_inquilino',
-            'nombre',
-            'email',
-            'celular',
-            'estadocivil',
-            'nacionalidad',
-            'curp',
-            'rfc',
-            'tipo_id',
-            'num_id',
-            'slug',
+        $campos = [
+            'tipo', 'nombre_inquilino', 'apellidop_inquilino', 'apellidom_inquilino',
+            'nombre', 'email', 'celular', 'estadocivil', 'nacionalidad', 'curp', 'rfc',
+            'tipo_id', 'num_id', 'slug', 'conyuge'
         ];
 
         $parts = [];
-        $values = [];
-
-        foreach ($fields as $field) {
-            if (!array_key_exists($field, $data)) {
-                continue;
+        $params = [':id' => $id];
+        foreach ($campos as $campo) {
+            if (array_key_exists($campo, $data)) {
+                $parts[] = sprintf('%s = :%s', $campo, $campo);
+                $params[sprintf(':%s', $campo)] = (string) $data[$campo];
             }
-            $parts[] = sprintf('%s = :%s', $field, $field);
-            $values[sprintf(':%s', $field)] = $this->marshaler->marshalValue((string)$data[$field]);
         }
 
-        if (!$parts) {
+        if ($parts === []) {
             return false;
         }
 
-        $this->client->updateItem([
-            'TableName' => $this->table,
-            'Key'       => [
-                'pk' => ['S' => $pk],
-                'sk' => ['S' => 'profile'],
-            ],
-            'UpdateExpression'          => 'SET ' . implode(', ', $parts),
-            'ExpressionAttributeValues' => $values,
-        ]);
-
-        return true;
+        $sql = 'UPDATE inquilinos SET ' . implode(', ', $parts) . ', updated_at = NOW() WHERE id = :id';
+        $stmt = $this->db->prepare($sql);
+        return $stmt->execute($params);
     }
 
-    /**
-     * Actualiza el domicilio almacenado en el profile.
-     */
     public function actualizarDomicilioPorPk(string $pk, array $domicilio): bool
     {
-        $pk = trim($pk);
-        if ($pk === '') {
+        $id = $this->resolveIdFromPk($pk, isset($domicilio['id']) ? (int) $domicilio['id'] : null);
+        if ($id === null) {
             return false;
         }
 
-        $payload = [];
-        foreach ($domicilio as $campo => $valor) {
-            if (!is_string($campo)) {
-                continue;
+        $datos = array_intersect_key($domicilio, $this->defaultDireccion());
+        $datos = array_map(static fn($v) => (string) $v, $datos);
+
+        $stmt = $this->db->prepare('SELECT id FROM inquilinos_direccion WHERE id_inquilino = :id LIMIT 1');
+        $stmt->execute([':id' => $id]);
+        $existing = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if ($existing) {
+            $set = [];
+            foreach ($datos as $campo => $valor) {
+                $set[] = sprintf('%s = :%s', $campo, $campo);
             }
-            $payload[$campo] = (string)$valor;
+            $sql = 'UPDATE inquilinos_direccion SET ' . implode(', ', $set) . ', updated_at = NOW() WHERE id = :pk';
+            $params = array_merge([':pk' => (int) $existing['id']], array_combine(
+                array_map(static fn($c) => ':' . $c, array_keys($datos)),
+                array_values($datos)
+            ));
+            $stmt = $this->db->prepare($sql);
+            return $stmt->execute($params);
         }
 
-        if (!$payload) {
-            return false;
-        }
-
-        $this->client->updateItem([
-            'TableName' => $this->table,
-            'Key'       => [
-                'pk' => ['S' => $pk],
-                'sk' => ['S' => 'profile'],
-            ],
-            'UpdateExpression'          => 'SET direccion = :direccion',
-            'ExpressionAttributeValues' => [
-                ':direccion' => $this->marshaler->marshalValue($payload),
-            ],
-        ]);
-
-        return true;
+        $sql = 'INSERT INTO inquilinos_direccion (id_inquilino, calle, num_exterior, num_interior, colonia, alcaldia, ciudad, codigo_postal)
+                VALUES (:id, :calle, :num_exterior, :num_interior, :colonia, :alcaldia, :ciudad, :codigo_postal)';
+        $params = array_merge([':id' => $id], array_combine(
+            array_map(static fn($c) => ':' . $c, array_keys($datos)),
+            array_values($datos)
+        ));
+        $stmt = $this->db->prepare($sql);
+        return $stmt->execute($params);
     }
 
-    /**
-     * Actualiza la información laboral almacenada en el profile.
-     */
     public function actualizarTrabajoPorPk(string $pk, array $trabajo): bool
     {
-        $pk = trim($pk);
-        if ($pk === '') {
+        $id = $this->resolveIdFromPk($pk, isset($trabajo['id']) ? (int) $trabajo['id'] : null);
+        if ($id === null) {
             return false;
         }
 
-        $payload = [];
-        foreach ($trabajo as $campo => $valor) {
-            if (!is_string($campo)) {
-                continue;
-            }
+        $datos = array_intersect_key($trabajo, $this->defaultTrabajo());
+        $datos = array_map(static fn($v) => (string) $v, $datos);
 
-            if (is_string($valor)) {
-                $payload[$campo] = $valor;
-            } elseif (is_int($valor) || is_float($valor)) {
-                $payload[$campo] = (float)$valor;
-            } elseif ($valor === null) {
-                $payload[$campo] = null;
+        $stmt = $this->db->prepare('SELECT id FROM inquilinos_trabajo WHERE id_inquilino = :id LIMIT 1');
+        $stmt->execute([':id' => $id]);
+        $existing = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if ($existing) {
+            $set = [];
+            foreach ($datos as $campo => $valor) {
+                $set[] = sprintf('%s = :%s', $campo, $campo);
             }
+            $sql = 'UPDATE inquilinos_trabajo SET ' . implode(', ', $set) . ', updated_at = NOW() WHERE id = :pk';
+            $params = array_merge([':pk' => (int) $existing['id']], array_combine(
+                array_map(static fn($c) => ':' . $c, array_keys($datos)),
+                array_values($datos)
+            ));
+            $stmt = $this->db->prepare($sql);
+            return $stmt->execute($params);
         }
 
-        if (!$payload) {
-            return false;
-        }
-
-        $this->client->updateItem([
-            'TableName' => $this->table,
-            'Key'       => [
-                'pk' => ['S' => $pk],
-                'sk' => ['S' => 'profile'],
-            ],
-            'UpdateExpression'          => 'SET trabajo = :trabajo',
-            'ExpressionAttributeValues' => [
-                ':trabajo' => $this->marshaler->marshalValue($payload),
-            ],
-        ]);
-
-        return true;
+        $sql = 'INSERT INTO inquilinos_trabajo (id_inquilino, empresa, direccion_empresa, telefono_empresa, puesto, antiguedad, sueldo, otrosingresos, nombre_jefe, tel_jefe, web_empresa)
+                VALUES (:id, :empresa, :direccion_empresa, :telefono_empresa, :puesto, :antiguedad, :sueldo, :otrosingresos, :nombre_jefe, :tel_jefe, :web_empresa)';
+        $params = array_merge([':id' => $id], array_combine(
+            array_map(static fn($c) => ':' . $c, array_keys($datos)),
+            array_values($datos)
+        ));
+        $stmt = $this->db->prepare($sql);
+        return $stmt->execute($params);
     }
 
-    /**
-     * Actualiza la información del inmueble en garantía asociada al fiador.
-     */
     public function actualizarFiadorPorPk(string $pk, array $fiador): bool
     {
-        $pk = trim($pk);
-        if ($pk === '') {
+        $id = $this->resolveIdFromPk($pk, isset($fiador['id']) ? (int) $fiador['id'] : null);
+        if ($id === null) {
             return false;
         }
 
-        $payload = [];
-        foreach ($fiador as $campo => $valor) {
-            if (!is_string($campo)) {
-                continue;
-            }
+        $datos = array_intersect_key($fiador, $this->defaultFiador());
+        $datos = array_map(static fn($v) => (string) $v, $datos);
 
-            if (!is_string($valor)) {
-                $valor = $valor === null ? null : (string)$valor;
-            }
+        $stmt = $this->db->prepare('SELECT id FROM inquilinos_fiador WHERE id_inquilino = :id LIMIT 1');
+        $stmt->execute([':id' => $id]);
+        $existing = $stmt->fetch(PDO::FETCH_ASSOC);
 
-            if ($valor === null) {
-                $payload[$campo] = null;
-                continue;
+        if ($existing) {
+            $set = [];
+            foreach ($datos as $campo => $valor) {
+                $set[] = sprintf('%s = :%s', $campo, $campo);
             }
-
-            $valor = trim($valor);
-            $payload[$campo] = $valor === '' ? null : $valor;
+            $sql = 'UPDATE inquilinos_fiador SET ' . implode(', ', $set) . ', updated_at = NOW() WHERE id = :pk';
+            $params = array_merge([':pk' => (int) $existing['id']], array_combine(
+                array_map(static fn($c) => ':' . $c, array_keys($datos)),
+                array_values($datos)
+            ));
+            $stmt = $this->db->prepare($sql);
+            return $stmt->execute($params);
         }
 
-        if (!$payload) {
-            return false;
-        }
-
-        $this->client->updateItem([
-            'TableName' => $this->table,
-            'Key'       => [
-                'pk' => ['S' => $pk],
-                'sk' => ['S' => 'profile'],
-            ],
-            'UpdateExpression'          => 'SET fiador = :fiador',
-            'ExpressionAttributeValues' => [
-                ':fiador' => $this->marshaler->marshalValue($payload),
-            ],
-        ]);
-
-        return true;
+        $sql = 'INSERT INTO inquilinos_fiador (id_inquilino, calle_inmueble, num_ext_inmueble, num_int_inmueble, colonia_inmueble, alcaldia_inmueble, estado_inmueble, numero_escritura, numero_notario, estado_notario, folio_real, s3_key)
+                VALUES (:id, :calle_inmueble, :num_ext_inmueble, :num_int_inmueble, :colonia_inmueble, :alcaldia_inmueble, :estado_inmueble, :numero_escritura, :numero_notario, :estado_notario, :folio_real, :s3_key)';
+        $params = array_merge([':id' => $id], array_combine(
+            array_map(static fn($c) => ':' . $c, array_keys($datos)),
+            array_values($datos)
+        ));
+        $stmt = $this->db->prepare($sql);
+        return $stmt->execute($params);
     }
 
-    /**
-     * Actualiza el historial de vivienda almacenado en el profile.
-     */
     public function actualizarHistorialViviendaPorPk(string $pk, array $historial): bool
     {
-        $pk = trim($pk);
-        if ($pk === '') {
+        $id = $this->resolveIdFromPk($pk, isset($historial['id']) ? (int) $historial['id'] : null);
+        if ($id === null) {
             return false;
         }
 
-        $payload = [];
-        foreach ($historial as $campo => $valor) {
-            if (!is_string($campo)) {
-                continue;
-            }
+        $datos = array_intersect_key($historial, $this->defaultHistorial());
+        $datos = array_map(static fn($v) => (string) $v, $datos);
 
-            if ($campo === 'monto_renta_actual') {
-                if ($valor === null || $valor === '') {
-                    $payload[$campo] = null;
-                } elseif (is_numeric($valor)) {
-                    $payload[$campo] = (float)$valor;
-                } else {
-                    if (!is_string($valor)) {
-                        $valor = (string)$valor;
-                    }
-                    $limpio = preg_replace('/[^0-9.,-]/', '', $valor);
-                    $limpio = str_replace(',', '', (string)$limpio);
-                    $limpio = trim((string)$limpio);
-                    $payload[$campo] = $limpio === '' || $limpio === '-' ? null : (float)$limpio;
-                }
-                continue;
-            }
+        $stmt = $this->db->prepare('SELECT id FROM inquilinos_historial_vivienda WHERE id_inquilino = :id LIMIT 1');
+        $stmt->execute([':id' => $id]);
+        $existing = $stmt->fetch(PDO::FETCH_ASSOC);
 
-            if ($valor === null) {
-                $payload[$campo] = null;
-                continue;
+        if ($existing) {
+            $set = [];
+            foreach ($datos as $campo => $valor) {
+                $set[] = sprintf('%s = :%s', $campo, $campo);
             }
-
-            if (!is_string($valor)) {
-                $valor = (string)$valor;
-            }
-
-            $valor = trim($valor);
-            $payload[$campo] = $valor === '' ? null : $valor;
+            $sql = 'UPDATE inquilinos_historial_vivienda SET ' . implode(', ', $set) . ' WHERE id = :pk';
+            $params = array_merge([':pk' => (int) $existing['id']], array_combine(
+                array_map(static fn($c) => ':' . $c, array_keys($datos)),
+                array_values($datos)
+            ));
+            $stmt = $this->db->prepare($sql);
+            return $stmt->execute($params);
         }
 
-        if (!$payload) {
-            return false;
-        }
-
-        $this->client->updateItem([
-            'TableName' => $this->table,
-            'Key'       => [
-                'pk' => ['S' => $pk],
-                'sk' => ['S' => 'profile'],
-            ],
-            'UpdateExpression'          => 'SET historial_vivienda = :historial',
-            'ExpressionAttributeValues' => [
-                ':historial' => $this->marshaler->marshalValue($payload),
-            ],
-        ]);
-
-        return true;
+        $sql = 'INSERT INTO inquilinos_historial_vivienda (id_inquilino, renta_actualmente, arrendador_actual, cel_arrendador_actual, monto_renta_actual, tiempo_habitacion_actual, motivo_arrendamiento, vive_actualmente)
+                VALUES (:id, :renta_actualmente, :arrendador_actual, :cel_arrendador_actual, :monto_renta_actual, :tiempo_habitacion_actual, :motivo_arrendamiento, :vive_actualmente)';
+        $params = array_merge([':id' => $id], array_combine(
+            array_map(static fn($c) => ':' . $c, array_keys($datos)),
+            array_values($datos)
+        ));
+        $stmt = $this->db->prepare($sql);
+        return $stmt->execute($params);
     }
-
-    /**
-     * Obtiene el snapshot de validaciones normalizado.
-     */
     public function obtenerValidaciones(int $idInquilino): array
     {
-        $pk = $this->resolvePkById($idInquilino);
-        if (!$pk) {
+        if ($idInquilino <= 0) {
             return [];
         }
 
-        $profile = $this->fetchItem($pk);
-        if (!$profile) {
+        $stmt = $this->db->prepare('SELECT * FROM inquilinos_validaciones WHERE id_inquilino = :id LIMIT 1');
+        $stmt->execute([':id' => $idInquilino]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$row) {
             return [];
         }
 
-        $validacionesItems = [];
-        if (!empty($profile['validaciones_ids'])) {
-            $validacionesItems = $this->obtenerItemsPorInquilino($pk, $profile['validaciones_ids']);
-        }
-
-        return $this->buildValidacionesOutput($profile, $validacionesItems);
+        return $this->mapValidacionesRow($row);
     }
 
-    /**
-     * Actualiza la CURP almacenada en el profile.
-     */
     public function actualizarCurp(int $idInquilino, string $curp): bool
     {
-        $pk = $this->resolvePkById($idInquilino);
-        if (!$pk) {
+        if ($idInquilino <= 0) {
             return false;
         }
 
-        $this->client->updateItem([
-            'TableName' => $this->table,
-            'Key'       => [
-                'pk' => ['S' => $pk],
-                'sk' => ['S' => 'profile'],
-            ],
-            'UpdateExpression'          => 'SET curp = :curp',
-            'ExpressionAttributeValues' => [
-                ':curp' => ['S' => strtolower(trim($curp))],
-            ],
+        $stmt = $this->db->prepare('UPDATE inquilinos SET curp = :curp, updated_at = NOW() WHERE id = :id');
+        return $stmt->execute([
+            ':curp' => strtoupper(trim($curp)),
+            ':id'   => $idInquilino,
         ]);
-
-        return true;
     }
 
-    /**
-     * Guarda un resumen de VerificaMex (campos mapeados).
-     */
     public function guardarValidacionesVerificaMex(int $idInquilino, array $campos): bool
     {
-        $pk = $this->resolvePkById($idInquilino);
-        if (!$pk) {
-            return false;
-        }
-
-        $this->client->updateItem([
-            'TableName' => $this->table,
-            'Key'       => [
-                'pk' => ['S' => $pk],
-                'sk' => ['S' => 'profile'],
-            ],
-            'UpdateExpression'          => 'SET verificamex_campos = :campos',
-            'ExpressionAttributeValues' => [
-                ':campos' => $this->marshaler->marshalValue($campos),
-            ],
-        ]);
-
-        return true;
+        return $this->saveValidation($idInquilino, 'verificamex', 2, ['campos' => $campos], null);
     }
 
     public function guardarValidacionVerificaMex(int $idInquilino, int $proceso, array $json, string $resumen): bool
@@ -1125,17 +922,20 @@ class InquilinoModel
 
     public function guardarValidacionIngresosSimple(int $idInquilino, int $proceso, array $payload, ?string $resumen = null): bool
     {
+        $payload['tipo'] = $payload['tipo'] ?? 'ingresos_pdf_simple';
         return $this->saveValidation($idInquilino, 'ingresos', $proceso, $payload, $resumen);
     }
 
     public function guardarValidacionIngresosList(int $idInquilino, int $proceso, array $payload, ?string $resumen = null): bool
     {
-        return $this->saveValidation($idInquilino, 'ingresos_lista', $proceso, $payload, $resumen);
+        $payload['tipo'] = $payload['tipo'] ?? 'ingresos_list';
+        return $this->saveValidation($idInquilino, 'ingresos', $proceso, $payload, $resumen);
     }
 
     public function guardarValidacionIngresosOCR(int $idInquilino, int $proceso, array $payload, ?string $resumen = null): bool
     {
-        return $this->saveValidation($idInquilino, 'ingresos_ocr', $proceso, $payload, $resumen);
+        $payload['tipo'] = $payload['tipo'] ?? 'ingresos_ocr';
+        return $this->saveValidation($idInquilino, 'ingresos', $proceso, $payload, $resumen);
     }
 
     public function guardarPagoInicial(int $idInquilino, int $proceso, array $payload, ?string $resumen = null): bool
@@ -1145,34 +945,12 @@ class InquilinoModel
 
     public function guardarInvestigacionDemandas(int $idInquilino, int $proceso, array $payload, ?string $resumen = null): bool
     {
-        $ok = $this->saveValidation($idInquilino, 'demandas', $proceso, $payload, $resumen);
-        if (!$ok) {
-            return false;
-        }
-
-        // Mantener compatibilidad con procesos legacy (proceso_inv_demandas en profile).
-        $pk = $this->resolvePkById($idInquilino);
-        if ($pk) {
-            $this->client->updateItem([
-                'TableName' => $this->table,
-                'Key'       => [
-                    'pk' => ['S' => $pk],
-                    'sk' => ['S' => 'profile'],
-                ],
-                'UpdateExpression'          => 'SET proceso_inv_demandas = :estado',
-                'ExpressionAttributeValues' => [
-                    ':estado' => ['N' => (string)$proceso],
-                ],
-            ]);
-        }
-
-        return true;
+        return $this->saveValidation($idInquilino, 'demandas', $proceso, $payload, $resumen);
     }
 
     public function actualizarStatus(int $idInquilino, string $status): bool
     {
-        $pk = $this->resolvePkById($idInquilino);
-        if (!$pk) {
+        if ($idInquilino <= 0) {
             return false;
         }
 
@@ -1181,38 +959,21 @@ class InquilinoModel
             return false;
         }
 
-        $this->client->updateItem([
-            'TableName' => $this->table,
-            'Key'       => [
-                'pk' => ['S' => $pk],
-                'sk' => ['S' => 'profile'],
-            ],
-            'UpdateExpression'          => 'SET #status = :status',
-            'ExpressionAttributeNames'  => ['#status' => 'status'],
-            'ExpressionAttributeValues' => [
-                ':status' => ['S' => $status],
-            ],
-        ]);
-
-        return true;
+        $stmt = $this->db->prepare('UPDATE inquilinos SET status = :status, updated_at = NOW() WHERE id = :id');
+        if (ctype_digit($status)) {
+            $stmt->bindValue(':status', (int) $status, PDO::PARAM_INT);
+        } else {
+            $stmt->bindValue(':status', $status, PDO::PARAM_STR);
+        }
+        $stmt->bindValue(':id', $idInquilino, PDO::PARAM_INT);
+        return $stmt->execute();
     }
 
-    /**
-     * Sincroniza el asesor asignado al inquilino en DynamoDB.
-     *
-     * @param array<string, mixed> $asesorData
-     * @return array<string, mixed> Datos del asesor persistidos en el perfil del inquilino.
-     */
     public function cambiarAsesor(int $idInquilino, array $asesorData): array
     {
-        $pk = $this->resolvePkById($idInquilino);
-        if (!$pk) {
+        $idInquilino = (int) $idInquilino;
+        if ($idInquilino <= 0) {
             throw new \RuntimeException('Inquilino no encontrado.');
-        }
-
-        $profile = $this->fetchItem($pk, 'profile');
-        if (!$profile) {
-            throw new \RuntimeException('Perfil del inquilino no disponible.');
         }
 
         $nuevoId = (int) ($asesorData['id'] ?? 0);
@@ -1220,174 +981,127 @@ class InquilinoModel
             throw new \RuntimeException('Asesor inválido.');
         }
 
-        $nuevoPk = sprintf('ase#%d', $nuevoId);
-
-        $asesorPayload = [
-            'id'            => $nuevoId,
-            'pk'            => $asesorData['pk'] ?? $nuevoPk,
-            'nombre_asesor' => (string) ($asesorData['nombre_asesor'] ?? ''),
-            'email'         => (string) ($asesorData['email'] ?? ''),
-            'celular'       => (string) ($asesorData['celular'] ?? ''),
-        ];
-
-        $prevAsesorId = null;
-        if (isset($profile['asesor_id']) && (int)$profile['asesor_id'] > 0) {
-            $prevAsesorId = (int)$profile['asesor_id'];
-        } elseif (!empty($profile['asesor']['id'])) {
-            $prevAsesorId = (int)$profile['asesor']['id'];
-        } elseif (!empty($profile['asesor_pk']) && preg_match('/^ase#(\d+)$/i', (string)$profile['asesor_pk'], $m)) {
-            $prevAsesorId = (int)$m[1];
-        }
-
-        $prevAsesorPk = $prevAsesorId ? sprintf('ase#%d', $prevAsesorId) : null;
-
-        $this->client->updateItem([
-            'TableName' => $this->table,
-            'Key'       => [
-                'pk' => ['S' => $pk],
-                'sk' => ['S' => 'profile'],
-            ],
-            'UpdateExpression'          => 'SET asesor_id = :asesor_id, asesor_pk = :asesor_pk, asesor = :asesor',
-            'ExpressionAttributeValues' => [
-                ':asesor_id' => ['N' => (string) $nuevoId],
-                ':asesor_pk' => ['S' => $nuevoPk],
-                ':asesor'    => $this->marshaler->marshalValue($asesorPayload),
-            ],
-        ]);
+        $stmt = $this->db->prepare('UPDATE inquilinos SET id_asesor = :asesor, updated_at = NOW() WHERE id = :id');
+        $stmt->execute([':asesor' => $nuevoId, ':id' => $idInquilino]);
 
         $asesorModel = new AsesorModel();
-        $asesorModel->agregarInquilino($nuevoId, $pk);
-
-        if ($prevAsesorPk !== null && $prevAsesorPk !== $nuevoPk) {
-            try {
-                $asesorModel->removerInquilino((int) $prevAsesorId, $pk);
-            } catch (\Throwable $e) {
-                error_log('⚠️ No se pudo remover al inquilino del asesor anterior: ' . $e->getMessage());
-            }
+        $asesor      = $asesorModel->find($nuevoId);
+        if (!$asesor) {
+            $asesor = [
+                'id'            => $nuevoId,
+                'nombre_asesor' => (string) ($asesorData['nombre_asesor'] ?? ''),
+                'email'         => (string) ($asesorData['email'] ?? ''),
+                'celular'       => (string) ($asesorData['celular'] ?? ''),
+            ];
         }
 
-        return $asesorPayload;
+        $asesor['pk'] = $asesor['pk'] ?? sprintf('ase#%d', $asesor['id']);
+        return $asesor;
     }
 
-    /**
-     * Obtiene el sueldo declarado en el perfil del inquilino (si existe).
-     */
     public function obtenerSueldoDeclarado(int $idInquilino): ?float
     {
-        $pk = $this->resolvePkById($idInquilino);
-        if (!$pk) {
+        if ($idInquilino <= 0) {
             return null;
         }
 
-        $profile = $this->fetchItem($pk);
-        if (!$profile) {
+        $stmt = $this->db->prepare('SELECT sueldo FROM inquilinos_trabajo WHERE id_inquilino = :id ORDER BY id DESC LIMIT 1');
+        $stmt->execute([':id' => $idInquilino]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$row || ($row['sueldo'] ?? '') === '') {
             return null;
         }
-
-        $sueldo = $profile['trabajo']['sueldo'] ?? null;
-        if ($sueldo === null || $sueldo === '') {
-            return null;
-        }
-        return (float)$sueldo;
+        return (float) $row['sueldo'];
+    }
+    private function tiposPorPrefix(string $prefix): array
+    {
+        $prefix = strtolower($prefix);
+        return match ($prefix) {
+            'inq' => ['arrendatario', 'inquilino'],
+            'obl' => ['obligado', 'obligado solidario'],
+            'fia' => ['fiador'],
+            default => [],
+        };
     }
 
-    /**
-     * Lista todos los arrendatarios (para selects en Pólizas, etc.).
-     */
+    private function listProfilesByPrefix(string $prefix): array
+    {
+        $tipos = $this->tiposPorPrefix($prefix);
+        if ($tipos === []) {
+            return [];
+        }
+
+        $placeholders = implode(',', array_fill(0, count($tipos), '?'));
+        $sql = 'SELECT * FROM inquilinos WHERE LOWER(tipo) IN (' . $placeholders . ') ORDER BY id ASC';
+        $stmt = $this->db->prepare($sql);
+        foreach ($tipos as $idx => $tipo) {
+            $stmt->bindValue($idx + 1, strtolower($tipo), PDO::PARAM_STR);
+        }
+        $stmt->execute();
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+        return array_map(fn(array $row): array => $this->profileListEntry($this->mapProfileRow($row)), $rows);
+    }
+
     public function getInquilinosAll(): array
     {
         return $this->listProfilesByPrefix('inq');
     }
 
-    /**
-     * Lista todos los fiadores existentes.
-     */
     public function getFiadoresAll(): array
     {
         return $this->listProfilesByPrefix('fia');
     }
 
-    /**
-     * Lista todos los obligados solidarios existentes.
-     */
     public function getObligadosAll(): array
     {
         return $this->listProfilesByPrefix('obl');
     }
 
-    /**
-     * Busca prospectos con filtros básicos (texto/tipo).
-     */
     public function buscarConFiltros(string $nombre = '', string $email = '', string $tipo = '', int $limit = 50, int $offset = 0): array
     {
-        $nombre = trim($nombre);
-        $email  = trim($email);
-        $tipo   = strtolower(trim($tipo));
+        $limit  = max(1, $limit);
+        $offset = max(0, $offset);
 
-        $resultados = [];
-        $lastKey = null;
-        $countSkipped = 0;
+        $sql = 'SELECT * FROM inquilinos WHERE 1=1';
+        $params = [];
 
-        do {
-            $params = [
-                'TableName'                 => $this->table,
-                'FilterExpression'          => 'sk = :sk',
-                'ExpressionAttributeValues' => [
-                    ':sk' => ['S' => 'profile'],
-                ],
-            ];
-
-            if ($lastKey) {
-                $params['ExclusiveStartKey'] = $lastKey;
+        if ($tipo !== '') {
+            $tipos = $this->tiposPorPrefix($this->prefixFromTipo($tipo));
+            $tipos = $tipos ?: [$tipo];
+            $placeholders = implode(',', array_fill(0, count($tipos), '?'));
+            $sql .= ' AND LOWER(tipo) IN (' . $placeholders . ')';
+            foreach ($tipos as $t) {
+                $params[] = strtolower($t);
             }
+        }
 
-            $scan = $this->client->scan($params);
-            foreach ($scan['Items'] as $item) {
-                $profile = $this->marshaler->unmarshalItem($item);
+        if ($nombre !== '') {
+            $sql .= ' AND LOWER(CONCAT_WS(" ", nombre_inquilino, apellidop_inquilino, COALESCE(apellidom_inquilino, ""))) LIKE ?';
+            $params[] = '%' . mb_strtolower($nombre, 'UTF-8') . '%';
+        }
 
-                $perfilTipo = strtolower((string)($profile['tipo'] ?? ''));
-                if ($tipo !== '' && $tipo !== $perfilTipo) {
-                    continue;
-                }
+        if ($email !== '') {
+            $sql .= ' AND LOWER(email) LIKE ?';
+            $params[] = '%' . mb_strtolower($email, 'UTF-8') . '%';
+        }
 
-                $nombreCompleto = (string)($profile['nombre'] ?? '');
-                $emailPerfil    = (string)($profile['email'] ?? '');
+        $sql .= ' ORDER BY updated_at DESC, id DESC LIMIT ' . $limit . ' OFFSET ' . $offset;
 
-                if ($nombre !== '' && mb_stripos($nombreCompleto, $nombre, 0, 'UTF-8') === false) {
-                    continue;
-                }
-                if ($email !== '' && mb_stripos($emailPerfil, $email, 0, 'UTF-8') === false) {
-                    continue;
-                }
+        $stmt = $this->db->prepare($sql);
+        foreach ($params as $idx => $value) {
+            $stmt->bindValue($idx + 1, $value, PDO::PARAM_STR);
+        }
+        $stmt->execute();
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
-                if ($countSkipped++ < $offset) {
-                    continue;
-                }
-
-                $resultados[] = $this->profileListEntry($profile);
-                if (count($resultados) >= $limit) {
-                    break;
-                }
-            }
-
-            if (count($resultados) >= $limit) {
-                break;
-            }
-
-            $lastKey = $scan['LastEvaluatedKey'] ?? null;
-        } while ($lastKey);
-
-        return $resultados;
+        return array_map(fn(array $row): array => $this->profileListEntry($this->mapProfileRow($row)), $rows);
     }
 
-    /**
-     * Versión utilizada por IAController para localizar un prospecto por texto.
-     */
     public function buscarPorTexto(string $term, int $limit = 10): array
     {
         $rows = $this->buscarConFiltros($term, '', '', $limit, 0);
-
-        return array_map(function (array $row) {
+        return array_map(static function (array $row) {
             return [
                 'id'      => $row['id'],
                 'nombre'  => $row['nombre'],
@@ -1398,126 +1112,69 @@ class InquilinoModel
         }, $rows);
     }
 
-    /**
-     * Cuenta arrendatarios con status=1 (nuevos) para el dashboard.
-     */
     public function contarInquilinosNuevos(): int
     {
-        $total = 0;
-        foreach ($this->listProfilesByPrefix('inq') as $profile) {
-            $status = (string)($profile['status'] ?? $profile['status'] ?? '');
-            if ($status === '1' || strtolower($status) === 'nuevo') {
-                $total++;
-            }
-        }
-
-        return $total;
+        $sql = "SELECT COUNT(*) AS total FROM inquilinos WHERE status = 1 OR LOWER(CAST(status AS CHAR)) = 'nuevo'";
+        $stmt = $this->db->query($sql);
+        $row = $stmt ? $stmt->fetch(PDO::FETCH_ASSOC) : null;
+        return (int) ($row['total'] ?? 0);
     }
 
-    /**
-     * Obtiene los inquilinos nuevos (status=1) incluyendo presigned selfie (si existe).
-     */
     public function getInquilinosNuevosConSelfie(int $limit = 8): array
     {
-        $resultados = [];
+        $limit = max(1, $limit);
+        $sql = 'SELECT i.*, (
+                    SELECT s3_key FROM inquilinos_archivos
+                    WHERE id_inquilino = i.id AND tipo = "selfie"
+                    ORDER BY created_at DESC, id DESC
+                    LIMIT 1
+                ) AS selfie_key
+                FROM inquilinos i
+                WHERE i.status = 1 OR LOWER(CAST(i.status AS CHAR)) = "nuevo"
+                ORDER BY i.updated_at DESC, i.id DESC
+                LIMIT ' . $limit;
+
+        $stmt = $this->db->query($sql);
+        $rows = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
+
         $s3 = new S3Helper('inquilinos');
-
-        foreach ($this->listProfilesByPrefix('inq') as $profile) {
-            $status = (string)($profile['status'] ?? '');
-            if (!in_array($status, ['1', 'nuevo'], true)) {
-                continue;
-            }
-
-            $full = $this->obtenerPorId((int)$profile['id']);
-            if (!$full) {
-                continue;
-            }
-
-            $selfie = null;
-            foreach ($full['archivos'] as $archivo) {
-                if (($archivo['tipo'] ?? '') === 'selfie' && !empty($archivo['s3_key'])) {
-                    $selfie = $s3->getPresignedUrl($archivo['s3_key']);
-                    break;
-                }
-            }
-
+        $resultados = [];
+        foreach ($rows as $row) {
+            $selfieKey = $row['selfie_key'] ?? null;
             $resultados[] = [
-                'id'                   => (int)($profile['id'] ?? 0),
-                'nombre_inquilino'     => $profile['nombre_inquilino'] ?? '',
-                'apellidop_inquilino'  => $profile['apellidop_inquilino'] ?? '',
-                'apellidom_inquilino'  => $profile['apellidom_inquilino'] ?? '',
-                'tipo'                 => $profile['tipo'] ?? 'inquilino',
-                'email'                => $profile['email'] ?? '',
-                'celular'              => $profile['celular'] ?? '',
-                'selfie_url'           => $selfie,
-                'slug'                 => $profile['slug'] ?? null,
+                'id'                  => (int) ($row['id'] ?? 0),
+                'nombre_inquilino'    => (string) ($row['nombre_inquilino'] ?? ''),
+                'apellidop_inquilino' => (string) ($row['apellidop_inquilino'] ?? ''),
+                'apellidom_inquilino' => (string) ($row['apellidom_inquilino'] ?? ''),
+                'tipo'                => (string) ($row['tipo'] ?? 'inquilino'),
+                'email'               => (string) ($row['email'] ?? ''),
+                'celular'             => (string) ($row['celular'] ?? ''),
+                'selfie_url'          => $selfieKey ? $s3->getPresignedUrl($selfieKey) : null,
+                'slug'                => (string) ($row['slug'] ?? ''),
             ];
-
-            if (count($resultados) >= $limit) {
-                break;
-            }
         }
 
         return $resultados;
     }
 
-    /**
-     * Devuelve una entrada resumida para los listados (id, nombre, email, etc.).
-     */
     private function profileListEntry(array $profile): array
     {
         $parts = $this->splitNombre($profile['nombre'] ?? '');
 
         return [
-            'id'                    => (int)($profile['id'] ?? 0),
-            'nombre_inquilino'      => $parts['nombre'],
-            'apellidop_inquilino'   => $parts['ap_paterno'],
-            'apellidom_inquilino'   => $parts['ap_materno'],
-            'nombre'                => $profile['nombre'] ?? '',
-            'email'                 => $profile['email'] ?? '',
-            'celular'               => $profile['celular'] ?? '',
-            'tipo'                  => $profile['tipo'] ?? '',
-            'slug'                  => $profile['slug'] ?? '',
-            'status'                => (string)($profile['status'] ?? ''),
+            'id'                  => (int) ($profile['id'] ?? 0),
+            'nombre_inquilino'    => $parts['nombre'],
+            'apellidop_inquilino' => $parts['ap_paterno'],
+            'apellidom_inquilino' => $parts['ap_materno'],
+            'nombre'              => $profile['nombre'] ?? '',
+            'email'               => $profile['email'] ?? '',
+            'celular'             => $profile['celular'] ?? '',
+            'tipo'                => $profile['tipo'] ?? '',
+            'slug'                => $profile['slug'] ?? '',
+            'status'              => (string) ($profile['status'] ?? ''),
         ];
     }
 
-    /**
-     * Lista todos los perfiles de un prefijo específico.
-     */
-    private function listProfilesByPrefix(string $prefix): array
-    {
-        $resultados = [];
-        $lastKey = null;
-        do {
-            $params = [
-                'TableName'                 => $this->table,
-                'FilterExpression'          => 'begins_with(pk, :pk) AND sk = :sk',
-                'ExpressionAttributeValues' => [
-                    ':pk' => ['S' => $prefix . '#'],
-                    ':sk' => ['S' => 'profile'],
-                ],
-            ];
-
-            if ($lastKey) {
-                $params['ExclusiveStartKey'] = $lastKey;
-            }
-
-            $scan = $this->client->scan($params);
-            foreach ($scan['Items'] as $item) {
-                $profile = $this->marshaler->unmarshalItem($item);
-                $resultados[] = $this->profileListEntry($profile);
-            }
-
-            $lastKey = $scan['LastEvaluatedKey'] ?? null;
-        } while ($lastKey);
-
-        return $resultados;
-    }
-
-    /**
-     * Divide un nombre completo aproximado en nombre y apellidos.
-     */
     private function splitNombre(string $nombreCompleto): array
     {
         $nombreCompleto = trim($nombreCompleto);
