@@ -465,13 +465,19 @@ class PolizaModel extends Database
         $buscarTerm = null;
         if ($buscar !== null && trim($buscar) !== '') {
             $buscarTerm = trim($buscar);
-            $like = "%{$buscarTerm}%";
+            $buscarNormalizado = NormalizadoHelper::sinDiacriticos($buscarTerm);
+            $like = "%{$buscarNormalizado}%";
+
+            $collate = static fn (string $campo): string => sprintf(
+                'CONVERT(%s USING utf8mb4) COLLATE utf8mb4_unicode_ci',
+                $campo
+            );
 
             $sub = [
-                'i.nombre_inquilino LIKE :t1',
-                'i.apellidop_inquilino LIKE :t2',
-                'i.apellidom_inquilino LIKE :t3',
-                'arr.nombre_arrendador LIKE :t4',
+                $collate('i.nombre_inquilino') . ' LIKE :t1',
+                $collate('i.apellidop_inquilino') . ' LIKE :t2',
+                $collate('i.apellidom_inquilino') . ' LIKE :t3',
+                $collate('arr.nombre_arrendador') . ' LIKE :t4',
             ];
             $params[':t1'] = $like;
             $params[':t2'] = $like;
@@ -527,13 +533,19 @@ class PolizaModel extends Database
         $buscarTerm = null;
         if ($buscar !== null && trim($buscar) !== '') {
             $buscarTerm = trim($buscar);
-            $like = "%{$buscarTerm}%";
+            $buscarNormalizado = NormalizadoHelper::sinDiacriticos($buscarTerm);
+            $like = "%{$buscarNormalizado}%";
+
+            $collate = static fn (string $campo): string => sprintf(
+                'CONVERT(%s USING utf8mb4) COLLATE utf8mb4_unicode_ci',
+                $campo
+            );
 
             $sub = [
-                'i.nombre_inquilino LIKE :t1',
-                'i.apellidop_inquilino LIKE :t2',
-                'i.apellidom_inquilino LIKE :t3',
-                'arr.nombre_arrendador LIKE :t4',
+                $collate('i.nombre_inquilino') . ' LIKE :t1',
+                $collate('i.apellidop_inquilino') . ' LIKE :t2',
+                $collate('i.apellidom_inquilino') . ' LIKE :t3',
+                $collate('arr.nombre_arrendador') . ' LIKE :t4',
             ];
             $params[':t1'] = $like;
             $params[':t2'] = $like;
