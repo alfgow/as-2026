@@ -92,62 +92,92 @@
 		const form = document.getElementById("form-editar-poliza");
 		if (!form) return;
 
-		const inmuebleSelect = document.getElementById("inmueble-select");
-		const rentaHidden = document.getElementById("monto-renta-hidden");
-		const rentaDisplay = document.getElementById("monto-renta-display");
-		const tipoPoliza = form.tipo_poliza;
-		const montoPoliza = document.getElementById("monto-poliza");
-		const fechaInicio = document.getElementById("fecha-inicio");
-		const fechaFin = document.getElementById("fecha-fin");
+                const inmuebleSelect = document.getElementById("inmueble-select");
+                const rentaHidden = document.getElementById("monto-renta-hidden");
+                const rentaDisplay = document.getElementById("monto-renta-display");
+                const tipoPoliza = form.tipo_poliza;
+                const montoPoliza = document.getElementById("monto-poliza");
+                const fechaInicio = document.getElementById("fecha-inicio");
+                const fechaFin = document.getElementById("fecha-fin");
 
-		// Cambiar inmueble → refrescar renta y cálculo
-		inmuebleSelect?.addEventListener("change", () => {
-			const opt = inmuebleSelect.options[inmuebleSelect.selectedIndex];
-			const renta = opt?.getAttribute("data-monto") || "";
+                let montoPolizaEditadoManualmente = false;
 
-			// Siempre guardar valor crudo en el hidden
-			if (rentaHidden) {
-				rentaHidden.value = renta; // ej. "19150"
-			}
+                montoPoliza?.addEventListener("input", () => {
+                        montoPolizaEditadoManualmente = true;
+                });
 
-			// Mostrar formateado solo en display (para el usuario)
-			if (rentaDisplay) {
-				rentaDisplay.value = renta
-					? Number(renta).toLocaleString("en-US", {
-							minimumFractionDigits: 2,
-							maximumFractionDigits: 2,
-					  })
-					: "";
-			}
+                const obtenerRentaLimpia = (valor) =>
+                        (valor || "").toString().replace(/[^0-9.]/g, "");
 
-			// Recalcular monto de póliza en base a la renta cruda
-			if (tipoPoliza && montoPoliza) {
-				montoPoliza.value = calcularPoliza(
-					rentaHidden?.value,
-					tipoPoliza.value
-				);
-			}
-		});
+                const actualizarDisplayRenta = (valorLimpio) => {
+                        if (!rentaDisplay) return;
+                        if (!valorLimpio) {
+                                rentaDisplay.value = "";
+                                return;
+                        }
 
-		// Cambiar tipo póliza → recalcular
-		tipoPoliza?.addEventListener("change", () => {
-			if (montoPoliza)
-				montoPoliza.value = calcularPoliza(
-					rentaHidden?.value,
-					tipoPoliza.value
-				);
-		});
+                        const numero = Number(valorLimpio);
+                        const formateado = Number.isFinite(numero)
+                                ? numero.toLocaleString("en-US", {
+                                          minimumFractionDigits: 2,
+                                          maximumFractionDigits: 2,
+                                  })
+                                : valorLimpio;
+                        rentaDisplay.value = `$${formateado}`;
+                };
 
-		// Fechas
-		fechaInicio?.addEventListener("change", () =>
-			setFechaFinYVigencia({ inicioEl: fechaInicio, finEl: fechaFin })
-		);
-		// inicial
-		if (tipoPoliza && montoPoliza)
-			montoPoliza.value = calcularPoliza(
-				rentaHidden?.value,
-				tipoPoliza.value
-			);
+                const recalcularMontoPoliza = () => {
+                        const rentaBase = rentaHidden?.value;
+                        if (
+                                !tipoPoliza ||
+                                !montoPoliza ||
+                                !rentaBase ||
+                                montoPolizaEditadoManualmente
+                        ) {
+                                return;
+                        }
+
+                        montoPoliza.value = calcularPoliza(
+                                rentaBase,
+                                tipoPoliza.value
+                        );
+                };
+
+                // Cambiar inmueble → refrescar renta y cálculo
+                inmuebleSelect?.addEventListener("change", () => {
+                        const opt = inmuebleSelect.options[inmuebleSelect.selectedIndex];
+                        const renta = opt?.getAttribute("data-monto") || "";
+                        const limpia = obtenerRentaLimpia(renta);
+
+                        // Siempre guardar valor crudo en el hidden
+                        if (rentaHidden) {
+                                rentaHidden.value = limpia; // ej. "19150"
+                        }
+
+                        // Mostrar formateado solo en display (para el usuario)
+                        actualizarDisplayRenta(limpia);
+
+                        montoPolizaEditadoManualmente = false;
+
+                        // Recalcular monto de póliza en base a la renta cruda
+                        recalcularMontoPoliza();
+                });
+
+                // Cambiar tipo póliza → recalcular
+                tipoPoliza?.addEventListener("change", () => {
+                        montoPolizaEditadoManualmente = false;
+                        recalcularMontoPoliza();
+                });
+
+                // Fechas
+                fechaInicio?.addEventListener("change", () =>
+                        setFechaFinYVigencia({ inicioEl: fechaInicio, finEl: fechaFin })
+                );
+                // inicial
+                actualizarDisplayRenta(obtenerRentaLimpia(rentaHidden?.value));
+                if (!montoPoliza?.value) {
+                        recalcularMontoPoliza();
+                }
 
 		// Submit AJAX (editar)
 		form.addEventListener("submit", async (e) => {
