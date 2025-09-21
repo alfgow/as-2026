@@ -11,7 +11,6 @@
 
 # Ignorar el archivo pero permitir la versión inicial vacía
 /Backend/admin/config/credentials.local.php
-!/Backend/admin/config/credentials.local.php
 
 
 
