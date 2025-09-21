@@ -40,37 +40,39 @@ $selfieUrl    = $selfieUrl ?? null;
                 </div>
 
                 <!-- === FRANJA DE ACCIONES === -->
-                <div class="mt-3 flex flex-col md:flex-row items-center justify-center md:justify-start gap-3 w-full">
+                <div class="mt-3 w-full">
+                    <div class="flex flex-col md:flex-row items-center md:items-stretch justify-center md:justify-start gap-3 w-full md:w-auto max-w-sm md:max-w-none mx-auto md:mx-0">
 
-                    <!-- TAG sólo en < md -->
-                    <span class="inline-block bg-gradient-to-r from-indigo-500 via-pink-400 to-fuchsia-400 
-        text-xs font-bold px-3 py-1 rounded-full shadow uppercase tracking-wider">
-                        <?= TextHelper::ucfirst($profile['tipo'] ?? "") ?>
-                    </span>
+                        <!-- TAG sólo en < md -->
+                        <span class="flex items-center justify-center w-full md:w-auto bg-gradient-to-r from-indigo-500 via-pink-400 to-fuchsia-400
+        text-sm font-semibold px-5 py-2.5 rounded-full shadow uppercase tracking-wider text-center">
+                            <?= TextHelper::ucfirst($profile['tipo'] ?? "") ?>
+                        </span>
 
-                    <!-- Botón renovación -->
-                    <a href="<?= $baseUrl ?>/prospectos/code?email=<?= rawurlencode($profile['email'] ?? '') ?>"
-                        class="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-full w-full md:w-auto
-            text-white shadow-lg text-sm text-center
+                        <!-- Botón renovación -->
+                        <a href="<?= $baseUrl ?>/prospectos/code?email=<?= rawurlencode($profile['email'] ?? '') ?>"
+                            class="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-full w-full md:w-auto
+            text-white shadow-lg text-sm font-semibold text-center
             bg-gradient-to-r from-rose-500 to-rose-600
             hover:from-rose-600 hover:to-rose-700
             transition-transform duration-200 hover:scale-[1.02]">
-                        <span>Actualizar Datos</span>
-                    </a>
+                            <span>Actualizar Datos</span>
+                        </a>
 
-                    <!-- Botón validaciones -->
-                    <a href="<?= $baseUrl ?>/inquilino/<?= urlencode($slug) ?>/validaciones"
-                        class="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-full w-full md:w-auto
-            text-white shadow-lg text-sm text-center
+                        <!-- Botón validaciones -->
+                        <a href="<?= $baseUrl ?>/inquilino/<?= urlencode($slug) ?>/validaciones"
+                            class="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-full w-full md:w-auto
+            text-white shadow-lg text-sm font-semibold text-center
             bg-gradient-to-r from-indigo-600 to-fuchsia-600
             hover:from-indigo-700 hover:to-fuchsia-700
             transition-transform duration-200 hover:scale-[1.02]">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                        <span>Validaciones</span>
-                    </a>
-
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0
+z" />
+                            </svg>
+                            <span>Validaciones</span>
+                        </a>
+                    </div>
                 </div>
                 <!-- === /FRANJA DE ACCIONES === -->
 
