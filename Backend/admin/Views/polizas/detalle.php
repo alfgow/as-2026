@@ -229,7 +229,7 @@
 
 <script>
     document.addEventListener('DOMContentLoaded', () => {
-        const BASE_URL = window.BASE_URL || '';
+        const baseUrl = window.BASE_URL || window.baseurl || BASE_URL || '';
 
         // Forma flexible de obtener el número de póliza sin acoplarse al markup:
         const getPolizaNumero = () =>
@@ -246,14 +246,14 @@
 
         if (btnEditar && POLIZA_NUM) {
             btnEditar.addEventListener('click', () => {
-                window.location.href = `${BASE_URL}/polizas/editar/${encodeURIComponent(POLIZA_NUM)}`;
+                window.location.href = `${baseUrl}/polizas/editar/${encodeURIComponent(POLIZA_NUM)}`;
             });
         }
 
         if (btnRenovar && POLIZA_NUM) {
             btnRenovar.addEventListener('click', () => {
                 // Ajusta si tu ruta de renovación difiere
-                window.location.href = `${BASE_URL}/polizas/renovar/${encodeURIComponent(POLIZA_NUM)}`;
+                window.location.href = `${baseUrl}/polizas/renovar/${encodeURIComponent(POLIZA_NUM)}`;
             });
         }
 
@@ -284,7 +284,7 @@
                 }
 
                 try {
-                    const respuesta = await fetch(`${BASE_URL}/polizas/eliminar`, {
+                    const respuesta = await fetch(`${baseUrl}/polizas/eliminar`, {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json'
@@ -310,7 +310,7 @@
                         window.alert('La póliza se eliminó correctamente.');
                     }
 
-                    window.location.href = `${BASE_URL}/polizas`;
+                    window.location.href = `${baseUrl}/polizas`;
                 } catch (error) {
                     const mensaje = error instanceof Error ? error.message : 'Error desconocido al eliminar la póliza.';
                     if (window.Swal) {
