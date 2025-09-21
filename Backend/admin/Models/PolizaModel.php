@@ -729,4 +729,14 @@ class PolizaModel extends Database
 
         return $ok;
     }
+
+    public function eliminarPorNumero(int $numero): bool
+    {
+        $stmt = $this->db->prepare('DELETE FROM polizas WHERE numero_poliza = :numero LIMIT 1');
+        $stmt->execute([
+            ':numero' => $numero,
+        ]);
+
+        return $stmt->rowCount() > 0;
+    }
 }

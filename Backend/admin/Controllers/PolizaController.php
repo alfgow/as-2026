@@ -955,6 +955,67 @@ class PolizaController
         exit;
     }
 
+    public function eliminar(): void
+    {
+        header('Content-Type: application/json; charset=utf-8');
+
+        if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
+            http_response_code(405);
+            echo json_encode([
+                'ok'    => false,
+                'error' => 'Método no permitido',
+            ]);
+            return;
+        }
+
+        try {
+            $payload = file_get_contents('php://input') ?: '';
+            $decoded = $payload !== '' ? json_decode($payload, true) : null;
+
+            $numero = null;
+            if (is_array($decoded) && isset($decoded['numero'])) {
+                $numero = (int) $decoded['numero'];
+            }
+
+            if ($numero === null && isset($_POST['numero'])) {
+                $numero = (int) $_POST['numero'];
+            }
+
+            if (!is_int($numero) || $numero <= 0) {
+                throw new \InvalidArgumentException('Número de póliza inválido.');
+            }
+
+            $polizaModel = new PolizaModel();
+            $eliminada   = $polizaModel->eliminarPorNumero($numero);
+
+            if (!$eliminada) {
+                throw new \RuntimeException('No se encontró la póliza solicitada.');
+            }
+
+            echo json_encode([
+                'ok' => true,
+            ]);
+        } catch (\InvalidArgumentException $e) {
+            http_response_code(400);
+            echo json_encode([
+                'ok'    => false,
+                'error' => $e->getMessage(),
+            ]);
+        } catch (\RuntimeException $e) {
+            http_response_code(404);
+            echo json_encode([
+                'ok'    => false,
+                'error' => $e->getMessage(),
+            ]);
+        } catch (\Throwable $e) {
+            http_response_code(500);
+            echo json_encode([
+                'ok'    => false,
+                'error' => 'Ocurrió un error inesperado al eliminar la póliza.',
+            ]);
+        }
+    }
+
     /* =========================
        Helpers
        ========================= */

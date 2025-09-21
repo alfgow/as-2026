@@ -358,6 +358,12 @@ switch (true) {
         exit;
         break;
 
+    case $uri === '/polizas/eliminar' && $_SERVER['REQUEST_METHOD'] === 'POST':
+        require __DIR__ . '/Controllers/PolizaController.php';
+        (new \App\Controllers\PolizaController())->eliminar();
+        exit;
+        break;
+
     case $uri === '/ia' && $_SERVER['REQUEST_METHOD'] === 'GET':
         require __DIR__ . '/Controllers/IAController.php';
         (new \Backend\admin\Controllers\IAController())->index();
