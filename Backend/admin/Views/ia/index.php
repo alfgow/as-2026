@@ -147,7 +147,7 @@ $iaChatUrl      = admin_url('/ia/chat');
                     : <?= json_encode($iaChatUrl, JSON_UNESCAPED_SLASHES) ?>;
 
                 const res = await fetch(chatEndpoint, {
-                    skipLoader: true,
+                    skipLoader: true, // Omitimos el loader global en el chat IA
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json"
