@@ -4,6 +4,7 @@ namespace App\Models;
 
 require_once __DIR__ . '/../Core/Database.php';
 
+use App\Helpers\NormalizadoHelper;
 use App\Core\Database;
 use PDO;
 
@@ -174,7 +175,7 @@ class PolizaModel extends Database
             return $polizas;
         }
 
-        $needle    = mb_strtolower($termino, 'UTF-8');
+        $needle    = NormalizadoHelper::normalizarBusqueda($termino);
         $esNumero  = ctype_digit($termino);
 
         return array_values(array_filter($polizas, static function (array $poliza) use ($needle, $esNumero, $termino): bool {
@@ -192,7 +193,7 @@ class PolizaModel extends Database
             ];
 
             foreach ($campos as $campo) {
-                $valor = mb_strtolower((string)($poliza[$campo] ?? ''), 'UTF-8');
+                $valor = NormalizadoHelper::normalizarBusqueda((string)($poliza[$campo] ?? ''));
                 if ($valor !== '' && mb_strpos($valor, $needle) !== false) {
                     return true;
                 }
