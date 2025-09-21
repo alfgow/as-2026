@@ -289,7 +289,8 @@
                         headers: {
                             'Content-Type': 'application/json'
                         },
-                        body: JSON.stringify({ numero: POLIZA_NUM })
+                        body: JSON.stringify({ numero: POLIZA_NUM }),
+                        credentials: 'same-origin'
                     });
 
                     const data = await respuesta.json();
