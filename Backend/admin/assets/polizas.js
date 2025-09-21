@@ -95,10 +95,12 @@
                 const inmuebleSelect = document.getElementById("inmueble-select");
                 const rentaHidden = document.getElementById("monto-renta-hidden");
                 const rentaDisplay = document.getElementById("monto-renta-display");
+                const refreshRentBtn = document.getElementById("btn-refrescar-renta");
                 const tipoPoliza = form.tipo_poliza;
                 const montoPoliza = document.getElementById("monto-poliza");
                 const fechaInicio = document.getElementById("fecha-inicio");
                 const fechaFin = document.getElementById("fecha-fin");
+                const numeroPolizaInput = form.querySelector('input[name="numero_poliza"]');
 
                 let montoPolizaEditadoManualmente = false;
 
@@ -167,6 +169,93 @@
                 tipoPoliza?.addEventListener("change", () => {
                         montoPolizaEditadoManualmente = false;
                         recalcularMontoPoliza();
+                });
+
+                const toggleRefreshLoading = (isLoading) => {
+                        if (!refreshRentBtn) return;
+                        refreshRentBtn.disabled = isLoading;
+                        refreshRentBtn.classList.toggle("opacity-60", isLoading);
+                        refreshRentBtn.classList.toggle("cursor-not-allowed", isLoading);
+                        const icon = refreshRentBtn.querySelector("svg");
+                        if (icon) {
+                                icon.classList.toggle("animate-spin", isLoading);
+                        }
+                };
+
+                refreshRentBtn?.addEventListener("click", async () => {
+                        const numeroPoliza = numeroPolizaInput?.value || "";
+                        if (!numeroPoliza) {
+                                Swal.fire({
+                                        icon: "error",
+                                        title: "Error",
+                                        text: "No se pudo identificar la póliza.",
+                                });
+                                return;
+                        }
+
+                        const inmuebleId = inmuebleSelect?.value || "";
+                        if (!inmuebleId) {
+                                Swal.fire({
+                                        icon: "warning",
+                                        title: "Selecciona un inmueble",
+                                        text: "Debes elegir un inmueble para refrescar la renta.",
+                                });
+                                return;
+                        }
+
+                        toggleRefreshLoading(true);
+
+                        try {
+                                const url = new URL(
+                                        `${BASE_URL}/polizas/${encodeURIComponent(numeroPoliza)}/renta`
+                                );
+                                if (inmuebleId) {
+                                        url.searchParams.set("id_inmueble", inmuebleId);
+                                }
+
+                                const response = await fetch(url.toString(), {
+                                        headers: { "X-Requested-With": "XMLHttpRequest" },
+                                });
+
+                                let data;
+                                try {
+                                        data = await response.json();
+                                } catch (err) {
+                                        throw new Error("Respuesta inválida del servidor");
+                                }
+
+                                if (!response.ok || !data?.ok) {
+                                        throw new Error(data?.error || "No se pudo obtener la renta");
+                                }
+
+                                const rentaDesdeApi = data.monto_renta_numerica || data.monto_renta || "";
+                                const limpia = obtenerRentaLimpia(rentaDesdeApi);
+
+                                if (rentaHidden) {
+                                        rentaHidden.value = limpia;
+                                }
+
+                                actualizarDisplayRenta(limpia);
+                                montoPolizaEditadoManualmente = false;
+                                recalcularMontoPoliza();
+
+                                Swal.fire({
+                                        icon: "success",
+                                        title: "Renta actualizada",
+                                        text: "El monto se sincronizó desde el inmueble.",
+                                });
+                        } catch (error) {
+                                Swal.fire({
+                                        icon: "error",
+                                        title: "Error",
+                                        text:
+                                                error && error.message
+                                                        ? error.message
+                                                        : "No se pudo refrescar la renta.",
+                                });
+                        } finally {
+                                toggleRefreshLoading(false);
+                        }
                 });
 
                 // Fechas

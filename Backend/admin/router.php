@@ -334,6 +334,12 @@ switch (true) {
         exit;
         break;
 
+    case preg_match('#^/polizas/(\d+)/renta$#', $uri, $m) && $_SERVER['REQUEST_METHOD'] === 'GET':
+        require __DIR__ . '/Controllers/PolizaController.php';
+        (new \App\Controllers\PolizaController())->renta((int)$m[1]);
+        exit;
+        break;
+
     case preg_match('#^/polizas/editar/(\d+)$#', $uri, $m):
         require __DIR__ . '/Controllers/PolizaController.php';
         (new \App\Controllers\PolizaController())->editar((int)$m[1]);

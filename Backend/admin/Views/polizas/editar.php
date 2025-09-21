@@ -140,10 +140,22 @@
                 $rentaNormalizada = preg_replace('/[^\d.]/', '', $rentaOriginal);
                 $rentaNumerica = $rentaNormalizada !== '' ? (float) $rentaNormalizada : 0.0;
                 ?>
-                <input type="text"
-                    value="<?= '$' . number_format($rentaNumerica, 2) ?>"
-                    class="w-full px-3 py-2 rounded-lg bg-[#1e1e2d] text-indigo-200 border border-indigo-800 cursor-not-allowed"
-                    readonly id="monto-renta-display" name="monto_renta">
+                <div class="flex items-center gap-2">
+                    <input type="text"
+                        value="<?= '$' . number_format($rentaNumerica, 2) ?>"
+                        class="w-full px-3 py-2 rounded-lg bg-[#1e1e2d] text-indigo-200 border border-indigo-800 cursor-not-allowed"
+                        readonly id="monto-renta-display" name="monto_renta">
+                    <button type="button" id="btn-refrescar-renta"
+                        class="shrink-0 inline-flex items-center justify-center p-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                        title="Refrescar monto de renta">
+                        <span class="sr-only">Refrescar monto de renta</span>
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                            stroke-width="1.5" stroke="currentColor" class="h-5 w-5">
+                            <path stroke-linecap="round" stroke-linejoin="round"
+                                d="M16.023 9.348h4.992m0 0V4.356m0 4.992l-3.181-3.181a8.25 8.25 0 10.63 10.698" />
+                        </svg>
+                    </button>
+                </div>
 
             </div>
 

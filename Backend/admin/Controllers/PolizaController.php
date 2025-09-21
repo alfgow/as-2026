@@ -323,6 +323,77 @@ class PolizaController
     }
 
 
+    public function renta(int $numeroPoliza): void
+    {
+        header('Content-Type: application/json; charset=utf-8');
+
+        if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'GET') {
+            http_response_code(405);
+            echo json_encode([
+                'ok'    => false,
+                'error' => 'Método no permitido'
+            ]);
+            return;
+        }
+
+        try {
+            $polizaModel   = new \App\Models\PolizaModel();
+            $inmuebleModel = new \App\Models\InmuebleModel();
+
+            $poliza = $polizaModel->obtenerPorNumero($numeroPoliza);
+            if (!$poliza) {
+                http_response_code(404);
+                echo json_encode([
+                    'ok'    => false,
+                    'error' => 'Póliza no encontrada'
+                ]);
+                return;
+            }
+
+            $inmuebleIdParam = isset($_GET['id_inmueble']) ? (int) $_GET['id_inmueble'] : 0;
+            $inmuebleId = $inmuebleIdParam > 0
+                ? $inmuebleIdParam
+                : (int)($poliza['id_inmueble'] ?? 0);
+
+            if ($inmuebleId <= 0) {
+                http_response_code(404);
+                echo json_encode([
+                    'ok'    => false,
+                    'error' => 'La póliza no tiene un inmueble asociado'
+                ]);
+                return;
+            }
+
+            $inmueble = $inmuebleModel->obtenerPorId($inmuebleId);
+            if (!$inmueble) {
+                http_response_code(404);
+                echo json_encode([
+                    'ok'    => false,
+                    'error' => 'Inmueble no encontrado'
+                ]);
+                return;
+            }
+
+            $renta = (string)($inmueble['renta'] ?? '');
+            $rentaNormalizada = preg_replace('/[^\d.]/', '', $renta);
+
+            echo json_encode([
+                'ok'                  => true,
+                'monto_renta'         => $renta,
+                'monto_renta_numerica' => $rentaNormalizada,
+                'id_inmueble'         => $inmuebleId,
+            ]);
+        } catch (\Throwable $e) {
+            http_response_code(500);
+            echo json_encode([
+                'ok'    => false,
+                'error' => 'No se pudo obtener la renta',
+                'detalle' => $e->getMessage(),
+            ]);
+        }
+    }
+
+
     public function renovar(int $numeroPoliza): void
     {
         try {
