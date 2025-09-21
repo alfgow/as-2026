@@ -691,7 +691,7 @@ class InquilinoModel extends Database
 
         $campos = [
             'tipo', 'nombre_inquilino', 'apellidop_inquilino', 'apellidom_inquilino',
-            'nombre', 'email', 'celular', 'estadocivil', 'nacionalidad', 'curp', 'rfc',
+            'email', 'celular', 'estadocivil', 'nacionalidad', 'curp', 'rfc',
             'tipo_id', 'num_id', 'slug', 'conyuge'
         ];
 
