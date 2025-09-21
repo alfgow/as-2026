@@ -89,6 +89,38 @@ class NormalizadoHelper
     }
 
     /**
+     * Elimina tildes/diacríticos conservando el texto base.
+     */
+    public static function sinDiacriticos(?string $val): string
+    {
+        if ($val === null || $val === '') {
+            return '';
+        }
+
+        $normalizado = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $val);
+
+        if ($normalizado === false) {
+            return (string) $val;
+        }
+
+        return $normalizado;
+    }
+
+    /**
+     * Normaliza texto para búsquedas en minúsculas sin diacríticos.
+     */
+    public static function normalizarBusqueda(?string $val): string
+    {
+        $val = self::lower($val);
+
+        if ($val === '') {
+            return '';
+        }
+
+        return self::sinDiacriticos($val);
+    }
+
+    /**
      * Normaliza texto a slug (ej. para URLs).
      */
     public static function slug(?string $val): string
