@@ -73,9 +73,18 @@ class ArrendadorController
     /**
      * Vista de detalle
      */
-    public function detalle(int $id)
+    public function detalle(string $slug)
     {
-        $arrendador = $this->model->obtenerPorId($id);
+        $slug = trim($slug);
+        $arrendador = $slug !== '' ? $this->model->obtenerPorSlug($slug) : null;
+
+        if (!$arrendador && preg_match('/-(\d+)$/', $slug, $matches)) {
+            $arrendador = $this->model->obtenerPorId((int) $matches[1]);
+        }
+
+        if (!$arrendador && ctype_digit($slug)) {
+            $arrendador = $this->model->obtenerPorId((int) $slug);
+        }
 
         if (!$arrendador) {
             http_response_code(404);
