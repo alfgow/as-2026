@@ -132,24 +132,38 @@ document.addEventListener("DOMContentLoaded", function () {
 	const _fetch = window.fetch;
 
 	// Sobreescribimos fetch para mostrar/ocultar loader automáticamente
-	window.fetch = async function (resource, options) {
-		try {
-			// Mostrar loader al iniciar cualquier petición
-			showLoader("Procesando información...");
+        window.fetch = async function (resource, options) {
+                const shouldSkipLoader = options?.skipLoader === true;
+                let fetchOptions = options;
 
-			// Ejecutar la petición real
-			const response = await _fetch(resource, options);
+                if (options && typeof options === "object" && "skipLoader" in options) {
+                        const { skipLoader, ...rest } = options;
+                        fetchOptions = rest;
+                }
 
-			// Ocultar loader al terminar
-			hideLoader();
+                try {
+                        // Mostrar loader al iniciar cualquier petición (a menos que se omita explícitamente)
+                        if (!shouldSkipLoader) {
+                                showLoader("Procesando información...");
+                        }
 
-			return response;
-		} catch (err) {
-			// Aseguramos ocultar el loader también en caso de error
-			hideLoader();
-			throw err;
-		}
-	};
+                        // Ejecutar la petición real
+                        const response = await _fetch(resource, fetchOptions);
+
+                        // Ocultar loader al terminar
+                        if (!shouldSkipLoader) {
+                                hideLoader();
+                        }
+
+                        return response;
+                } catch (err) {
+                        // Aseguramos ocultar el loader también en caso de error
+                        if (!shouldSkipLoader) {
+                                hideLoader();
+                        }
+                        throw err;
+                }
+        };
 });
 document.addEventListener("DOMContentLoaded", () => {
 	// Selecciona todos los forms de cambiar archivo
