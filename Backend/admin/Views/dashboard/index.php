@@ -266,13 +266,19 @@ use App\Helpers\TextHelper;
 
                     if ($fechaVencimiento instanceof DateTimeInterface) {
                         $fechaFormateada = TextHelper::titleCase($fechaVencimiento->format('d/m/Y'));
-                        $hoy = new DateTime();
-                        $diasRestantes = $hoy->diff($fechaVencimiento)->days;
-                        if ($fechaVencimiento < $hoy) {
-                            $dias = '-' . $diasRestantes;
-                        } else {
-                            $dias = (string)$diasRestantes;
+                        $venceNormalizado = $fechaVencimiento instanceof \DateTimeImmutable
+                            ? $fechaVencimiento->setTime(0, 0)
+                            : \DateTimeImmutable::createFromMutable($fechaVencimiento)->setTime(0, 0);
+
+                        $hoy = new \DateTimeImmutable('today');
+                        $intervalo = $hoy->diff($venceNormalizado);
+                        $diasRestantes = (int)$intervalo->format('%r%a');
+
+                        if ($intervalo->invert === 0 && $diasRestantes > 0) {
+                            $diasRestantes += 1;
                         }
+
+                        $dias = (string)$diasRestantes;
                     } else {
                         $fechaFormateada = '—';
                         $dias = '—';
