@@ -22,15 +22,18 @@
                         <?php
                             $pk = (string)($inmueble['pk'] ?? '');
                             $sk = (string)($inmueble['sk'] ?? '');
-                            $legacyId = isset($inmueble['id']) ? (string)$inmueble['id'] : '';
+                            $idInmueble = isset($inmueble['id']) ? (string) $inmueble['id'] : '';
 
-                            $verUrl = ($pk !== '' && $sk !== '')
-                                ? $baseUrl . '/inmuebles/' . rawurlencode($pk) . '/' . rawurlencode($sk)
-                                : ($legacyId !== '' ? $baseUrl . '/inmuebles/' . $legacyId : '#');
-
-                            $editarUrl = ($pk !== '' && $sk !== '')
-                                ? $baseUrl . '/inmuebles/editar/' . rawurlencode($pk) . '/' . rawurlencode($sk)
-                                : ($legacyId !== '' ? $baseUrl . '/inmuebles/editar/' . $legacyId : '#');
+                            if ($idInmueble !== '') {
+                                $verUrl = $baseUrl . '/inmuebles/' . rawurlencode($idInmueble);
+                                $editarUrl = $baseUrl . '/inmuebles/editar/' . rawurlencode($idInmueble);
+                            } elseif ($pk !== '' && $sk !== '') {
+                                $verUrl = $baseUrl . '/inmuebles/' . rawurlencode($pk) . '/' . rawurlencode($sk);
+                                $editarUrl = $baseUrl . '/inmuebles/editar/' . rawurlencode($pk) . '/' . rawurlencode($sk);
+                            } else {
+                                $verUrl = '#';
+                                $editarUrl = '#';
+                            }
 
                             $direccion = trim((string)($inmueble['direccion_inmueble'] ?? '')) ?: 'Sin dirección';
                             $tipo = trim((string)($inmueble['tipo'] ?? ''));

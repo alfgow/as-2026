@@ -2,10 +2,15 @@
     <?php
         $pk = (string)($inmueble['pk'] ?? '');
         $sk = (string)($inmueble['sk'] ?? '');
-        $legacyId = isset($inmueble['id']) ? (string)$inmueble['id'] : '';
-        $editUrl = ($pk !== '' && $sk !== '')
-            ? $baseUrl . '/inmuebles/editar/' . rawurlencode($pk) . '/' . rawurlencode($sk)
-            : $baseUrl . '/inmuebles/editar/' . $legacyId;
+        $idInmueble = isset($inmueble['id']) ? (string) $inmueble['id'] : '';
+
+        if ($idInmueble !== '') {
+            $editUrl = $baseUrl . '/inmuebles/editar/' . rawurlencode($idInmueble);
+        } elseif ($pk !== '' && $sk !== '') {
+            $editUrl = $baseUrl . '/inmuebles/editar/' . rawurlencode($pk) . '/' . rawurlencode($sk);
+        } else {
+            $editUrl = $baseUrl . '/inmuebles';
+        }
     ?>
     <div class="bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl p-6 space-y-4">
         <h2 class="text-xl font-semibold text-indigo-300 text-center mb-4">Detalle de Inmueble</h2>
