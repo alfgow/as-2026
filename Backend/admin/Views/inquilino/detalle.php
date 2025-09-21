@@ -27,7 +27,7 @@ $selfieUrl    = $selfieUrl ?? null;
             <div class="flex-1 w-full">
                 <!-- Nombre + TAG (TAG visible en desktop, oculto en móvil) -->
                 <div class="flex flex-wrap items-center gap-2">
-                    <h1 class="text-3xl font-bold text-white tracking-tight drop-shadow">
+                    <h1 class="text-3xl font-bold text-white tracking-tight drop-shadow text-center">
                         <?= ucwords("{$profile['nombre']}") ?>
                     </h1>
                 </div>
