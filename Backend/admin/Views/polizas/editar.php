@@ -8,6 +8,7 @@
 /** @var array $obligados */
 /** @var array $asesores */
 /** @var string $baseUrl */
+
 ?>
 <section class="px-4 md:px-8 py-5 text-white">
     <?php
