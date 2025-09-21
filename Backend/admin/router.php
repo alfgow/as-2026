@@ -294,9 +294,9 @@ switch (true) {
         exit;
         break;
 
-    case preg_match('#^/inmuebles/([^/]+)/([^/]+)$#', $uri, $m):
+    case preg_match('#^/inmuebles/(\d+)$#', $uri, $m):
         require __DIR__ . '/Controllers/InmuebleController.php';
-        (new \App\Controllers\InmuebleController())->ver((string)$m[1]);
+        (new \App\Controllers\InmuebleController())->ver((string) $m[1]);
 
         exit;
         break;
