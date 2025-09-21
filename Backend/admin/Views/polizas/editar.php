@@ -136,10 +136,12 @@
                 <label class="block text-indigo-300 mb-1">Monto renta</label>
 
                 <?php
-                $rawRenta = preg_replace('/[^\d]/', '', $poliza['monto_renta']); // deja solo números
+                $rentaOriginal = (string)($poliza['monto_renta'] ?? '');
+                $rentaNormalizada = preg_replace('/[^\d.]/', '', $rentaOriginal);
+                $rentaNumerica = $rentaNormalizada !== '' ? (float) $rentaNormalizada : 0.0;
                 ?>
                 <input type="text"
-                    value="$<?= number_format((float) $rawRenta, 2) ?>"
+                    value="<?= '$' . number_format($rentaNumerica, 2) ?>"
                     class="w-full px-3 py-2 rounded-lg bg-[#1e1e2d] text-indigo-200 border border-indigo-800 cursor-not-allowed"
                     readonly id="monto-renta-display" name="monto_renta">
 
@@ -160,12 +162,15 @@
                 <select name="id_inmueble" class="appearance-none w-full px-4 py-2 rounded-lg bg-[#232336] border border-indigo-800 text-indigo-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" id="inmueble-select">
                     <option value="">- SELECCIONA UN INMUEBLE -</option>
                     <?php foreach ($inmuebles as $inm): ?>
-                        <option value="<?= $inm['id'] ?>" data-monto="<?= $inm['renta'] ?>" <?= $inm['id'] == $poliza['id_inmueble'] ? 'selected' : '' ?>>
+                        <?php
+                        $rentaInmueble = preg_replace('/[^\d.]/', '', (string)($inm['renta'] ?? ''));
+                        ?>
+                        <option value="<?= $inm['id'] ?>" data-monto="<?= htmlspecialchars($rentaInmueble) ?>" <?= $inm['id'] == $poliza['id_inmueble'] ? 'selected' : '' ?>>
                             <?= htmlspecialchars($inm['direccion_inmueble']) ?>
                         </option>
                     <?php endforeach; ?>
                 </select>
-                <input type="hidden" id="monto-renta-hidden" value="<?= htmlspecialchars($inmueble['renta']) ?>">
+                <input type="hidden" id="monto-renta-hidden" value="<?= htmlspecialchars((string) $rentaNumerica) ?>">
             </div>
 
             <div>
