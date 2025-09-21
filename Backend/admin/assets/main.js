@@ -133,12 +133,16 @@ document.addEventListener("DOMContentLoaded", function () {
 
 	// Sobreescribimos fetch para mostrar/ocultar loader automáticamente
         window.fetch = async function (resource, options) {
-                const shouldSkipLoader = options?.skipLoader === true;
                 let fetchOptions = options;
+                let shouldSkipLoader = false;
 
-                if (options && typeof options === "object" && "skipLoader" in options) {
-                        const { skipLoader, ...rest } = options;
-                        fetchOptions = rest;
+                if (options && typeof options === "object") {
+                        shouldSkipLoader = options.skipLoader === true;
+
+                        if ("skipLoader" in options) {
+                                const { skipLoader, ...restOptions } = options;
+                                fetchOptions = restOptions;
+                        }
                 }
 
                 try {
