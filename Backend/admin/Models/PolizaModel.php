@@ -463,33 +463,15 @@ class PolizaModel extends Database
         $params  = [];
 
         $buscarTerm = null;
+        $buscarEsNumero = false;
         if ($buscar !== null && trim($buscar) !== '') {
             $buscarTerm = trim($buscar);
-            $buscarNormalizado = NormalizadoHelper::sinDiacriticos($buscarTerm);
-            $like = "%{$buscarNormalizado}%";
+            $buscarEsNumero = ctype_digit($buscarTerm);
 
-            $collate = static fn (string $campo): string => sprintf(
-                'CONVERT(%s USING utf8mb4) COLLATE utf8mb4_unicode_ci',
-                $campo
-            );
-
-            $sub = [
-                $collate('i.nombre_inquilino') . ' LIKE :t1',
-                $collate('i.apellidop_inquilino') . ' LIKE :t2',
-                $collate('i.apellidom_inquilino') . ' LIKE :t3',
-                $collate('arr.nombre_arrendador') . ' LIKE :t4',
-            ];
-            $params[':t1'] = $like;
-            $params[':t2'] = $like;
-            $params[':t3'] = $like;
-            $params[':t4'] = $like;
-
-            if (ctype_digit($buscarTerm)) {
-                $sub[] = 'p.numero_poliza = :num_poliza';
-                $params[':num_poliza'] = (int)$buscarTerm;
+            if ($buscarEsNumero) {
+                $bloques[] = 'p.numero_poliza = :num_poliza';
+                $params[':num_poliza'] = (int) $buscarTerm;
             }
-
-            $bloques[] = '(' . implode(' OR ', $sub) . ')';
         }
 
         if (!empty($estado)) {
@@ -504,7 +486,7 @@ class PolizaModel extends Database
 
         $where = $bloques ? implode(' AND ', $bloques) : '1';
 
-        if ($buscarTerm !== null) {
+        if ($buscarTerm !== null && !$buscarEsNumero) {
             $polizas = $this->obtenerPolizasConFiltros($where, $params);
             $filtradas = $this->filtrarPolizasPorBusqueda($polizas, $buscarTerm);
 
@@ -531,33 +513,15 @@ class PolizaModel extends Database
         $params  = [];
 
         $buscarTerm = null;
+        $buscarEsNumero = false;
         if ($buscar !== null && trim($buscar) !== '') {
             $buscarTerm = trim($buscar);
-            $buscarNormalizado = NormalizadoHelper::sinDiacriticos($buscarTerm);
-            $like = "%{$buscarNormalizado}%";
+            $buscarEsNumero = ctype_digit($buscarTerm);
 
-            $collate = static fn (string $campo): string => sprintf(
-                'CONVERT(%s USING utf8mb4) COLLATE utf8mb4_unicode_ci',
-                $campo
-            );
-
-            $sub = [
-                $collate('i.nombre_inquilino') . ' LIKE :t1',
-                $collate('i.apellidop_inquilino') . ' LIKE :t2',
-                $collate('i.apellidom_inquilino') . ' LIKE :t3',
-                $collate('arr.nombre_arrendador') . ' LIKE :t4',
-            ];
-            $params[':t1'] = $like;
-            $params[':t2'] = $like;
-            $params[':t3'] = $like;
-            $params[':t4'] = $like;
-
-            if (ctype_digit($buscarTerm)) {
-                $sub[] = 'p.numero_poliza = :num_poliza';
-                $params[':num_poliza'] = (int)$buscarTerm;
+            if ($buscarEsNumero) {
+                $bloques[] = 'p.numero_poliza = :num_poliza';
+                $params[':num_poliza'] = (int) $buscarTerm;
             }
-
-            $bloques[] = '(' . implode(' OR ', $sub) . ')';
         }
 
         if (!empty($estado)) {
@@ -572,11 +536,14 @@ class PolizaModel extends Database
 
         $where = $bloques ? implode(' AND ', $bloques) : '1';
 
-        $polizas = $this->obtenerPolizasConFiltros($where, $params);
-
-        if ($buscarTerm !== null) {
+        if ($buscarTerm !== null && !$buscarEsNumero) {
+            $polizas = $this->obtenerPolizasConFiltros($where, $params);
             $polizas = $this->filtrarPolizasPorBusqueda($polizas, $buscarTerm);
+
+            return count($polizas);
         }
+
+        $polizas = $this->obtenerPolizasConFiltros($where, $params);
 
         return count($polizas);
     }
