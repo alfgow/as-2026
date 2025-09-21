@@ -201,7 +201,10 @@ class InquilinoModel extends Database
         $profile['direccion'] = $this->fetchDireccion($id);
         $profile['trabajo']   = $this->fetchTrabajo($id);
         $profile['fiador']    = $this->fetchFiador($id);
-        $profile['historial'] = $this->fetchHistorial($id);
+
+        $historialVivienda = $this->fetchHistorial($id);
+        $profile['historial'] = $historialVivienda;
+        $profile['historial_vivienda'] = $historialVivienda;
 
         return $profile;
     }
