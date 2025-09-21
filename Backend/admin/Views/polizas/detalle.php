@@ -187,31 +187,42 @@
             </p>
         </div>
 
-        <div class="flex flex-col md:flex-row justify-center items-center gap-3 pt-4 text-center w-full">
+        <?php $actionBtnBase = 'w-full md:w-auto px-5 py-2.5 rounded-xl text-sm font-semibold shadow-lg transition flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-[#1b1b29]'; ?>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-6 w-full max-w-4xl mx-auto">
             <a href="<?= $baseUrl ?>/polizas/generar-pdf/<?= $poliza['numero_poliza'] ?>"
-                class="px-4 py-2 bg-indigo-700 hover:bg-indigo-600 rounded-lg text-white font-semibold shadow transition text-center">
+                class="<?= $actionBtnBase ?> bg-indigo-700 hover:bg-indigo-600 text-white focus:ring-indigo-500"
+                id="btn-descargar-poliza">
                 Descargar Póliza
             </a>
 
             <a href="<?= $baseUrl ?>/polizas"
-                class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 rounded-full text-white text-sm shadow-lg transition text-center">
+                class="<?= $actionBtnBase ?> bg-indigo-600 hover:bg-indigo-500 text-white focus:ring-indigo-400"
+                id="btn-volver-polizas">
                 Volver al listado
             </a>
 
             <a href="<?= $baseUrl ?>/polizas/editar/<?= $poliza['numero_poliza'] ?>"
-                class="px-4 py-2 bg-pink-600 hover:bg-pink-700 rounded-full text-white text-sm shadow-lg transition text-center">
+                class="<?= $actionBtnBase ?> bg-pink-600 hover:bg-pink-500 text-white focus:ring-pink-400"
+                id="btn-editar-poliza">
                 Editar
             </a>
 
             <a href="<?= $baseUrl ?>/polizas/renovar/<?= $poliza['numero_poliza'] ?>"
-                class="px-4 py-2 bg-green-600 hover:bg-green-700 rounded-full text-white text-sm shadow-lg transition text-center">
+                class="<?= $actionBtnBase ?> bg-green-600 hover:bg-green-500 text-white focus:ring-green-400"
+                id="btn-renovar-poliza">
                 Renovar
             </a>
 
             <a href="<?= $baseUrl ?>/polizas/generacion-contrato/<?= $poliza['numero_poliza'] ?>"
-                class="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 rounded-full text-white text-sm shadow-lg transition text-center">
+                class="<?= $actionBtnBase ?> bg-yellow-500 hover:bg-yellow-400 text-[#1b1b29] focus:ring-yellow-300"
+                id="btn-generar-contrato">
                 Generar Contrato
             </a>
+
+            <button type="button" id="btn-eliminar-poliza"
+                class="<?= $actionBtnBase ?> bg-red-600 hover:bg-red-500 text-white focus:ring-red-500">
+                Eliminar
+            </button>
         </div>
 
 </section>
@@ -231,6 +242,7 @@
         // Botones (si existen en la vista)
         const btnEditar = document.getElementById('btn-editar-poliza');
         const btnRenovar = document.getElementById('btn-renovar-poliza');
+        const btnEliminar = document.getElementById('btn-eliminar-poliza');
 
         if (btnEditar && POLIZA_NUM) {
             btnEditar.addEventListener('click', () => {
@@ -242,6 +254,80 @@
             btnRenovar.addEventListener('click', () => {
                 // Ajusta si tu ruta de renovación difiere
                 window.location.href = `${BASE_URL}/polizas/renovar/${encodeURIComponent(POLIZA_NUM)}`;
+            });
+        }
+
+        if (btnEliminar && POLIZA_NUM) {
+            btnEliminar.addEventListener('click', async () => {
+                const confirmacion = await (window.Swal
+                    ? Swal.fire({
+                        title: 'Eliminar póliza',
+                        text: `¿Deseas eliminar la póliza #${POLIZA_NUM}? Esta acción no se puede deshacer.`,
+                        icon: 'warning',
+                        showCancelButton: true,
+                        confirmButtonColor: '#dc2626',
+                        cancelButtonColor: '#4b5563',
+                        confirmButtonText: 'Sí, eliminar',
+                        cancelButtonText: 'Cancelar',
+                        focusCancel: true
+                    }).then((result) => result.isConfirmed)
+                    : Promise.resolve(window.confirm(`¿Deseas eliminar la póliza #${POLIZA_NUM}?`)));
+
+                if (!confirmacion) {
+                    return;
+                }
+
+                btnEliminar.disabled = true;
+                btnEliminar.classList.add('opacity-70', 'cursor-not-allowed');
+                if (typeof showLoader === 'function') {
+                    showLoader('Eliminando póliza...');
+                }
+
+                try {
+                    const respuesta = await fetch(`${BASE_URL}/polizas/eliminar`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ numero: POLIZA_NUM })
+                    });
+
+                    const data = await respuesta.json();
+
+                    if (!respuesta.ok || !data?.ok) {
+                        throw new Error(data?.error || 'No se pudo eliminar la póliza.');
+                    }
+
+                    if (window.Swal) {
+                        await Swal.fire({
+                            title: 'Póliza eliminada',
+                            text: 'La póliza se eliminó correctamente.',
+                            icon: 'success',
+                            confirmButtonText: 'Aceptar'
+                        });
+                    } else {
+                        window.alert('La póliza se eliminó correctamente.');
+                    }
+
+                    window.location.href = `${BASE_URL}/polizas`;
+                } catch (error) {
+                    const mensaje = error instanceof Error ? error.message : 'Error desconocido al eliminar la póliza.';
+                    if (window.Swal) {
+                        Swal.fire({
+                            title: 'No se pudo eliminar',
+                            text: mensaje,
+                            icon: 'error'
+                        });
+                    } else {
+                        window.alert(mensaje);
+                    }
+                } finally {
+                    btnEliminar.disabled = false;
+                    btnEliminar.classList.remove('opacity-70', 'cursor-not-allowed');
+                    if (typeof hideLoader === 'function') {
+                        hideLoader();
+                    }
+                }
             });
         }
     });
