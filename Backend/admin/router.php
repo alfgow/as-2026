@@ -192,9 +192,9 @@ switch (true) {
         break;
 
     // Arrendador detalle por slug
-    case preg_match('#^/arrendadores/([a-z0-9-]+)-([0-9]+)$#i', $uri, $m):
+    case preg_match('#^/arrendadores/(?!por-asesor(?:/|$))([a-z0-9-]+)$#i', $uri, $m):
         require __DIR__ . '/Controllers/ArrendadorController.php';
-        (new \App\Controllers\ArrendadorController())->detalle((int)$m[2]);
+        (new \App\Controllers\ArrendadorController())->detalle($m[1]);
         exit;
         break;
 

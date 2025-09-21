@@ -56,9 +56,15 @@
 
                 <div class="space-y-1 text-sm">
                     <div>
+                        <?php
+                        $slugArrendador = trim((string)($poliza['slug_arrendador'] ?? ''));
+                        $arrendadorHref = $slugArrendador !== ''
+                            ? $baseUrl . '/arrendadores/' . $slugArrendador
+                            : $baseUrl . '/arrendadores/' . $poliza['id_arrendador'];
+                        ?>
                         <p class="text-sm text-white">
                             <span class="font-semibold text-indigo-400">Arrendador:</span>
-                            <a href="<?= $baseUrl ?>/arrendadores/<?= $poliza['id_arrendador'] ?>"
+                            <a href="<?= htmlspecialchars($arrendadorHref) ?>"
                                 class="text-indigo-300 underline hover:text-indigo-100 transition font-medium ml-1"
                                 id="val-arrendador" target="_blank">
                                 <?= htmlspecialchars($poliza['nombre_arrendador']) ?>

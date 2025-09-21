@@ -253,6 +253,7 @@ class PolizaModel extends Database
             a.nombre_asesor AS nombre_asesor,
             a.celular AS celular_asesor,
             arr.nombre_arrendador AS nombre_arrendador,
+            arr.slug AS slug_arrendador,
             arr.celular AS celular_arrendador,
             arr.direccion_arrendador,
             arr.banco AS banco_arrendador,

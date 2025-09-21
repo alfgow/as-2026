@@ -115,6 +115,19 @@ class ArrendadorModel extends Database
         return $row ? $this->hydrateArrendador($row) : null;
     }
 
+    public function obtenerPorSlug(string $slug): ?array
+    {
+        $slug = trim($slug);
+        if ($slug === '') {
+            return null;
+        }
+
+        $sql = 'SELECT * FROM arrendadores WHERE slug = :slug LIMIT 1';
+        $row = $this->fetch($sql, [':slug' => $slug]);
+
+        return $row ? $this->hydrateArrendador($row) : null;
+    }
+
     public function obtenerProfilePorPk(string $pk): ?array
     {
         if (!preg_match('/^arr#(\d+)$/', $pk, $matches)) {
