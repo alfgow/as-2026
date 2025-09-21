@@ -84,8 +84,9 @@ class InquilinoController
 
             // 🔹 Slug amigable
             $pk = $inq['profile']['pk'] ?? '';   // ej. inq#1241 / obl#99 / fia#77
-            $id = str_replace(['inq#', 'obl#', 'fia#'], '', $pk);
-            $inq['profile']['slug'] = SlugHelper::fromName($nombreCompleto) . '-' . $id;
+            $id = trim(str_replace(['inq#', 'obl#', 'fia#'], '', (string) $pk));
+            $slugBase = SlugHelper::fromName($nombreCompleto);
+            $inq['profile']['slug'] = $id !== '' ? $id . '-' . $slugBase : $slugBase;
 
             // 🔹 Mantener limpio el resultado: solo profile + selfie_url
             $inq = [
@@ -147,7 +148,8 @@ class InquilinoController
         $numId     = NormalizadoHelper::lower(trim($_POST['num_id'] ?? ''));
 
         $nombreCompleto = trim($nombre . ' ' . $apPaterno . ' ' . $apMaterno);
-        $slug = SlugHelper::fromName($nombreCompleto !== '' ? $nombreCompleto : $pk) . '-' . $id;
+        $slugBase = SlugHelper::fromName($nombreCompleto !== '' ? $nombreCompleto : $pk);
+        $slug = $id > 0 ? $id . '-' . $slugBase : $slugBase;
 
         try {
             $ok = $this->model->actualizarDatosPersonalesPorPk($pk, [
