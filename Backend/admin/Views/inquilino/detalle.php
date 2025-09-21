@@ -71,13 +71,6 @@ $selfieUrl    = $selfieUrl ?? null;
                         <span>Validaciones</span>
                     </a>
 
-                    <button type="button" id="btn-ver-db"
-                        class="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-full w-full md:w-auto text-white shadow-lg text-sm text-center bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 transition-transform duration-200 hover:scale-[1.02]">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h7" />
-                        </svg>
-                        <span>Ver DB</span>
-                    </button>
                 </div>
                 <!-- === /FRANJA DE ACCIONES === -->
 
@@ -330,7 +323,7 @@ $selfieUrl    = $selfieUrl ?? null;
                 <input type="hidden" name="id_inquilino" value="<?= $profile['id']; ?>">
                 <input type="hidden" name="pk" value="<?= htmlspecialchars($profile['pk'] ?? ''); ?>">
                 <input type="hidden" name="id" value="<?= (int)($profile['id'] ?? 0); ?>">
-<div class="grid md:grid-cols-2 gap-6">
+                <div class="grid md:grid-cols-2 gap-6">
                     <!-- ...campos igual que antes... -->
                     <div>
                         <label class="block text-gray-200 font-semibold mb-1">Calle</label>
@@ -1672,7 +1665,7 @@ $dbDumpJs = json_encode($dbDumpPayload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_
 <script>
     window.INQ_DB_DUMP = <?= $dbDumpJs ?: '{}' ?>;
 
-    (function () {
+    (function() {
         const btn = document.getElementById('btn-ver-db');
         const modal = document.getElementById('modal-db');
         const pre = document.getElementById('db-json');
@@ -1703,7 +1696,7 @@ $dbDumpJs = json_encode($dbDumpPayload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_
 
         btn?.addEventListener('click', abrirModalDb);
         close?.addEventListener('click', cerrarModalDb);
-        modal?.addEventListener('click', function (event) {
+        modal?.addEventListener('click', function(event) {
             if (event.target === modal) {
                 cerrarModalDb();
             }
