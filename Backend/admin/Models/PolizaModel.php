@@ -142,7 +142,7 @@ class PolizaModel extends Database
                 'id_arrendador'      => isset($row['id_arrendador']) ? (int)$row['id_arrendador'] : 0,
                 'direccion_inmueble' => $row['direccion_inmueble'] ?? '',
                 'estacionamiento'    => isset($row['estacionamiento']) ? (int)$row['estacionamiento'] : 0,
-                'monto_mantenimiento'=> $row['monto_mantenimiento'] ?? null,
+                'monto_mantenimiento' => $row['monto_mantenimiento'] ?? null,
                 'mantenimiento'      => $row['mantenimiento'] ?? '',
                 'mascotas'           => $row['mascotas'] ?? '',
             ];
@@ -458,7 +458,7 @@ class PolizaModel extends Database
      */
     public function obtenerPaginadasFiltradas(int $limit, int $offset, ?string $estado, ?string $tipo, ?string $buscar): array
     {
-        // 1) Armar condiciones y parámetros nombrados (con dos puntos)
+        // 1) Armar condiciones y parámetros nombrados
         $bloques = [];
         $params  = [];
 
@@ -471,6 +471,23 @@ class PolizaModel extends Database
             if ($buscarEsNumero) {
                 $bloques[] = 'p.numero_poliza = :num_poliza';
                 $params[':num_poliza'] = (int) $buscarTerm;
+            } else {
+                // 🔎 Búsqueda textual insensible a acentos con parámetros únicos
+                $like = '%' . $buscarTerm . '%';
+                $bloques[] = '(
+                CAST(i.nombre_inquilino AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci LIKE :like1
+                OR CAST(i.apellidop_inquilino AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci LIKE :like2
+                OR CAST(i.apellidom_inquilino AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci LIKE :like3
+                OR CAST(arr.nombre_arrendador AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci LIKE :like4
+                OR CAST(di.calle AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci LIKE :like5
+                OR CAST(di.colonia AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci LIKE :like6
+            )';
+                $params[':like1'] = $like;
+                $params[':like2'] = $like;
+                $params[':like3'] = $like;
+                $params[':like4'] = $like;
+                $params[':like5'] = $like;
+                $params[':like6'] = $like;
             }
         }
 
@@ -486,21 +503,15 @@ class PolizaModel extends Database
 
         $where = $bloques ? implode(' AND ', $bloques) : '1';
 
-        if ($buscarTerm !== null && !$buscarEsNumero) {
-            $polizas = $this->obtenerPolizasConFiltros($where, $params);
-            $filtradas = $this->filtrarPolizasPorBusqueda($polizas, $buscarTerm);
+        // 2) Orden y paginación (interpolación segura de enteros)
+        $extras = ' ORDER BY p.numero_poliza DESC LIMIT ' . (int)$limit . ' OFFSET ' . (int)$offset;
 
-            return array_slice($filtradas, $offset, $limit);
-        }
-
-        // 2) Orden y paginación
-        $extras = ' ORDER BY p.numero_poliza DESC LIMIT :limit OFFSET :offset';
-        $params[':limit']  = (int)$limit;
-        $params[':offset'] = (int)$offset;
-
-        // 3) Delegar al método común (el tuyo)
+        // 3) Delegar al método común
         return $this->obtenerPolizasConFiltros($where, $params, false, $extras);
     }
+
+
+
 
     /**
      * Cuenta total de pólizas aplicando los mismos filtros que en obtenerPaginadasFiltradas().
