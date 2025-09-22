@@ -167,13 +167,20 @@ class InquilinoValidacionAWSController
             $model->guardarValidacionesVerificaMex($idInquilino, $campos);
 
             // 📌 Status/resumen general
-            $status  = !empty($json['data']['status']) ? 1 : 0;
-            $resumen = $status === 1
-                ? "✔️ INE válida (VerificaMex)"
-                : ("❌ " . ($json['message'] ?? "Error en validación"));
+            $statusFlag = filter_var($json['data']['status'] ?? false, FILTER_VALIDATE_BOOLEAN);
+            $proceso = $statusFlag ? 1 : 2;
+            $status = $statusFlag ? 1 : 0;
+            $mensaje = trim((string) ($json['message'] ?? 'Mensaje no disponible'));
+            if ($mensaje === '') {
+                $mensaje = 'Mensaje no disponible';
+            }
+
+            $resumen = $statusFlag
+                ? "☑️ {$mensaje}"
+                : "✖️ Se rechazó la credencial, el servidor INE regresó el siguiente mensaje: {$mensaje}";
 
             // Guardar también el JSON limpio completo
-            $ok = $model->guardarValidacionVerificaMex($idInquilino, $status, $jsonLimpio, $resumen);
+            $ok = $model->guardarValidacionVerificaMex($idInquilino, $proceso, $jsonLimpio, $resumen);
 
             // 🔄 Devolver todo, igual que en mock
             return [
