@@ -314,7 +314,7 @@ use App\Helpers\TextHelper;
                     <p><span class="font-semibold text-indigo-200">Tipo:</span> <?= TextHelper::titleCase($inm['tipo']) ?></p>
                     <p><span class="font-semibold text-indigo-200">Renta:</span> $<?= number_format($inm['renta']) ?></p>
                     <div class="flex gap-2 mt-3">
-                        <button type="button" onclick="editarInmueble('<?= $inm['sk'] ?>')" class="px-3 py-1 bg-pink-600 hover:bg-pink-500 rounded-lg text-sm">Editar</button>
+                        <button type="button" onclick="editarInmueble('<?= htmlspecialchars($arrendador['profile']['pk']) ?>', '<?= htmlspecialchars($inm['sk']) ?>')" class="px-3 py-1 bg-pink-600 hover:bg-pink-500 rounded-lg text-sm">Editar</button>
                         <button type="button" onclick="eliminarInmueble('<?= $inm['sk'] ?>', '<?= $arrendador['profile']['pk'] ?>')" class="px-3 py-1 bg-red-600 hover:bg-red-500 rounded-lg text-sm">Eliminar</button>
                     </div>
                 </div>
@@ -418,6 +418,94 @@ use App\Helpers\TextHelper;
             <button id="btn-edit-comentarios" type="button" onclick="mostrarComentarios()" class="mt-4 px-4 py-2 bg-pink-600 hover:bg-pink-500 rounded-lg">Editar</button>
         </div>
     </div>
+    <div id="modal-editar-inmueble" data-arr-asesor="<?= htmlspecialchars($arrendador['profile']['asesor_pk'] ?? '') ?>" class="fixed inset-0 bg-black/70 hidden items-center justify-center z-50 px-3">
+        <div class="relative w-full max-w-3xl bg-[#1f1f2e] border border-indigo-900/40 rounded-2xl shadow-2xl overflow-hidden">
+            <button type="button" class="absolute top-3 right-3 text-indigo-200 hover:text-pink-400 transition" onclick="cerrarModalInmueble()">
+                <span class="sr-only">Cerrar</span>
+                &times;
+            </button>
+            <div class="px-6 pt-8 pb-4 border-b border-white/10">
+                <h3 class="text-xl font-semibold text-indigo-100">Editar inmueble</h3>
+                <p class="text-sm text-indigo-300 mt-1">Actualiza la información y guarda los cambios para verlos reflejados de inmediato.</p>
+            </div>
+            <div id="modal-editar-inmueble-loader" class="hidden px-6 py-4 text-sm text-indigo-200">Cargando información del inmueble...</div>
+            <form id="form-editar-inmueble" class="px-6 py-6 space-y-5">
+                <input type="hidden" name="pk" value="<?= htmlspecialchars($arrendador['profile']['pk']) ?>">
+                <input type="hidden" name="sk" value="">
+                <input type="hidden" name="asesor_pk" value="<?= htmlspecialchars($arrendador['profile']['asesor_pk'] ?? '') ?>">
+
+                <div>
+                    <label class="block text-sm text-indigo-200 mb-1" for="edit-direccion-inmueble">Dirección completa</label>
+                    <textarea id="edit-direccion-inmueble" name="direccion_inmueble" rows="2" class="w-full rounded-lg px-4 py-2 bg-[#232336] text-indigo-100 border border-indigo-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"></textarea>
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm text-indigo-200 mb-1" for="edit-tipo-inmueble">Tipo</label>
+                        <select id="edit-tipo-inmueble" name="tipo" class="w-full rounded-lg px-4 py-2 bg-[#232336] text-indigo-100 border border-indigo-800 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                            <option value="">Selecciona una opción</option>
+                            <option value="Departamento">Departamento</option>
+                            <option value="Casa">Casa</option>
+                            <option value="Local Comercial">Local Comercial</option>
+                            <option value="Oficina">Oficina</option>
+                            <option value="Terreno">Terreno</option>
+                            <option value="Bodega">Bodega</option>
+                            <option value="Edificio">Edificio</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm text-indigo-200 mb-1" for="edit-renta">Renta mensual (MXN)</label>
+                        <input id="edit-renta" type="number" step="0.01" min="0" name="renta" class="w-full rounded-lg px-4 py-2 bg-[#232336] text-indigo-100 border border-indigo-800 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    </div>
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm text-indigo-200 mb-1" for="edit-mantenimiento">¿Incluye mantenimiento?</label>
+                        <select id="edit-mantenimiento" name="mantenimiento" class="w-full rounded-lg px-4 py-2 bg-[#232336] text-indigo-100 border border-indigo-800 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                            <option value="NO">No</option>
+                            <option value="SI">Sí</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm text-indigo-200 mb-1" for="edit-monto-mantenimiento">Monto mantenimiento (MXN)</label>
+                        <input id="edit-monto-mantenimiento" type="number" step="0.01" min="0" name="monto_mantenimiento" class="w-full rounded-lg px-4 py-2 bg-[#232336] text-indigo-100 border border-indigo-800 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    </div>
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm text-indigo-200 mb-1" for="edit-deposito">Depósito (MXN)</label>
+                        <input id="edit-deposito" type="number" step="0.01" min="0" name="deposito" class="w-full rounded-lg px-4 py-2 bg-[#232336] text-indigo-100 border border-indigo-800 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    </div>
+                    <div>
+                        <label class="block text-sm text-indigo-200 mb-1" for="edit-estacionamiento">Estacionamientos</label>
+                        <input id="edit-estacionamiento" type="number" min="0" name="estacionamiento" class="w-full rounded-lg px-4 py-2 bg-[#232336] text-indigo-100 border border-indigo-800 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    </div>
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm text-indigo-200 mb-1" for="edit-mascotas">¿Permite mascotas?</label>
+                        <select id="edit-mascotas" name="mascotas" class="w-full rounded-lg px-4 py-2 bg-[#232336] text-indigo-100 border border-indigo-800 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                            <option value="NO">No</option>
+                            <option value="SI">Sí</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm text-indigo-200 mb-1" for="edit-comentarios">Comentarios</label>
+                        <textarea id="edit-comentarios" name="comentarios" rows="2" class="w-full rounded-lg px-4 py-2 bg-[#232336] text-indigo-100 border border-indigo-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"></textarea>
+                    </div>
+                </div>
+
+                <div class="flex justify-end gap-3 pt-2">
+                    <button type="button" class="px-4 py-2 rounded-lg bg-gray-600 hover:bg-gray-500 text-white" onclick="cerrarModalInmueble()">Cancelar</button>
+                    <button type="submit" class="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white" data-submit>Guardar cambios</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <!-- Modal de imagen -->
     <div id="imageModal" class="fixed inset-0 bg-black/70 hidden items-center justify-center z-50">
         <div class="relative max-w-4xl w-full mx-4">
