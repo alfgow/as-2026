@@ -99,11 +99,18 @@ class NormalizadoHelper
 
         $normalizado = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $val);
 
-        if ($normalizado === false) {
-            return (string) $val;
+        if ($normalizado === false || $normalizado === null) {
+            $normalizado = (string) $val;
         }
 
-        return $normalizado;
+        if (class_exists('\Normalizer')) {
+            $normalized = \Normalizer::normalize($normalizado, \Normalizer::FORM_D);
+            if ($normalized !== false && $normalized !== null) {
+                $normalizado = preg_replace('/\p{Mn}+/u', '', $normalized) ?? $normalized;
+            }
+        }
+
+        return (string) $normalizado;
     }
 
     /**

@@ -6,9 +6,11 @@ namespace App\Models;
 
 require_once __DIR__ . '/../Core/Database.php';
 require_once __DIR__ . '/../Helpers/NormalizadoHelper.php';
+require_once __DIR__ . '/../Helpers/SlugHelper.php';
 
 use App\Core\Database;
 use App\Helpers\NormalizadoHelper;
+use App\Helpers\SlugHelper;
 use RuntimeException;
 
 class ArrendadorModel extends Database
@@ -21,6 +23,14 @@ class ArrendadorModel extends Database
     private function buildPk(int $id): string
     {
         return 'arr#' . $id;
+    }
+
+    private function buildSlug(int $id, ?string $nombre): string
+    {
+        $nombre = trim((string) $nombre);
+        $slugBase = $nombre !== '' ? SlugHelper::fromName($nombre) : 'arrendador';
+
+        return $id . '-' . $slugBase;
     }
 
     private function buildAsesorPk(?int $idAsesor): ?string
@@ -58,10 +68,7 @@ class ArrendadorModel extends Database
         }
 
         if (empty($profile['slug'])) {
-            $profile['slug'] = NormalizadoHelper::slug((string)($profile['nombre_arrendador'] ?? ''));
-            if ($profile['slug'] !== '') {
-                $profile['slug'] .= '-' . $id;
-            }
+            $profile['slug'] = $this->buildSlug($id, $profile['nombre_arrendador'] ?? '');
         }
 
         return $profile;
@@ -255,6 +262,8 @@ class ArrendadorModel extends Database
 
         $id = (int)$matches[1];
 
+        $slug = $this->buildSlug($id, $data['nombre_arrendador'] ?? '');
+
         $sql = 'UPDATE arrendadores SET
                     nombre_arrendador    = :nombre_arrendador,
                     email                = :email,
@@ -264,7 +273,8 @@ class ArrendadorModel extends Database
                     nacionalidad         = :nacionalidad,
                     rfc                  = :rfc,
                     tipo_id              = :tipo_id,
-                    num_id               = :num_id
+                    num_id               = :num_id,
+                    slug                 = :slug
                 WHERE id = :id';
 
         $this->execute($sql, [
@@ -277,6 +287,7 @@ class ArrendadorModel extends Database
             ':rfc'               => $data['rfc'] ?? '',
             ':tipo_id'           => $data['tipo_id'] ?? '',
             ':num_id'            => $data['num_id'] ?? '',
+            ':slug'              => $slug,
             ':id'                => $id,
         ]);
 
