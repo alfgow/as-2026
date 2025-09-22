@@ -252,7 +252,10 @@ class InmuebleController
             unset($data['id']);
 
             $ok = $this->model->actualizarPorId($id, $data);
-            echo json_encode(['ok' => (bool)$ok]);
+            echo json_encode([
+                'ok' => (bool) $ok,
+                'id' => $id,
+            ]);
         } catch (\InvalidArgumentException $e) {
             http_response_code(422);
             echo json_encode(['ok' => false, 'mensaje' => $e->getMessage()]);

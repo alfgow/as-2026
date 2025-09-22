@@ -177,6 +177,7 @@ document.getElementById('form-inmueble').addEventListener('submit', function(e){
         }
     });
     const action = '<?= $baseUrl ?><?= $editing ? '/inmuebles/update' : '/inmuebles/store' ?>';
+    const isEditing = <?= $editing ? 'true' : 'false' ?>;
     
     fetch(action, {
         method: 'POST',
@@ -184,6 +185,11 @@ document.getElementById('form-inmueble').addEventListener('submit', function(e){
     }).then(r => r.json()).then(res => {
         if(res.ok){
             Swal.fire('Inmueble editado con éxito', '', 'success').then(() => {
+                if (isEditing && res.id) {
+                    window.location = '<?= $baseUrl ?>/inmuebles/' + encodeURIComponent(res.id);
+                    return;
+                }
+
                 window.location = '<?= $baseUrl ?>/inmuebles';
             });
         } else {
