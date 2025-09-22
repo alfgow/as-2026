@@ -8,6 +8,26 @@ $archivos     = $archivos ?? [];
 $validaciones = $validaciones ?? [];
 $polizas      = $polizas ?? [];
 $selfieUrl    = $selfieUrl ?? null;
+
+$s3BaseUrl = $profile['s3_base_url'] ?? '';
+
+$resolverUrlArchivo = static function (array $archivo) use ($s3BaseUrl): string {
+    $url = $archivo['url'] ?? '';
+    if ($url !== '') {
+        return (string) $url;
+    }
+
+    $key = $archivo['s3_key'] ?? '';
+    if ($key === '') {
+        return '';
+    }
+
+    if ($s3BaseUrl !== '') {
+        return rtrim((string) $s3BaseUrl, '/ ') . '/' . ltrim((string) $key, '/');
+    }
+
+    return (string) $key;
+};
 ?>
 <div class="bg-white/5 backdrop-blur-md border border-white/20 rounded-2xl  shadow-[0_8px_32px_0_rgba(31,38,135,0.37)] min-h-screen py-10 px-2 md:px-10 font-sans">
     <div class="max-w-5xl mx-auto space-y-10">
@@ -589,8 +609,9 @@ z" />
                                             d="M10.125 2.25h-4.5c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125v-9M10.125 2.25h.375a9 9 0 0 1 9 9v.375M10.125 2.25A3.375 3.375 0 0 1 13.5 5.625v1.5c0 .621.504 1.125 1.125 1.125h1.5a3.375 3.375 0 0 1 3.375 3.375M9 15l2.25 2.25L15 12" />
                                     </svg>
                                 </div>
+                                <?php $fiadorPdfUrl = $resolverUrlArchivo($fiador_pdf); ?>
                                 <button type="button"
-                                    onclick="abrirModalPdf('<?= htmlspecialchars($profile['s3_base_url'] . $fiador_pdf['s3_key'] ?? "") ?>', 'Documento del inmueble en garantía')"
+                                    onclick="abrirModalPdf('<?= htmlspecialchars($fiadorPdfUrl) ?>', 'Documento del inmueble en garantía')"
                                     class="inline-block px-5 py-2 bg-gradient-to-r from-fuchsia-500 via-pink-500 to-rose-500 text-white font-bold rounded-lg shadow hover:scale-105 transition-transform">
                                     Ver documento (PDF)
                                 </button>
@@ -1421,7 +1442,7 @@ z" />
                     <div id="otros-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
                         <?php if (!empty($byType['otro'])): ?>
                             <?php foreach ($byType['otro'] as $otro):
-                                $url = $profile['s3_base_url'] . $otro['s3_key'];
+                                $url = $resolverUrlArchivo($otro);
                                 $ext = strtolower(pathinfo($otro['s3_key'], PATHINFO_EXTENSION));
                                 $esImagen = in_array($ext, ['jpg', 'jpeg', 'png', 'webp']);
                             ?>
