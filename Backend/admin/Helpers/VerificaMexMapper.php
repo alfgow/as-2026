@@ -60,8 +60,8 @@ class VerificaMexMapper
 
             $ineApellidos = array_values(array_unique($ineApellidos));
             $nombreIne = trim(implode(' ', array_filter([
-                trim(implode(' ', $ineApellidos)),
                 $ineNombre,
+                trim(implode(' ', $ineApellidos)),
             ])));
         }
 
