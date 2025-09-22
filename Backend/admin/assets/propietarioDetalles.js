@@ -259,12 +259,12 @@ document.addEventListener("DOMContentLoaded", () => {
 		document.getElementById("inmuebles-vista").classList.remove("hidden");
 	};
 
-	window.guardarInmueble = function (e) {
-		e.preventDefault();
-		const form = document.getElementById("form-inmueble");
-		const data = new FormData(form);
+        window.guardarInmueble = function (e) {
+                e.preventDefault();
+                const form = document.getElementById("form-inmueble");
+                const data = new FormData(form);
 
-		fetch(BASE_URL + "/inmueble/guardar-ajax", {
+                fetch(BASE_URL + "/inmueble/guardar-ajax", {
 			method: "POST",
 			body: data,
 		})
@@ -288,17 +288,237 @@ document.addEventListener("DOMContentLoaded", () => {
 						text: res.error || "No se pudo guardar inmueble",
 					});
 				}
-			});
-	};
+                        });
+        };
 
-	window.editarInmueble = function (sk) {
-		// Aquí muestras un form dinámico o modal
-		console.log("Editar inmueble", sk);
-	};
+        const modalEditarInmueble = document.getElementById("modal-editar-inmueble");
+        const modalEditarInmuebleLoader = document.getElementById("modal-editar-inmueble-loader");
+        const formEditarInmueble = document.getElementById("form-editar-inmueble");
+        const botonEditarInmueble = formEditarInmueble ? formEditarInmueble.querySelector("[data-submit]") : null;
+        const asesorDefault = modalEditarInmueble ? modalEditarInmueble.dataset.arrAsesor || "" : "";
 
-	window.eliminarInmueble = function (sk, pk) {
-		Swal.fire({
-			title: "¿Eliminar inmueble?",
+        const sanitizeAmount = (value) => {
+                if (typeof value === "number" && Number.isFinite(value)) {
+                        return value.toFixed(2);
+                }
+
+                if (typeof value !== "string") {
+                        return "";
+                }
+
+                const normalized = value.replace(/[^0-9.,-]/g, "").replace(/,/g, ".");
+                if (normalized === "") {
+                        return "";
+                }
+
+                const asNumber = Number(normalized);
+                return Number.isFinite(asNumber) ? asNumber.toFixed(2) : "";
+        };
+
+        const fillEditarInmuebleForm = (data, fallbackPk, fallbackSk) => {
+                if (!formEditarInmueble) {
+                        return;
+                }
+
+                formEditarInmueble.reset();
+
+                const pkField = formEditarInmueble.querySelector('input[name="pk"]');
+                const skField = formEditarInmueble.querySelector('input[name="sk"]');
+                const asesorField = formEditarInmueble.querySelector('input[name="asesor_pk"]');
+
+                if (pkField) {
+                        pkField.value = typeof data.pk === "string" && data.pk !== "" ? data.pk : fallbackPk;
+                }
+                if (skField) {
+                        const value = typeof data.sk === "string" && data.sk !== "" ? data.sk : fallbackSk;
+                        skField.value = value;
+                }
+                if (asesorField) {
+                        asesorField.value = typeof data.asesor_pk === "string" && data.asesor_pk !== ""
+                                ? data.asesor_pk
+                                : asesorDefault;
+                }
+
+                const direccion = formEditarInmueble.querySelector('#edit-direccion-inmueble');
+                if (direccion) {
+                        direccion.value = typeof data.direccion_inmueble === "string" ? data.direccion_inmueble : "";
+                }
+
+                const tipo = formEditarInmueble.querySelector('#edit-tipo-inmueble');
+                if (tipo) {
+                        tipo.value = typeof data.tipo === "string" ? data.tipo : "";
+                }
+
+                const renta = formEditarInmueble.querySelector('#edit-renta');
+                if (renta) {
+                        renta.value = sanitizeAmount(data.renta ?? "");
+                }
+
+                const mantenimiento = formEditarInmueble.querySelector('#edit-mantenimiento');
+                if (mantenimiento) {
+                        const value = typeof data.mantenimiento === "string" ? data.mantenimiento.toUpperCase() : "";
+                        mantenimiento.value = value === "SI" ? "SI" : "NO";
+                }
+
+                const montoMantenimiento = formEditarInmueble.querySelector('#edit-monto-mantenimiento');
+                if (montoMantenimiento) {
+                        montoMantenimiento.value = sanitizeAmount(data.monto_mantenimiento ?? "");
+                }
+
+                const deposito = formEditarInmueble.querySelector('#edit-deposito');
+                if (deposito) {
+                        deposito.value = sanitizeAmount(data.deposito ?? "");
+                }
+
+                const estacionamiento = formEditarInmueble.querySelector('#edit-estacionamiento');
+                if (estacionamiento) {
+                        const value = Number.parseInt(data.estacionamiento, 10);
+                        estacionamiento.value = Number.isFinite(value) ? String(value) : "";
+                }
+
+                const mascotas = formEditarInmueble.querySelector('#edit-mascotas');
+                if (mascotas) {
+                        const value = typeof data.mascotas === "string" ? data.mascotas.toUpperCase() : "";
+                        mascotas.value = value === "SI" ? "SI" : "NO";
+                }
+
+                const comentarios = formEditarInmueble.querySelector('#edit-comentarios');
+                if (comentarios) {
+                        comentarios.value = typeof data.comentarios === "string" ? data.comentarios : "";
+                }
+        };
+
+        const toggleEditarInmuebleLoader = (isLoading) => {
+                if (!formEditarInmueble) {
+                        return;
+                }
+
+                if (modalEditarInmuebleLoader) {
+                        modalEditarInmuebleLoader.classList.toggle("hidden", !isLoading);
+                }
+
+                formEditarInmueble.classList.toggle("pointer-events-none", isLoading);
+                formEditarInmueble.classList.toggle("opacity-50", isLoading);
+        };
+
+        window.cerrarModalInmueble = function () {
+                if (!modalEditarInmueble || !formEditarInmueble) {
+                        return;
+                }
+
+                modalEditarInmueble.classList.add("hidden");
+                modalEditarInmueble.classList.remove("flex");
+                toggleEditarInmuebleLoader(false);
+                formEditarInmueble.reset();
+        };
+
+        if (modalEditarInmueble) {
+                modalEditarInmueble.addEventListener("click", (event) => {
+                        if (event.target === modalEditarInmueble) {
+                                window.cerrarModalInmueble();
+                        }
+                });
+        }
+
+        window.editarInmueble = async function (pk, sk) {
+                if (!modalEditarInmueble || !formEditarInmueble) {
+                        return;
+                }
+
+                if (!pk || !sk) {
+                        Swal.fire({
+                                icon: "error",
+                                title: "Error",
+                                text: "Identificadores del inmueble incompletos.",
+                        });
+                        return;
+                }
+
+                modalEditarInmueble.classList.remove("hidden");
+                modalEditarInmueble.classList.add("flex");
+                toggleEditarInmuebleLoader(true);
+
+                try {
+                        const url = `${BASE_URL}/inmuebles/info/${encodeURIComponent(pk)}/${encodeURIComponent(sk)}`;
+                        const response = await fetch(url, { headers: { "Accept": "application/json" } });
+
+                        if (!response.ok) {
+                                throw new Error("No se pudo consultar el inmueble.");
+                        }
+
+                        const data = await response.json();
+                        if (!data || typeof data !== "object" || Object.keys(data).length === 0) {
+                                throw new Error("No se encontró información del inmueble.");
+                        }
+
+                        fillEditarInmuebleForm(data, pk, sk);
+                } catch (error) {
+                        window.cerrarModalInmueble();
+                        Swal.fire({
+                                icon: "error",
+                                title: "Error",
+                                text: error instanceof Error ? error.message : "No se pudo cargar el inmueble.",
+                        });
+                        return;
+                }
+
+                toggleEditarInmuebleLoader(false);
+        };
+
+        if (formEditarInmueble) {
+                formEditarInmueble.addEventListener("submit", async (event) => {
+                        event.preventDefault();
+
+                        const formData = new FormData(formEditarInmueble);
+
+                        if (botonEditarInmueble) {
+                                botonEditarInmueble.disabled = true;
+                                botonEditarInmueble.classList.add("opacity-75");
+                        }
+
+                        try {
+                                const response = await fetch(BASE_URL + "/inmuebles/update", {
+                                        method: "POST",
+                                        body: formData,
+                                });
+
+                                const result = await response.json();
+
+                                if (!response.ok || !result.ok) {
+                                        const mensaje = result?.mensaje || result?.error || "No se pudo actualizar el inmueble.";
+                                        throw new Error(mensaje);
+                                }
+
+                                Swal.fire({
+                                        icon: "success",
+                                        title: "Inmueble actualizado",
+                                        text: "Los cambios se guardaron correctamente.",
+                                        background: "#1f1f2e",
+                                        color: "#fde8e8ca",
+                                        iconColor: "#a5b4fc",
+                                        confirmButtonColor: "#4f46e5",
+                                }).then(() => {
+                                        window.cerrarModalInmueble();
+                                        setTimeout(() => window.location.reload(), 500);
+                                });
+                        } catch (error) {
+                                Swal.fire({
+                                        icon: "error",
+                                        title: "Error",
+                                        text: error instanceof Error ? error.message : "No se pudo actualizar el inmueble.",
+                                });
+                        } finally {
+                                if (botonEditarInmueble) {
+                                        botonEditarInmueble.disabled = false;
+                                        botonEditarInmueble.classList.remove("opacity-75");
+                                }
+                        }
+                });
+        }
+
+        window.eliminarInmueble = function (sk, pk) {
+                Swal.fire({
+                        title: "¿Eliminar inmueble?",
 			text: "Esta acción no se puede deshacer",
 			icon: "warning",
 			showCancelButton: true,
