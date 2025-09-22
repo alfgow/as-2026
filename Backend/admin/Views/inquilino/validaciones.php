@@ -377,7 +377,7 @@ function chipColor($valor)
                         Ver detalle
                     </button>
                     <button class="vh-recalc rounded-xl border border-white/10 bg-white/10 px-4 py-2 text-sm font-semibold hover:bg-white/15" data-check="verificamex">
-                        Reprocesar
+                        Procesar
                     </button>
 
                 </div>
