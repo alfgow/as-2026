@@ -2104,7 +2104,9 @@ class InquilinoValidacionAWSController
                             ($inquilino['apellidop_inquilino'] ?? '') . ' ' .
                             ($inquilino['apellidom_inquilino'] ?? '')
                     );
-                    $slug = \App\Helpers\SlugHelper::fromName($nombreCompleto);
+                    $slugBase = \App\Helpers\SlugHelper::fromName($nombreCompleto);
+                    $idInquilino = (int) ($inquilino['id'] ?? 0);
+                    $slug = $idInquilino > 0 ? $idInquilino . '-' . $slugBase : $slugBase;
                 }
 
                 // Si el cliente quiere texto plano combinado (?plain=1)
