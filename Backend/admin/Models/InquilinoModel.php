@@ -526,15 +526,25 @@ class InquilinoModel extends Database
         }
 
         $needle = '%' . mb_strtolower($q, 'UTF-8') . '%';
-        $sql = 'SELECT * FROM inquilinos WHERE '
-            . 'LOWER(CONCAT_WS(" ", nombre_inquilino, apellidop_inquilino, COALESCE(apellidom_inquilino, ""))) LIKE :needle '
-            . 'OR LOWER(email) LIKE :needle '
-            . 'OR LOWER(celular) LIKE :needle '
-            . 'OR LOWER(COALESCE(slug, "")) LIKE :needle '
-            . 'OR LOWER(COALESCE(rfc, "")) LIKE :needle '
-            . 'OR LOWER(COALESCE(curp, "")) LIKE :needle';
+        $searchableFields = [
+            'LOWER(CONCAT_WS(" ", nombre_inquilino, apellidop_inquilino, COALESCE(apellidom_inquilino, "")))',
+            'LOWER(email)',
+            'LOWER(celular)',
+            'LOWER(COALESCE(slug, ""))',
+            'LOWER(COALESCE(rfc, ""))',
+            'LOWER(COALESCE(curp, ""))',
+        ];
 
-        $params = [':needle' => $needle];
+        $whereParts = [];
+        $params = [];
+        foreach ($searchableFields as $index => $field) {
+            $placeholder = ':needle' . $index;
+            $whereParts[] = $field . ' LIKE ' . $placeholder;
+            $params[$placeholder] = $needle;
+        }
+
+        $sql = 'SELECT * FROM inquilinos WHERE ' . implode(' OR ', $whereParts);
+
         if (ctype_digit($q)) {
             $sql .= ' OR id = :idExact';
             $params[':idExact'] = (int) $q;
@@ -546,10 +556,12 @@ class InquilinoModel extends Database
         foreach ($params as $key => $value) {
             if ($key === ':idExact') {
                 $stmt->bindValue($key, (int) $value, PDO::PARAM_INT);
-            } else {
-                $stmt->bindValue($key, $value, PDO::PARAM_STR);
+                continue;
             }
+
+            $stmt->bindValue($key, $value, PDO::PARAM_STR);
         }
+
         $stmt->execute();
 
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
