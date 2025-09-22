@@ -4,7 +4,50 @@
 	// =======================
 	// Helpers
 	// =======================
-	const byId = (id) => document.getElementById(id);
+        const byId = (id) => document.getElementById(id);
+
+        const getCurrentSlug = () => {
+                if (window.INQ_DB_DUMP && typeof window.INQ_DB_DUMP === "object") {
+                        const current = window.INQ_DB_DUMP.slug;
+                        if (typeof current === "string" && current.trim() !== "") {
+                                return current.trim();
+                        }
+                }
+                if (typeof window.SLUG === "string" && window.SLUG.trim() !== "") {
+                        return window.SLUG.trim();
+                }
+
+                const segments = window.location.pathname.split("/").filter(Boolean);
+                const idx = segments.indexOf("inquilino");
+                if (idx !== -1 && segments.length > idx + 1) {
+                        return segments[idx + 1];
+                }
+
+                return null;
+        };
+
+        const redirectToSlug = (slug) => {
+                if (!slug) return false;
+
+                const pathParts = window.location.pathname.split("/");
+                const idx = pathParts.indexOf("inquilino");
+                if (idx !== -1 && pathParts.length > idx + 1) {
+                        pathParts[idx + 1] = slug;
+                        const newPath = pathParts.join("/") || "/";
+                        const normalizedPath = newPath.startsWith("/") ? newPath : `/${newPath}`;
+                        window.location.assign(normalizedPath + window.location.search + window.location.hash);
+                        return true;
+                }
+
+                const base = (window.ADMIN_BASE || window.BASE_URL || "").replace(/\/$/, "");
+                if (base) {
+                        window.location.assign(`${base}/inquilino/${slug}`);
+                        return true;
+                }
+
+                window.location.assign(`/inquilino/${slug}`);
+                return true;
+        };
 
 	async function postJSON(url, body) {
 		const r = await fetch(url, { method: "POST", body });
@@ -129,18 +172,35 @@
 				msg.className = "text-sm text-center pt-2 text-yellow-500";
 				msg.innerText = "Guardando...";
 			}
-			try {
-				await postJSON(
-					(window.ADMIN_BASE || window.BASE_URL || "") + sec.url,
-					new FormData(form)
-				);
-				await showSwal({
-					icon: "success",
-					title: sec.successTitle,
-					text: sec.successText,
-					confirmButtonColor: sec.confirmColor,
-				});
-				location.reload();
+                        try {
+                                const previousSlug = getCurrentSlug();
+                                const response = await postJSON(
+                                        (window.ADMIN_BASE || window.BASE_URL || "") + sec.url,
+                                        new FormData(form)
+                                );
+                                await showSwal({
+                                        icon: "success",
+                                        title: sec.successTitle,
+                                        text: sec.successText,
+                                        confirmButtonColor: sec.confirmColor,
+                                });
+                                if (sec.key === "datos") {
+                                        const newSlug = typeof response.slug === "string" ? response.slug.trim() : "";
+                                        if (newSlug !== "") {
+                                                if (window.INQ_DB_DUMP && typeof window.INQ_DB_DUMP === "object") {
+                                                        window.INQ_DB_DUMP.slug = newSlug;
+                                                }
+                                                if (typeof window.SLUG !== "undefined") {
+                                                        window.SLUG = newSlug;
+                                                }
+                                                if (!previousSlug || previousSlug !== newSlug) {
+                                                        if (redirectToSlug(newSlug)) {
+                                                                return;
+                                                        }
+                                                }
+                                        }
+                                }
+                                window.location.reload();
 			} catch (err) {
 				showSwal({
 					icon: "error",

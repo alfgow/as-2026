@@ -170,8 +170,9 @@ class InquilinoController
             ]);
 
             echo json_encode([
-                'ok'     => $ok,
-                'mensaje'=> $ok ? 'Datos personales actualizados.' : 'No fue posible actualizar los datos.',
+                'ok'      => $ok,
+                'mensaje' => $ok ? 'Datos personales actualizados.' : 'No fue posible actualizar los datos.',
+                'slug'    => $slug,
             ]);
         } catch (\Throwable $e) {
             http_response_code(500);
