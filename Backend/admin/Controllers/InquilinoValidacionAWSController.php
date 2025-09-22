@@ -163,8 +163,39 @@ class InquilinoValidacionAWSController
             // 🚀 Mapear con nuestro helper
             $campos = \App\Helpers\VerificaMexMapper::map($jsonLimpio, $inquilino);
 
-            // 💾 Guardamos en BD
-            $model->guardarValidacionesVerificaMex($idInquilino, $campos);
+            // ♻️ Preservar campos mapeados dentro del JSON limpio para futuras consultas
+            $jsonLimpio['campos_mapeados'] = $campos;
+
+            // 👤 Extraer coincidencia facial cuando exista y guardarla usando el flujo estándar de rostro
+            $faceComparison = $json['data']['faceComparison'] ?? null;
+            if (is_array($faceComparison) && !empty($faceComparison)) {
+                $timestamp = (new \DateTime('now', new \DateTimeZone('America/Mexico_City')))->format(DATE_ATOM);
+                $resultado = filter_var($faceComparison['result'] ?? null, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+                $similarity = isset($faceComparison['similarity']) ? (float) $faceComparison['similarity'] : null;
+
+                $procesoRostro = $resultado === null ? 2 : ($resultado ? 1 : 0);
+                $emoji = $resultado === true ? '☑️' : '✖️';
+                $simText = $similarity !== null ? number_format($similarity, 2) . '%' : 'sin dato';
+                if ($resultado === null) {
+                    $emoji = '✖️';
+                }
+                $resumenRostro = sprintf('%s Coincidencia facial VerificaMex (%s)', $emoji, $simText);
+                if ($resultado === null) {
+                    $resumenRostro .= ' - sin resultado booleano';
+                }
+
+                $rostroPayload = [
+                    'tipo' => 'verificamex_face_comparison',
+                    'fuente' => 'verificamex',
+                    'timestamp' => $timestamp,
+                    'timezone' => 'America/Mexico_City',
+                    'result' => $resultado,
+                    'similarity' => $similarity,
+                    'faceComparison' => $faceComparison,
+                ];
+
+                $this->model->guardarValidacionRostro($idInquilino, $procesoRostro, $rostroPayload, $resumenRostro);
+            }
 
             // 📌 Status/resumen general
             $statusFlag = filter_var($json['data']['status'] ?? false, FILTER_VALIDATE_BOOLEAN);
