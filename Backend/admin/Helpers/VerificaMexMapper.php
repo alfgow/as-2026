@@ -28,14 +28,17 @@ class VerificaMexMapper
         }
 
         if ($face) {
-            $statusFace = ($face['result'] === 'Ok') ? 1 : 0;
+            $faceResultNormalizado = self::normalizeBoolean($face['result'] ?? null);
+            $statusFace = $faceResultNormalizado === true ? 1 : 0;
             $resumenFace = $statusFace
                 ? "😎 Comprobación Facial {$face['output']}%"
                 : "❌ Falló comprobación facial";
 
             $campos['proceso_validacion_rostro'] = $statusFace;
             $campos['validacion_rostro_resumen'] = $resumenFace;
-            $campos['validacion_rostro_json']    = $face;
+            $campos['validacion_rostro_json']    = array_merge($face, [
+                'result' => $faceResultNormalizado,
+            ]);
         }
 
         // --- 2. Nombre / Identidad ---
@@ -65,7 +68,37 @@ class VerificaMexMapper
             ])));
         }
 
-        if ($nombreIne && $inquilino) {
+        $faceComparison = $json['data']['faceComparison'] ?? null;
+        $faceResult = null;
+        $faceSimilarity = null;
+        $faceComparisonDetalles = is_array($faceComparison) ? $faceComparison : null;
+        if (is_array($faceComparison)) {
+            $faceResult = self::normalizeBoolean($faceComparison['result'] ?? null);
+            if (isset($faceComparison['similarity'])) {
+                $faceSimilarity = (float) $faceComparison['similarity'];
+            }
+            if ($faceComparisonDetalles !== null) {
+                $faceComparisonDetalles['result'] = $faceResult;
+            }
+        }
+
+        $statusDataRaw = $json['data']['status'] ?? null;
+        $statusRenapoRaw = $json['data']['renapo']['status'] ?? null;
+        $statusData = self::normalizeBoolean($statusDataRaw);
+        $statusRenapo = self::normalizeBoolean($statusRenapoRaw);
+        $estatusDataOk = ($statusData === true);
+        $estatusRenapoOk = ($statusRenapo === true);
+
+        $nombreBdOriginal = null;
+        $nombreIneOriginal = $nombreIne;
+        $nombreBD = null;
+        $nombreIne = null;
+        $similaridad = null;
+        $nombreCoincide = false;
+        $rostroCoincide = ($faceResult === true);
+        $todosOk = false;
+
+        if ($nombreIneOriginal && $inquilino) {
             // Normalización de cadenas (acentos, ñ, mayúsculas, espacios)
             $normalize = function ($string) {
                 $string = trim((string) $string);
@@ -90,12 +123,9 @@ class VerificaMexMapper
                 $inquilino['nombre_inquilino'] ?? '',
             ])));
 
-            $nombreIneOriginal = $nombreIne;
-
             $nombreBD = $normalize($nombreBdOriginal);
-            $nombreIne = $normalize($nombreIne);
+            $nombreIne = $normalize($nombreIneOriginal);
 
-            $similaridad = null;
             if ($nombreBD !== '' && $nombreIne !== '') {
                 $percent = 0.0;
                 similar_text($nombreBD, $nombreIne, $percent);
@@ -103,23 +133,6 @@ class VerificaMexMapper
             }
 
             $nombreCoincide = ($similaridad !== null && $similaridad >= 90.0);
-
-            $faceComparison = $json['data']['faceComparison'] ?? null;
-            $faceResult = null;
-            $faceSimilarity = null;
-            if (is_array($faceComparison)) {
-                $faceResult = filter_var($faceComparison['result'] ?? null, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
-                if (isset($faceComparison['similarity'])) {
-                    $faceSimilarity = (float) $faceComparison['similarity'];
-                }
-            }
-            $rostroCoincide = ($faceResult === true);
-
-            $statusData = filter_var($json['data']['status'] ?? null, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
-            $statusRenapo = filter_var($json['data']['renapo']['status'] ?? null, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
-            $estatusDataOk = ($statusData === true);
-            $estatusRenapoOk = ($statusRenapo === true);
-
             $todosOk = ($nombreCoincide && $rostroCoincide && $estatusDataOk && $estatusRenapoOk);
 
             $campos['proceso_validacion_id'] = $todosOk ? 1 : 2;
@@ -139,39 +152,39 @@ class VerificaMexMapper
                 sprintf('%s Coincidencia facial: %s (%s)', $emojiRostro, $resultadoRostroTexto, $similaridadRostroTexto),
                 sprintf('%s Estatus VerificaMex: data.status %s · renapo.status %s', $emojiStatus, $statusDataTexto, $statusRenapoTexto),
             ]);
-
-            $fechaHoraMx = (new \DateTimeImmutable('now', new \DateTimeZone('America/Mexico_City')))->format(DATE_ATOM);
-
-            $campos['validacion_id_json'] = [
-                'timestamp' => $fechaHoraMx,
-                'timezone' => 'America/Mexico_City',
-                'nombre' => [
-                    'bd' => [
-                        'original' => $nombreBdOriginal,
-                        'normalizado' => $nombreBD,
-                    ],
-                    'ine' => [
-                        'original' => $nombreIneOriginal,
-                        'normalizado' => $nombreIne,
-                    ],
-                    'similaridad' => $similaridad,
-                    'umbral' => 90,
-                ],
-                'faceComparison' => [
-                    'result' => $faceResult,
-                    'similarity' => $faceSimilarity,
-                    'detalles' => $faceComparison,
-                ],
-                'status' => [
-                    'data' => $estatusDataOk,
-                    'renapo' => $estatusRenapoOk,
-                    'detalles' => [
-                        'data_raw' => $json['data']['status'] ?? null,
-                        'renapo_raw' => $json['data']['renapo']['status'] ?? null,
-                    ],
-                ],
-            ];
         }
+
+        $fechaHoraMx = (new \DateTimeImmutable('now', new \DateTimeZone('America/Mexico_City')))->format(DATE_ATOM);
+
+        $campos['validacion_id_json'] = [
+            'timestamp' => $fechaHoraMx,
+            'timezone' => 'America/Mexico_City',
+            'nombre' => [
+                'bd' => [
+                    'original' => $nombreBdOriginal,
+                    'normalizado' => $nombreBD,
+                ],
+                'ine' => [
+                    'original' => $nombreIneOriginal,
+                    'normalizado' => $nombreIne,
+                ],
+                'similaridad' => $similaridad,
+                'umbral' => 90,
+            ],
+            'faceComparison' => [
+                'result' => $faceResult,
+                'similarity' => $faceSimilarity,
+                'detalles' => $faceComparisonDetalles,
+            ],
+            'status' => [
+                'data' => $estatusDataOk,
+                'renapo' => $estatusRenapoOk,
+                'detalles' => [
+                    'data_raw' => $statusDataRaw,
+                    'renapo_raw' => $statusRenapoRaw,
+                ],
+            ],
+        ];
 
         // --- 3. Documento (expiración, número, checks) ---
         $expira = null;
@@ -193,5 +206,56 @@ class VerificaMexMapper
         }
 
         return $campos;
+    }
+
+    private static function normalizeBoolean($value): ?bool
+    {
+        if (is_bool($value)) {
+            return $value;
+        }
+
+        if (is_string($value)) {
+            $value = trim($value);
+            if ($value === '') {
+                return null;
+            }
+
+            $lower = mb_strtolower($value, 'UTF-8');
+
+            if ($lower === 'ok') {
+                return true;
+            }
+
+            if (in_array($lower, ['true', '1', 'yes', 'si', 'sí', 'on'], true)) {
+                return true;
+            }
+
+            if (in_array($lower, ['false', '0', 'no', 'off'], true)) {
+                return false;
+            }
+
+            if (is_numeric($value)) {
+                $numeric = (int) $value;
+                if ($numeric === 1) {
+                    return true;
+                }
+                if ($numeric === 0) {
+                    return false;
+                }
+            }
+
+            return null;
+        }
+
+        if (is_int($value) || is_float($value)) {
+            if ((int) $value === 1) {
+                return true;
+            }
+            if ((int) $value === 0) {
+                return false;
+            }
+        }
+
+        return null;
     }
 }
