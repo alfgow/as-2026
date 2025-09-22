@@ -11,9 +11,11 @@ AuthMiddleware::verificarSesion();
 require_once __DIR__ . '/../Models/ArrendadorModel.php';
 require_once __DIR__ . '/../Helpers/S3Helper.php';
 require_once __DIR__ . '/../Helpers/NormalizadoHelper.php';
+require_once __DIR__ . '/../Helpers/SlugHelper.php';
 
 use App\Helpers\S3Helper;
 use App\Helpers\NormalizadoHelper;
+use App\Helpers\SlugHelper;
 use App\Models\ArrendadorModel;
 
 /**
@@ -58,7 +60,13 @@ class ArrendadorController
             $pk     = $a['profile']['pk'] ?? '';   // ej. arr#557
             $id     = str_replace('arr#', '', $pk);
 
-            $a['profile']['slug'] = NormalizadoHelper::slug($nombre) . '-' . $id;
+            $slugActual = trim((string) ($a['profile']['slug'] ?? ''));
+
+            if ($slugActual === '' && $id !== '') {
+                $nombreBase = trim((string) $nombre);
+                $slugBase   = $nombreBase !== '' ? SlugHelper::fromName($nombreBase) : 'arrendador';
+                $a['profile']['slug'] = $id . '-' . $slugBase;
+            }
         }
         unset($a); // buena práctica para evitar referencias colgantes
 
