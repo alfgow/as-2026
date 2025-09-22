@@ -267,8 +267,8 @@ use App\Helpers\TextHelper;
                     <p><span class="font-semibold text-indigo-200">Tipo:</span> <?= TextHelper::titleCase($p['tipo_poliza']) ?></p>
                     <p><span class="font-semibold text-indigo-200">Vigencia:</span> <?= TextHelper::titleCase($p['vigencia']) ?></p>
                     <div class="flex justify-center pt-2">
-                        <a href="<?= $baseUrl ?>/admin/polizas/<?= rawurlencode($p['numero_poliza']) ?>"
-                            class="inline-flex w-full sm:w-auto justify-center px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-medium text-sm transition">
+                        <a href="<?= $baseUrl ?>/polizas/<?= rawurlencode($p['numero_poliza']) ?>"
+                            class="inline-flex w-full sm:w-auto justify-center px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-medium text-sm transition" target="_blank">
                             Ver detalle
                         </a>
                     </div>
