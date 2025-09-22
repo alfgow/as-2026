@@ -97,12 +97,16 @@ class ArrendadorModel extends Database
         $needle = '%' . NormalizadoHelper::lower($q) . '%';
 
         $sql = 'SELECT * FROM arrendadores
-                WHERE LOWER(nombre_arrendador) LIKE :needle
-                   OR LOWER(email) LIKE :needle
-                   OR LOWER(celular) LIKE :needle
+                WHERE LOWER(nombre_arrendador) LIKE :needle_nombre
+                   OR LOWER(email) LIKE :needle_email
+                   OR LOWER(celular) LIKE :needle_celular
                 ORDER BY fecha_registro DESC';
 
-        $rows = $this->fetchAll($sql, [':needle' => $needle]);
+        $rows = $this->fetchAll($sql, [
+            ':needle_nombre'  => $needle,
+            ':needle_email'   => $needle,
+            ':needle_celular' => $needle,
+        ]);
 
         return array_map(fn(array $row): array => $this->hydrateArrendador($row), $rows);
     }
