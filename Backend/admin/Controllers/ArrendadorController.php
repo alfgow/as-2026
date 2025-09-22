@@ -229,11 +229,19 @@ class ArrendadorController
             'num_id'               => NormalizadoHelper::lower($_POST['num_id'] ?? ''),
         ];
 
-        $ok = $this->model->actualizarDatosPersonales($pk, $data);
+        $slugActualizado = $this->model->actualizarDatosPersonales($pk, $data);
+
+        if ($slugActualizado === null) {
+            echo json_encode([
+                'ok'    => false,
+                'error' => 'No se pudo actualizar'
+            ]);
+            return;
+        }
 
         echo json_encode([
-            'ok'    => $ok,
-            'error' => $ok ? null : 'No se pudo actualizar'
+            'ok'   => true,
+            'slug' => $slugActualizado,
         ]);
     }
 

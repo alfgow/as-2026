@@ -254,10 +254,10 @@ class ArrendadorModel extends Database
         return true;
     }
 
-    public function actualizarDatosPersonales(string $pk, array $data): bool
+    public function actualizarDatosPersonales(string $pk, array $data): ?string
     {
         if (!preg_match('/^arr#(\d+)$/', $pk, $matches)) {
-            return false;
+            return null;
         }
 
         $id = (int)$matches[1];
@@ -291,7 +291,7 @@ class ArrendadorModel extends Database
             ':id'                => $id,
         ]);
 
-        return true;
+        return $slug;
     }
 
     public function actualizarInfoBancaria(int $id, array $data): bool

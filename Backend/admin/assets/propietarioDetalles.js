@@ -79,29 +79,48 @@ document.addEventListener("DOMContentLoaded", () => {
 			body: data,
 		})
 			.then((r) => r.json())
-			.then((res) => {
-				if (res.ok) {
-					Swal.fire({
-						icon: "success",
-						title: "¡Actualizado!",
-						text: "Info actualizada exitosamente.",
-						background: "#1f1f2e",
-						color: "#fde8e8ca",
-						iconColor: "#a5b4fc",
-						showConfirmButton: false,
-						timer: 2000,
-						position: "center",
-						customClass: {
-							popup: "rounded-2xl shadow-lg border border-indigo-500/30",
-						},
-					});
-					setTimeout(() => location.reload(), 2000);
-				} else {
-					Swal.fire({
-						icon: "error",
-						title: "Error",
-						text: res.error || "No se pudo guardar",
-					});
+                        .then((res) => {
+                                if (res.ok) {
+                                        Swal.fire({
+                                                icon: "success",
+                                                title: "¡Actualizado!",
+                                                text: "Info actualizada exitosamente.",
+                                                background: "#1f1f2e",
+                                                color: "#fde8e8ca",
+                                                iconColor: "#a5b4fc",
+                                                showConfirmButton: false,
+                                                timer: 2000,
+                                                position: "center",
+                                                customClass: {
+                                                        popup: "rounded-2xl shadow-lg border border-indigo-500/30",
+                                                },
+                                        });
+
+                                        const nuevaRuta = (() => {
+                                                if (!res.slug) {
+                                                        return null;
+                                                }
+
+                                                if (typeof window.joinAdmin === "function") {
+                                                        return window.joinAdmin(`arrendadores/${res.slug}`);
+                                                }
+
+                                                return `${BASE_URL}/arrendadores/${res.slug}`;
+                                        })();
+
+                                        setTimeout(() => {
+                                                if (nuevaRuta) {
+                                                        window.location.href = nuevaRuta;
+                                                } else {
+                                                        window.location.reload();
+                                                }
+                                        }, 2000);
+                                } else {
+                                        Swal.fire({
+                                                icon: "error",
+                                                title: "Error",
+                                                text: res.error || "No se pudo guardar",
+                                        });
 				}
 			});
 	};
