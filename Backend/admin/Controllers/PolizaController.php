@@ -952,18 +952,26 @@ TXT;
             $append('fiador_colonia_garantia');
             $append('fiador_alcaldia_garantia');
             $append('fiador_estado_garantia');
+            $cpGarantia = trim((string)($poliza['fiador_cp_garantia'] ?? ''));
+            if ($cpGarantia !== '') {
+                $dirPartes[] = 'C.P. ' . $cpGarantia;
+            }
 
             $dirGarantia = $dirPartes !== []
                 ? mb_strtoupper(implode(' ', $dirPartes), 'UTF-8')
                 : 'N/A';
 
-            $normaliza = function (string $campo) use ($poliza, $mayus): string {
-                $valor = trim((string)($poliza[$campo] ?? ''));
-                if ($valor === '') {
-                    return 'N/A';
+            $normaliza = function ($campo) use ($poliza, $mayus): string {
+                $keys = is_array($campo) ? $campo : [$campo];
+
+                foreach ($keys as $key) {
+                    $valor = trim((string)($poliza[$key] ?? ''));
+                    if ($valor !== '') {
+                        return $mayus($valor);
+                    }
                 }
 
-                return $mayus($valor);
+                return 'N/A';
             };
 
             $fechaEscritura = 'N/A';
@@ -989,7 +997,7 @@ TXT;
             $set('DIR_GARANTIA', $dirGarantia);
             $set('ESCRITURA', $normaliza('fiador_numero_escritura'));
             $set('FECHA_ESCRITURA', $fechaEscritura);
-            $set('NOMBRE_NOTARIO', $normaliza('nombre_notario'));
+            $set('NOMBRE_NOTARIO', $normaliza(['fiador_nombre_notario', 'nombre_notario']));
             $set('NUM_NOTARIO', $normaliza('fiador_numero_notario'));
             $set('CIUDAD_NOTARIO', $normaliza('fiador_estado_notario'));
             $set('FOLIO_REAL', $normaliza('fiador_folio_real'));
