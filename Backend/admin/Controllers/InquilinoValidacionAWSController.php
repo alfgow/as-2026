@@ -201,7 +201,8 @@ class InquilinoValidacionAWSController
             $statusFlag = filter_var($json['data']['status'] ?? false, FILTER_VALIDATE_BOOLEAN);
             $proceso = $statusFlag ? 1 : 2;
             $status = $statusFlag ? 1 : 0;
-            $mensaje = trim((string) ($json['message'] ?? 'Mensaje no disponible'));
+            $mensajeFuente = $json['data']['message'] ?? $json['message'] ?? '';
+            $mensaje = trim((string) $mensajeFuente);
             if ($mensaje === '') {
                 $mensaje = 'Mensaje no disponible';
             }
