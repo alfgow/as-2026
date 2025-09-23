@@ -1,7 +1,8 @@
 <?php
 
 
-function montoNumeroYTexto($valor) {
+function montoNumeroYTexto($valor)
+{
     $monto = (float) str_replace(['$', ',', ' '], '', (string)$valor);
     $entero   = floor($monto);
     $centavos = (int) round(($monto - $entero) * 100);
@@ -26,57 +27,57 @@ function montoNumeroYTexto($valor) {
             <!-- Info fija (texto) -->
             <div class="space-y-8">
 
-            <!-- Datos Póliza -->
-            <div class="bg-gray-900 p-4 rounded-xl border border-gray-700">
-                <h2 class="text-yellow-300 font-semibold mb-3 text-center">Datos Póliza</h2>
-                <div class="grid md:grid-cols-2 gap-4 text-sm">
-                <p><span class="font-medium text-indigo-400">Póliza:</span> <?= htmlspecialchars($poliza['numero_poliza'] ?? '') ?></p>
-                <p><span class="font-medium text-indigo-400">Tipo de póliza:</span> <?= htmlspecialchars($poliza['tipo_poliza'] ?? '') ?></p>
-                <p class="md:col-span-2"><span class="font-medium text-indigo-400">Vigencia:</span> <?= htmlspecialchars($poliza['vigencia'] ?? '') ?></p>
-                <p class="md:col-span-2"><span class="font-medium text-indigo-400">Costo Póliza:</span> <?= montoNumeroYTexto($poliza['monto_poliza'] ?? '') ?></p>
+                <!-- Datos Póliza -->
+                <div class="bg-gray-900 p-4 rounded-xl border border-gray-700">
+                    <h2 class="text-yellow-300 font-semibold mb-3 text-center">Datos Póliza</h2>
+                    <div class="grid md:grid-cols-2 gap-4 text-sm">
+                        <p><span class="font-medium text-indigo-400">Póliza:</span> <?= htmlspecialchars($poliza['numero_poliza'] ?? '') ?></p>
+                        <p><span class="font-medium text-indigo-400">Tipo de póliza:</span> <?= htmlspecialchars($poliza['tipo_poliza'] ?? '') ?></p>
+                        <p class="md:col-span-2"><span class="font-medium text-indigo-400">Vigencia:</span> <?= htmlspecialchars($poliza['vigencia'] ?? '') ?></p>
+                        <p class="md:col-span-2"><span class="font-medium text-indigo-400">Costo Póliza:</span> <?= montoNumeroYTexto($poliza['monto_poliza'] ?? '') ?></p>
+                    </div>
                 </div>
-            </div>
 
-            <!-- Datos Arrendador -->
-            <div class="bg-gray-900 p-4 rounded-xl border border-gray-700">
-                <h2 class="text-yellow-300 font-semibold mb-3 text-center">Datos Arrendador</h2>
-                <div class="grid md:grid-cols-2 gap-4 text-sm">
-                <p><span class="font-medium text-indigo-400">Arrendador:</span> <?= htmlspecialchars($poliza['nombre_arrendador'] ?? '') ?></p>
-                <p><span class="font-medium text-indigo-400">ID Arrendador:</span> <?= htmlspecialchars(($poliza['tipo_id_arrendador'] ?? '') . ' ' . ($poliza['num_id_arrendador'] ?? '')) ?></p>
-                <p class="md:col-span-2"><span class="font-medium text-indigo-400">Dirección arrendador:</span> <?= htmlspecialchars($poliza['direccion_arrendador'] ?? '') ?></p>
-                  <p><span class="font-medium text-indigo-400">Banco:</span> <?= htmlspecialchars( ($poliza['banco_arrendador'] ?? '')) ?></p>
-                    <p><span class="font-medium text-indigo-400">Cuenta:</span> <?= htmlspecialchars( ($poliza['cuenta_arrendador'] ?? '')) ?></p>
-                      <p><span class="font-medium text-indigo-400">CLABE:</span> <?= htmlspecialchars( ($poliza['clabe_arrendador'] ?? '')) ?></p>
+                <!-- Datos Arrendador -->
+                <div class="bg-gray-900 p-4 rounded-xl border border-gray-700">
+                    <h2 class="text-yellow-300 font-semibold mb-3 text-center">Datos Arrendador</h2>
+                    <div class="grid md:grid-cols-2 gap-4 text-sm">
+                        <p><span class="font-medium text-indigo-400">Arrendador:</span> <?= htmlspecialchars($poliza['nombre_arrendador'] ?? '') ?></p>
+                        <p><span class="font-medium text-indigo-400">ID Arrendador:</span> <?= htmlspecialchars(($poliza['tipo_id_arrendador'] ?? '') . ' ' . ($poliza['num_id_arrendador'] ?? '')) ?></p>
+                        <p class="md:col-span-2"><span class="font-medium text-indigo-400">Dirección arrendador:</span> <?= htmlspecialchars($poliza['direccion_arrendador'] ?? '') ?></p>
+                        <p><span class="font-medium text-indigo-400">Banco:</span> <?= htmlspecialchars(($poliza['banco_arrendador'] ?? '')) ?></p>
+                        <p><span class="font-medium text-indigo-400">Cuenta:</span> <?= htmlspecialchars(($poliza['cuenta_arrendador'] ?? '')) ?></p>
+                        <p><span class="font-medium text-indigo-400">CLABE:</span> <?= htmlspecialchars(($poliza['clabe_arrendador'] ?? '')) ?></p>
+                    </div>
                 </div>
-            </div>
 
-            <!-- Datos Inquilino -->
-            <div class="bg-gray-900 p-4 rounded-xl border border-gray-700">
-                <h2 class="text-yellow-300 font-semibold mb-3 text-center">Datos Inquilino</h2>
-                <div class="grid md:grid-cols-2 gap-4 text-sm">
-                <p><span class="font-medium text-indigo-400">Inquilino:</span> <?= htmlspecialchars($poliza['nombre_inquilino_completo'] ?? '') ?></p>
-                <p><span class="font-medium text-indigo-400">ID Inquilino:</span> <?= htmlspecialchars(($poliza['tipo_id_inquilino'] ?? '') . ' ' . ($poliza['num_id_inquilino'] ?? '')) ?></p>
-                <p><span class="font-medium text-indigo-400">Fiador:</span> <?= htmlspecialchars($poliza['nombre_fiador'] ?? '') ?></p>
-                <p><span class="font-medium text-indigo-400">ID Fiador:</span> <?= htmlspecialchars(($poliza['tipo_id_fiador'] ?? '') . ' ' . ($poliza['num_id_fiador'] ?? '')) ?></p>
-                <p><span class="font-medium text-indigo-400">Dirección Fiador:</span> <?= htmlspecialchars($poliza['direccion_fiador'] ?? '') ?></p>
-                <p><span class="font-medium text-indigo-400">Obligado solidario:</span> <?= htmlspecialchars($poliza['nombre_obligado_completo'] ?? '') ?></p>
-                <p><span class="font-medium text-indigo-400">ID Obligado Solidario:</span> <?= htmlspecialchars(($poliza['tipo_id_obligado'] ?? '') . ' ' . ($poliza['num_id_obligado'] ?? '')) ?></p>
-                <p><span class="font-medium text-indigo-400">Dirección Obligado solidario:</span> <?= htmlspecialchars($poliza['direccion_obligado'] ?? '') ?></p>
+                <!-- Datos Inquilino -->
+                <div class="bg-gray-900 p-4 rounded-xl border border-gray-700">
+                    <h2 class="text-yellow-300 font-semibold mb-3 text-center">Datos Inquilino</h2>
+                    <div class="grid md:grid-cols-2 gap-4 text-sm">
+                        <p><span class="font-medium text-indigo-400">Inquilino:</span> <?= htmlspecialchars($poliza['nombre_inquilino_completo'] ?? '') ?></p>
+                        <p><span class="font-medium text-indigo-400">ID Inquilino:</span> <?= htmlspecialchars(($poliza['tipo_id_inquilino'] ?? '') . ' ' . ($poliza['num_id_inquilino'] ?? '')) ?></p>
+                        <p><span class="font-medium text-indigo-400">Fiador:</span> <?= htmlspecialchars($poliza['nombre_fiador'] ?? '') ?></p>
+                        <p><span class="font-medium text-indigo-400">ID Fiador:</span> <?= htmlspecialchars(($poliza['tipo_id_fiador'] ?? '') . ' ' . ($poliza['num_id_fiador'] ?? '')) ?></p>
+                        <p><span class="font-medium text-indigo-400">Dirección Fiador:</span> <?= htmlspecialchars($poliza['direccion_fiador'] ?? '') ?></p>
+                        <p><span class="font-medium text-indigo-400">Obligado solidario:</span> <?= htmlspecialchars($poliza['nombre_obligado_completo'] ?? '') ?></p>
+                        <p><span class="font-medium text-indigo-400">ID Obligado Solidario:</span> <?= htmlspecialchars(($poliza['tipo_id_obligado'] ?? '') . ' ' . ($poliza['num_id_obligado'] ?? '')) ?></p>
+                        <p><span class="font-medium text-indigo-400">Dirección Obligado solidario:</span> <?= htmlspecialchars($poliza['direccion_obligado'] ?? '') ?></p>
+                    </div>
                 </div>
-            </div>
 
-            <!-- Datos Inmueble -->
-            <div class="bg-gray-900 p-4 rounded-xl border border-gray-700">
-                <h2 class="text-yellow-300 font-semibold mb-3 text-center">Datos Inmueble</h2>
-                <div class="grid md:grid-cols-2 gap-4 text-sm">
-                <p class="md:col-span-2"><span class="font-medium text-indigo-400">Dirección del inmueble:</span> <?= htmlspecialchars($poliza['direccion_inmueble'] ?? '') ?></p>
-                <p><span class="font-medium text-indigo-400">Monto de renta:</span> <?= montoNumeroYTexto($poliza['monto_renta'] ?? 0) ?></p>
-                <p><span class="font-medium text-indigo-400">Cuota de mantenimiento:</span> <?= montoNumeroYTexto($poliza['monto_mantenimiento'] ?? 0) ?></p>
-                <p><span class="font-medium text-indigo-400">Incluye mantenimiento:</span> <?= htmlspecialchars($poliza['mantenimiento_inmueble'] ?? 0) ?></p>
-                <p><span class="font-medium text-indigo-400">Estacionamiento:</span> <?= htmlspecialchars($poliza['estacionamiento_inmueble'] ?? 0) ?></p>
-                <p><span class="font-medium text-indigo-400">Mascotas:</span> <?= htmlspecialchars($poliza['mascotas_inmueble'] ?? 0) ?></p>
+                <!-- Datos Inmueble -->
+                <div class="bg-gray-900 p-4 rounded-xl border border-gray-700">
+                    <h2 class="text-yellow-300 font-semibold mb-3 text-center">Datos Inmueble</h2>
+                    <div class="grid md:grid-cols-2 gap-4 text-sm">
+                        <p class="md:col-span-2"><span class="font-medium text-indigo-400">Dirección del inmueble:</span> <?= htmlspecialchars($poliza['direccion_inmueble'] ?? '') ?></p>
+                        <p><span class="font-medium text-indigo-400">Monto de renta:</span> <?= montoNumeroYTexto($poliza['monto_renta'] ?? 0) ?></p>
+                        <p><span class="font-medium text-indigo-400">Cuota de mantenimiento:</span> <?= montoNumeroYTexto($poliza['monto_mantenimiento'] ?? 0) ?></p>
+                        <p><span class="font-medium text-indigo-400">Incluye mantenimiento:</span> <?= htmlspecialchars($poliza['mantenimiento_inmueble'] ?? 0) ?></p>
+                        <p><span class="font-medium text-indigo-400">Estacionamiento:</span> <?= htmlspecialchars($poliza['estacionamiento_inmueble'] ?? 0) ?></p>
+                        <p><span class="font-medium text-indigo-400">Mascotas:</span> <?= htmlspecialchars($poliza['mascotas_inmueble'] ?? 0) ?></p>
+                    </div>
                 </div>
-            </div>
 
             </div>
 
@@ -87,8 +88,8 @@ function montoNumeroYTexto($valor) {
                     class="w-full bg-gray-900 border border-gray-700 text-white p-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
                     <option value="" disabled selected>Selecciona una opción</option>
                     <option value="normal_pf">1 PF Normal</option>
-                    <option value="os_pf">2 PF OS</option>
-                    <option value="pmoral">3 Persona Moral</option>
+                    <option value="os_pf">2 PF OS PF</option>
+                    <option value="fiador_pf">3 PF Fiador PF</option>
                 </select>
             </div>
 
@@ -107,60 +108,60 @@ function montoNumeroYTexto($valor) {
 </section>
 
 <script>
-document.getElementById('form-contrato').addEventListener('submit', function(e) {
-    e.preventDefault();
+    document.getElementById('form-contrato').addEventListener('submit', function(e) {
+        e.preventDefault();
 
-    const form = e.target;
-    const formData = new FormData(form);
+        const form = e.target;
+        const formData = new FormData(form);
 
-    fetch(form.action, {
-        method: 'POST',
-        body: formData
-    })
-    .then(async response => {
-        const contentType = response.headers.get("Content-Type");
-        
-        if (contentType.includes("application/json")) {
-            const data = await response.json();
-            if (data.status === 'error') {
+        fetch(form.action, {
+                method: 'POST',
+                body: formData
+            })
+            .then(async response => {
+                const contentType = response.headers.get("Content-Type");
+
+                if (contentType.includes("application/json")) {
+                    const data = await response.json();
+                    if (data.status === 'error') {
+                        Swal.fire({
+                            icon: null,
+                            title: '😖',
+                            text: data.mensaje,
+                            customClass: {
+                                title: 'text-6xl' // tamaño grande usando Tailwind o CSS
+                            }
+                        });
+                    }
+                } else {
+                    // Si no es JSON, asumimos que es un archivo (docx)
+                    const blob = await response.blob();
+                    const filename = response.headers.get('Content-Disposition')
+                        ?.split('filename=')[1] ?? 'contrato.docx';
+
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = filename.replace(/['"]/g, ''); // limpia comillas
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                    window.URL.revokeObjectURL(url);
+
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'Contrato generado',
+                        text: 'La descarga comenzará en unos segundos.'
+                    });
+                }
+            })
+            .catch(error => {
+                console.error('Error al generar contrato:', error);
                 Swal.fire({
-                    icon: null,
-                    title: '😖',
-                    text: data.mensaje,
-                        customClass: {
-                            title: 'text-6xl' // tamaño grande usando Tailwind o CSS
-                        }
+                    icon: 'error',
+                    title: '¡Ups!',
+                    text: 'Ocurrió un error al generar el contrato.'
                 });
-            }
-        } else {
-            // Si no es JSON, asumimos que es un archivo (docx)
-            const blob = await response.blob();
-            const filename = response.headers.get('Content-Disposition')
-                ?.split('filename=')[1] ?? 'contrato.docx';
-
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = filename.replace(/['"]/g, ''); // limpia comillas
-            document.body.appendChild(a);
-            a.click();
-            a.remove();
-            window.URL.revokeObjectURL(url);
-
-            Swal.fire({
-                icon: 'success',
-                title: 'Contrato generado',
-                text: 'La descarga comenzará en unos segundos.'
             });
-        }
-    })
-    .catch(error => {
-        console.error('Error al generar contrato:', error);
-        Swal.fire({
-            icon: 'error',
-            title: '¡Ups!',
-            text: 'Ocurrió un error al generar el contrato.'
-        });
     });
-});
 </script>
