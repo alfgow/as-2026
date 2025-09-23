@@ -910,6 +910,7 @@ TXT;
 
         $set('ARRENDADOR',        $mayus($arrendador));
         $set('ARRENDATARIO',      $mayus($inquilino));
+        $set('FIADOR',            $mayus($fiador !== '' ? $fiador : 'N/A'));
         $set('OBLIGADO SOLIDARIO', $mayus($obligadoSolidario));
         $set('INMUEBLE',          $mayus($poliza['direccion_inmueble'] ?? ''));
         $set('ESTACIONAMIENTO',   $textoCajones($poliza['estacionamiento_inmueble'] ?? 0));
