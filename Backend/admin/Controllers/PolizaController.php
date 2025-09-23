@@ -765,7 +765,7 @@ class PolizaController
         $plantillasContrato = [
             'normal_pf' => 'Contrato_Normal_PF 2025.docx',
             'os_pf'     => 'Contrato_ObligadoSolidario_PF 2025.docx',
-            'fiador_pf'    => 'Contrato_Normal_PF 2025.docx',
+            'fiador_pf'    => 'Contrato_Fiador_PF 2025.docx',
             'pmoral'    => 'Contrato_Persona_Moral.docx',
         ];
 
