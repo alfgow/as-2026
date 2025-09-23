@@ -370,6 +370,23 @@ class InmuebleController
         return $this->prepareInmueblePayload($_POST, $isUpdate);
     }
 
+    private function normalizarMantenimiento(string $valor): string
+    {
+        $normalizado = strtoupper(str_replace(' ', '_', trim($valor)));
+
+        switch ($normalizado) {
+            case 'SI':
+                return 'Si';
+            case 'NO':
+                return 'No';
+            case 'NO_APLICA':
+            case 'NA':
+                return 'na';
+            default:
+                return 'No';
+        }
+    }
+
     /**
      * @param array<string, mixed> $input
      * @return array<string, mixed>
@@ -416,8 +433,7 @@ class InmuebleController
             throw new \InvalidArgumentException('Faltan datos obligatorios del inmueble');
         }
 
-        $mantenimientoRaw = strtoupper(trim((string)($input['mantenimiento'] ?? 'NO')));
-        $mantenimiento    = $mantenimientoRaw === 'SI' ? 'SI' : 'NO';
+        $mantenimiento = $this->normalizarMantenimiento((string)($input['mantenimiento'] ?? ''));
 
         $montoMantenimiento = $this->normalizarMonto((string)($input['monto_mantenimiento'] ?? '0'));
         $deposito           = $this->normalizarMonto((string)($input['deposito'] ?? '0'));

@@ -52,8 +52,9 @@ foreach ($asesores as $asesor) {
             <div>
                 <label class="block text-indigo-300 mb-1">¿Incluye Mantenimiento?</label>
                 <select name="mantenimiento" class="w-full rounded-lg px-4 py-2 bg-[#232336] text-indigo-100 border border-indigo-800" required>
-                    <option value="SI" <?= ($inmueble['mantenimiento'] ?? '') === 'SI' ? 'selected' : '' ?>>Sí</option>
-                    <option value="NO" <?= ($inmueble['mantenimiento'] ?? '') === 'NO' ? 'selected' : '' ?>>No</option>
+                    <option value="Si" <?= ($inmueble['mantenimiento'] ?? '') === 'Si' ? 'selected' : '' ?>>Si</option>
+                    <option value="No" <?= ($inmueble['mantenimiento'] ?? '') === 'No' ? 'selected' : '' ?>>No</option>
+                    <option value="na" <?= ($inmueble['mantenimiento'] ?? '') === 'na' ? 'selected' : '' ?>>No Aplica</option>
                 </select>
             </div>
 

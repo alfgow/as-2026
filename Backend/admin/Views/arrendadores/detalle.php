@@ -357,9 +357,9 @@ use App\Helpers\TextHelper;
                 <input type="number" name="renta" placeholder="Renta mensual (MXN)" class="w-full px-3 py-2 rounded-lg bg-[#232336] border border-indigo-800 text-indigo-100">
                 <select name="mantenimiento" class="w-full px-3 py-2 rounded-lg bg-[#232336] border border-indigo-800 text-indigo-100">
                     <option value="">¿Incluye mantenimiento?</option>
-                    <option value="Sí">Sí</option>
+                    <option value="Si">Si</option>
                     <option value="No">No</option>
-                    <option value="No Aplica">No Aplica</option>
+                    <option value="na">No Aplica</option>
                 </select>
             </div>
 
@@ -463,8 +463,9 @@ use App\Helpers\TextHelper;
                     <div>
                         <label class="block text-sm text-indigo-200 mb-1" for="edit-mantenimiento">¿Incluye mantenimiento?</label>
                         <select id="edit-mantenimiento" name="mantenimiento" class="w-full rounded-lg px-4 py-2 bg-[#232336] text-indigo-100 border border-indigo-800 focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                            <option value="NO">No</option>
-                            <option value="SI">Sí</option>
+                            <option value="Si">Si</option>
+                            <option value="No">No</option>
+                            <option value="na">No Aplica</option>
                         </select>
                     </div>
                     <div>

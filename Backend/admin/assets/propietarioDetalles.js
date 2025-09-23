@@ -356,8 +356,28 @@ document.addEventListener("DOMContentLoaded", () => {
 
                 const mantenimiento = formEditarInmueble.querySelector('#edit-mantenimiento');
                 if (mantenimiento) {
-                        const value = typeof data.mantenimiento === "string" ? data.mantenimiento.toUpperCase() : "";
-                        mantenimiento.value = value === "SI" ? "SI" : "NO";
+                        const rawValue = typeof data.mantenimiento === "string"
+                                ? data.mantenimiento
+                                : "";
+                        const normalizado = rawValue.toUpperCase().replace(/\s+/g, '_').trim();
+
+                        let valorSelect = "No";
+                        switch (normalizado) {
+                                case "SI":
+                                        valorSelect = "Si";
+                                        break;
+                                case "NO":
+                                        valorSelect = "No";
+                                        break;
+                                case "NO_APLICA":
+                                case "NA":
+                                        valorSelect = "na";
+                                        break;
+                                default:
+                                        valorSelect = "No";
+                        }
+
+                        mantenimiento.value = valorSelect;
                 }
 
                 const montoMantenimiento = formEditarInmueble.querySelector('#edit-monto-mantenimiento');
