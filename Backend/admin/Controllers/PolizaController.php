@@ -942,6 +942,9 @@ TXT;
             $append = function (string $campo) use (&$dirPartes, $poliza): void {
                 $valor = trim((string)($poliza[$campo] ?? ''));
                 if ($valor !== '') {
+                    if ($campo === 'fiador_cp_garantia') {
+                        $valor = 'C.P. ' . $valor;
+                    }
                     $dirPartes[] = $valor;
                 }
             };
@@ -952,10 +955,7 @@ TXT;
             $append('fiador_colonia_garantia');
             $append('fiador_alcaldia_garantia');
             $append('fiador_estado_garantia');
-            $cpGarantia = trim((string)($poliza['fiador_cp_garantia'] ?? ''));
-            if ($cpGarantia !== '') {
-                $dirPartes[] = 'C.P. ' . $cpGarantia;
-            }
+            $append('fiador_cp_garantia');
 
             $dirGarantia = $dirPartes !== []
                 ? mb_strtoupper(implode(' ', $dirPartes), 'UTF-8')
