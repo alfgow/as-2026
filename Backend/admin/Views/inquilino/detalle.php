@@ -561,12 +561,24 @@ z" />
                         <span class="block text-white/90"><?= $profile['fiador']['estado_inmueble'] ?></span>
                     </div>
                     <div>
+                        <span class="block text-gray-200 font-semibold">Código postal:</span>
+                        <span class="block text-white/90"><?= $profile['fiador']['cp_inmueble'] ?: 'N/A' ?></span>
+                    </div>
+                    <div>
                         <span class="block text-gray-200 font-semibold">Número de escritura:</span>
                         <span class="block text-white/90"><?= $profile['fiador']['numero_escritura'] ?></span>
                     </div>
                     <div>
+                        <span class="block text-gray-200 font-semibold">Fecha de escritura:</span>
+                        <span class="block text-white/90"><?= $profile['fiador']['fecha_escritura'] ?: 'N/A' ?></span>
+                    </div>
+                    <div>
                         <span class="block text-gray-200 font-semibold">Número de notario:</span>
                         <span class="block text-white/90"><?= $profile['fiador']['numero_notario'] ?></span>
+                    </div>
+                    <div>
+                        <span class="block text-gray-200 font-semibold">Nombre del notario:</span>
+                        <span class="block text-white/90"><?= $profile['fiador']['nombre_notario'] ?: 'N/A' ?></span>
                     </div>
                     <div>
                         <span class="block text-gray-200 font-semibold">Estado del notario:</span>
@@ -623,6 +635,23 @@ z" />
                 </div>
 
                 <!-- Formulario de edición -->
+                <?php
+                $fechaEscrituraCruda = $profile['fiador']['fecha_escritura'] ?? '';
+                $fechaEscrituraInput = '';
+                if ($fechaEscrituraCruda !== '') {
+                    $formatosFecha = ['Y-m-d', 'd/m/Y', 'd-m-Y', 'Y/m/d', 'm/d/Y'];
+                    foreach ($formatosFecha as $formato) {
+                        $dt = \DateTime::createFromFormat($formato, (string) $fechaEscrituraCruda);
+                        if ($dt instanceof \DateTime) {
+                            $fechaEscrituraInput = $dt->format('Y-m-d');
+                            break;
+                        }
+                    }
+                    if ($fechaEscrituraInput === '' && preg_match('/^(\d{4})-(\d{2})-(\d{2})/', (string) $fechaEscrituraCruda, $m)) {
+                        $fechaEscrituraInput = sprintf('%04d-%02d-%02d', (int) $m[1], (int) $m[2], (int) $m[3]);
+                    }
+                }
+                ?>
                 <form id="form-editar-fiador"
                     class="hidden mt-8 bg-white/15 backdrop-blur-lg border border-purple-300/40 rounded-2xl shadow-xl p-6 space-y-6"
                     autocomplete="off"
@@ -657,12 +686,24 @@ z" />
                             <input type="text" name="estado_inmueble" value="<?= htmlspecialchars($profile['fiador']['estado_inmueble'] ?? ""); ?>" class="w-full bg-white/70 text-black px-3 py-2 rounded-lg border border-purple-300/40 focus:ring-2 focus:ring-purple-400 outline-none" required>
                         </div>
                         <div>
+                            <label class="block text-gray-200 font-semibold mb-1">Código postal</label>
+                            <input type="text" name="cp_inmueble" value="<?= htmlspecialchars($profile['fiador']['cp_inmueble'] ?? ""); ?>" class="w-full bg-white/70 text-black px-3 py-2 rounded-lg border border-purple-300/40 focus:ring-2 focus:ring-purple-400 outline-none" required>
+                        </div>
+                        <div>
                             <label class="block text-gray-200 font-semibold mb-1">Número de escritura</label>
                             <input type="text" name="numero_escritura" value="<?= htmlspecialchars($profile['fiador']['numero_escritura'] ?? ""); ?>" class="w-full bg-white/70 text-black px-3 py-2 rounded-lg border border-purple-300/40 focus:ring-2 focus:ring-purple-400 outline-none">
                         </div>
                         <div>
+                            <label class="block text-gray-200 font-semibold mb-1">Fecha de escritura</label>
+                            <input type="date" name="fecha_escritura" value="<?= htmlspecialchars($fechaEscrituraInput); ?>" class="w-full bg-white/70 text-black px-3 py-2 rounded-lg border border-purple-300/40 focus:ring-2 focus:ring-purple-400 outline-none">
+                        </div>
+                        <div>
                             <label class="block text-gray-200 font-semibold mb-1">Número de notario</label>
                             <input type="text" name="numero_notario" value="<?= htmlspecialchars($profile['fiador']['numero_notario'] ?? ""); ?>" class="w-full bg-white/70 text-black px-3 py-2 rounded-lg border border-purple-300/40 focus:ring-2 focus:ring-purple-400 outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-gray-200 font-semibold mb-1">Nombre del notario</label>
+                            <input type="text" name="nombre_notario" value="<?= htmlspecialchars($profile['fiador']['nombre_notario'] ?? ""); ?>" class="w-full bg-white/70 text-black px-3 py-2 rounded-lg border border-purple-300/40 focus:ring-2 focus:ring-purple-400 outline-none">
                         </div>
                         <div>
                             <label class="block text-gray-200 font-semibold mb-1">Estado del notario</label>
