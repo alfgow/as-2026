@@ -96,6 +96,41 @@ class PolizaModel extends Database
     }
 
     /**
+     * @param array<int, array<string, mixed>> $polizas
+     * @return array<int, array<string, mixed>>
+     */
+    private function inicializarDatosGarantiaFiador(array $polizas): array
+    {
+        if ($polizas === []) {
+            return [];
+        }
+
+        $defaults = [
+            'fiador_calle_garantia'       => '',
+            'fiador_num_ext_garantia'     => '',
+            'fiador_num_int_garantia'     => '',
+            'fiador_colonia_garantia'     => '',
+            'fiador_alcaldia_garantia'    => '',
+            'fiador_estado_garantia'      => '',
+            'fiador_numero_escritura'     => '',
+            'fiador_numero_notario'       => '',
+            'fiador_estado_notario'       => '',
+            'fiador_folio_real'           => '',
+        ];
+
+        foreach ($polizas as &$poliza) {
+            foreach ($defaults as $campo => $valor) {
+                if (!array_key_exists($campo, $poliza) || $poliza[$campo] === null) {
+                    $poliza[$campo] = $valor;
+                }
+            }
+        }
+        unset($poliza);
+
+        return $polizas;
+    }
+
+    /**
      * @param array<int, int> $ids
      * @return array<int, array<string, mixed>>
      */
@@ -297,6 +332,16 @@ class PolizaModel extends Database
               IFNULL(CONCAT(" ", TRIM(df.ciudad)), ""),
               IFNULL(CONCAT(" C.P. ", TRIM(df.codigo_postal)), "")
             ) AS direccion_fiador,
+            fg.calle_inmueble      AS fiador_calle_garantia,
+            fg.num_ext_inmueble    AS fiador_num_ext_garantia,
+            fg.num_int_inmueble    AS fiador_num_int_garantia,
+            fg.colonia_inmueble    AS fiador_colonia_garantia,
+            fg.alcaldia_inmueble   AS fiador_alcaldia_garantia,
+            fg.estado_inmueble     AS fiador_estado_garantia,
+            fg.numero_escritura    AS fiador_numero_escritura,
+            fg.numero_notario      AS fiador_numero_notario,
+            fg.estado_notario      AS fiador_estado_notario,
+            fg.folio_real          AS fiador_folio_real,
             o.nombre_inquilino     AS nombre_obligado,
             o.apellidop_inquilino  AS apellidop_obligado,
             o.apellidom_inquilino  AS apellidom_obligado,
@@ -324,6 +369,7 @@ class PolizaModel extends Database
         LEFT JOIN inquilinos_direccion di  ON di.id_inquilino  = i.id
         LEFT JOIN inquilinos_direccion df  ON df.id_inquilino  = f.id
         LEFT JOIN inquilinos_direccion do2 ON do2.id_inquilino = o.id
+        LEFT JOIN inquilinos_fiador fg     ON fg.id_inquilino  = f.id
         ';
 
         // SQL final
@@ -351,12 +397,15 @@ class PolizaModel extends Database
                 return null;
             }
 
-            $conInmueble = $this->adjuntarInmueblesDesdeMysql([$row]);
+            $conGarantia = $this->inicializarDatosGarantiaFiador([$row]);
+            $conInmueble = $this->adjuntarInmueblesDesdeMysql($conGarantia);
 
             return $conInmueble[0] ?? $row;
         }
 
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+        $rows = $this->inicializarDatosGarantiaFiador($rows);
 
         return $this->adjuntarInmueblesDesdeMysql($rows);
     }
