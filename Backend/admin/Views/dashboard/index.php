@@ -180,6 +180,7 @@ use App\Helpers\TextHelper;
                     <th class="py-2 px-4">Propiedad</th>
                     <th class="py-2 px-4">Fecha de vencimiento</th>
                     <th class="py-2 px-4">Días restantes</th>
+                    <th class="py-2 px-4">Asesor</th>
                     <th class="py-2 px-4">Acciones</th>
                 </tr>
             </thead>
@@ -232,8 +233,59 @@ use App\Helpers\TextHelper;
                 ?>
                 <?php foreach ($vencimientosProximos as $v): ?>
                     <?php
-                    $nombreInquilino = $v['nombre_inquilino_completo'] ?? '—';
-                    $direccion       = $v['direccion_inmueble'] ?? '—';
+                    $nombreInquilino = TextHelper::titleCase((string)($v['nombre_inquilino_completo'] ?? '—'));
+                    $direccion       = TextHelper::titleCase((string)($v['direccion_inmueble'] ?? '—'));
+                    $arrendador      = TextHelper::titleCase((string)($v['nombre_arrendador'] ?? ''));
+                    $obligadoSolidario = TextHelper::titleCase((string)($v['nombre_obligado_solidario'] ?? ''));
+                    if ($obligadoSolidario === '') {
+                        $obligadoSolidario = 'NO APLICA';
+                    }
+
+                    $asesorNombre   = TextHelper::titleCase((string)($v['nombre_asesor'] ?? ''));
+                    $asesorTelefono = preg_replace('/\D+/', '', (string)($v['celular_asesor'] ?? ''));
+
+                    $vigenciaTexto = trim((string)($v['vigencia'] ?? ''));
+
+                    if ($vigenciaTexto === '') {
+                        $vigenciaInicio = '';
+                        $vigenciaFin    = '';
+
+                        if (!empty($v['fecha_poliza'])) {
+                            try {
+                                $vigenciaInicioFecha = new \DateTimeImmutable((string)$v['fecha_poliza']);
+                                $vigenciaInicio = $vigenciaInicioFecha->format('d/m/Y');
+                            } catch (\Throwable $exception) {
+                                $vigenciaInicio = (string)$v['fecha_poliza'];
+                            }
+                        }
+
+                        if (!empty($v['fecha_fin'])) {
+                            try {
+                                $vigenciaFinFecha = new \DateTimeImmutable((string)$v['fecha_fin']);
+                                $vigenciaFin = $vigenciaFinFecha->format('d/m/Y');
+                            } catch (\Throwable $exception) {
+                                $vigenciaFin = (string)$v['fecha_fin'];
+                            }
+                        }
+
+                        if ($vigenciaInicio !== '' || $vigenciaFin !== '') {
+                            $vigenciaTexto = trim(sprintf('Del %s al %s', $vigenciaInicio, $vigenciaFin));
+                        }
+                    }
+
+                    $rentaMonto = TextHelper::formatCurrency($v['monto_renta'] ?? 0);
+
+                    $vigenciaTextoMostrar = $vigenciaTexto !== '' ? $vigenciaTexto : 'Sin vigencia';
+
+                    $mensaje = "🔔 *Recordatorio de vencimiento*\n"
+                        . "🏠 Dirección: {$direccion}\n"
+                        . "👤 Arrendador: {$arrendador}\n"
+                        . "🧑‍💼 Inquilino: {$nombreInquilino}\n"
+                        . "🤝 Obligado Solidario: {$obligadoSolidario}\n"
+                        . "💵 Renta: {$rentaMonto}\n"
+                        . "📅 Vigencia: {$vigenciaTextoMostrar}";
+
+                    $waUrl = 'https://wa.me/+52' . $asesorTelefono . '?text=' . rawurlencode($mensaje);
 
                     $fechaVencimiento = null;
                     if (!empty($v['fecha_fin'])) {
@@ -285,13 +337,28 @@ use App\Helpers\TextHelper;
                     }
                     ?>
                     <tr class="border-b border-gray-700 hover:bg-gray-700 transition">
-                        <td class="py-2 px-4"><?= TextHelper::titleCase((string)$nombreInquilino) ?></td>
-                        <td class="py-2 px-4"><?= TextHelper::titleCase((string)$direccion) ?></td>
+                        <td class="py-2 px-4"><?= htmlspecialchars($nombreInquilino) ?></td>
+                        <td class="py-2 px-4"><?= htmlspecialchars($direccion) ?></td>
                         <td class="py-2 px-4"><?= htmlspecialchars($fechaFormateada) ?></td>
                         <td class="py-2 px-4">
                             <span class="px-3 py-1 rounded-full bg-red-600 bg-opacity-20 text-red-500 text-xs font-bold">
                                 <?= htmlspecialchars((string)$dias) ?>
                             </span>
+                        </td>
+                        <td class="py-3 px-4">
+                            <div class="flex flex-col gap-1">
+                                <span class="text-sm font-medium text-indigo-200">
+                                    <?= htmlspecialchars($asesorNombre !== '' ? $asesorNombre : 'Sin asesor') ?>
+                                </span>
+                                <?php if ($asesorTelefono !== '' && preg_match('/^\d{10,}$/', $asesorTelefono)): ?>
+                                    <a href="<?= htmlspecialchars($waUrl) ?>"
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        class="inline-flex items-center justify-center px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-lg shadow transition">
+                                        Notificar
+                                    </a>
+                                <?php endif; ?>
+                            </div>
                         </td>
                         <td class="py-3 px-4">
                             <div class="flex flex-wrap gap-2 justify-center md:justify-start">
