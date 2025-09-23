@@ -129,11 +129,21 @@ class PolizaController
         $s3Key = "{$poliza['id_arrendador']}_{$nombreNormalizado}/Poliza_{$poliza['numero_poliza']}_{$direccionSlug}.docx";
 
         // --- Selección de plantilla según tipo de póliza ---
-        $tipoPoliza = strtolower($poliza['tipo_poliza']);
-        $plantillaPath = __DIR__ . '/../../plantillas/Plantilla_Poliza_' . $tipoPoliza . '.docx';
+        $tipoPolizaOriginal = $poliza['tipo_poliza'];
+        $tipoPolizaKey = mb_strtolower($tipoPolizaOriginal, 'UTF-8');
+        $plantillasPorTipo = [
+            'clásica' => 'Plantilla_Poliza_Clásica.docx',
+            'plus' => 'Plantilla_Poliza_Plus.docx',
+        ];
+
+        if (!isset($plantillasPorTipo[$tipoPolizaKey])) {
+            throw new \Exception("No se encontró la plantilla para el tipo de póliza: {$tipoPolizaOriginal}");
+        }
+
+        $plantillaPath = __DIR__ . '/../../plantillas/' . $plantillasPorTipo[$tipoPolizaKey];
 
         if (!file_exists($plantillaPath)) {
-            throw new \Exception("No se encontró la plantilla para el tipo de póliza: {$tipoPoliza}");
+            throw new \Exception("No se encontró la plantilla para el tipo de póliza: {$tipoPolizaOriginal}");
         }
 
         // --- Cargar plantilla ---
@@ -750,15 +760,23 @@ class PolizaController
         }
 
         // Plantilla por tipo
-        $plantillaDocx = match ($tipoContrato) {
-            'normal_pf' => __DIR__ . '/../../plantillas/Contrato_Normal_PF 2025.docx',
-            'os_pf' => __DIR__ . '/../../plantillas/Contrato_ObligadoSolidario_PF 2025.docx',
-            'fiador'    => __DIR__ . '/../../plantillas/Contrato_Fiador.docx',
-            'pmoral'    => __DIR__ . '/../../plantillas/Contrato_Persona_Moral.docx',
-            default     => null
-        };
+        $tipoContratoOriginal = $tipoContrato;
+        $tipoContratoKey = mb_strtolower($tipoContratoOriginal, 'UTF-8');
+        $plantillasContrato = [
+            'normal_pf' => 'Contrato_Normal_PF 2025.docx',
+            'os_pf'     => 'Contrato_ObligadoSolidario_PF 2025.docx',
+            'fiador'    => 'Contrato_Fiador.docx',
+            'pmoral'    => 'Contrato_Persona_Moral.docx',
+        ];
 
-        if (!$plantillaDocx || !file_exists($plantillaDocx)) {
+        if (!isset($plantillasContrato[$tipoContratoKey])) {
+            echo json_encode(['status' => 'error', 'mensaje' => 'Sorry!, aún no cargamos ese tipo de contrato.']);
+            return;
+        }
+
+        $plantillaDocx = __DIR__ . '/../../plantillas/' . $plantillasContrato[$tipoContratoKey];
+
+        if (!file_exists($plantillaDocx)) {
             echo json_encode(['status' => 'error', 'mensaje' => 'Sorry!, aún no cargamos ese tipo de contrato.']);
             return;
         }
