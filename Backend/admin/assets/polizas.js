@@ -1,8 +1,7 @@
 // assets/js/polizas.js
 
 (function () {
-	const BASE_URL = window.BASE_URL || "";
-	console.log(BASE_URL);
+        const BASE_URL = window.BASE_URL || "";
 
 	// ---------------- Utilidades de fechas ----------------
 	const MESES = [

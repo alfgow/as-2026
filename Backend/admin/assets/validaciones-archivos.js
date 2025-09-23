@@ -142,15 +142,15 @@
 
 			updateChipsArchivos(by);
 			__vh_last_presign = Date.now();
-		} catch (e) {
-			console.error("Error cargando presignadas:", e);
-		}
+                } catch (e) {
+                        // Error al cargar presignadas, se omite registro en consola
+                }
 	}
 
 	// Auto-refresh cada 8 min
 	setInterval(() => {
 		if (Date.now() - __vh_last_presign > 8 * 60 * 1000) {
-			cargarPresignadas().catch(console.error);
+                        cargarPresignadas().catch(() => {});
 		}
 	}, 60 * 1000);
 

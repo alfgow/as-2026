@@ -213,18 +213,17 @@ function __bootLoadStatus() {
 	const loader = document.getElementById("vh-loader");
 	if (loader) loader.classList.remove("hidden");
 
-	loadStatus()
-		.then(() => {
-			if (loader) loader.classList.add("hidden");
-		})
-		.catch((e) => {
-			console.error(e);
-			setText(
-				"#vh-resumen",
-				"No fue posible cargar el estado de validaciones."
-			);
-			if (loader) loader.classList.add("hidden");
-		});
+        loadStatus()
+                .then(() => {
+                        if (loader) loader.classList.add("hidden");
+                })
+                .catch(() => {
+                        setText(
+                                "#vh-resumen",
+                                "No fue posible cargar el estado de validaciones."
+                        );
+                        if (loader) loader.classList.add("hidden");
+                });
 }
 
 if (document.readyState !== "loading") __bootLoadStatus();
@@ -362,10 +361,9 @@ window.saveSwitch = async function (campo) {
 	};
 
 	const col = map[campo];
-	if (!col) {
-		console.error("Campo no soportado:", campo);
-		return;
-	}
+        if (!col) {
+                return;
+        }
 
 	const estado = chk.checked ? "1" : "2";
 	fd.append(col, estado);
@@ -419,12 +417,11 @@ window.saveSwitch = async function (campo) {
 		}
 		const status = await loadStatus();
 		actualizarStatusAutomatico(status?.semaforos || {});
-	} catch (error) {
-		console.error(error);
-		vhHideLoader();
-		chk.checked = !chk.checked;
-		alert(error.message || `No se pudo guardar validación de ${campo}`);
-	}
+        } catch (error) {
+                vhHideLoader();
+                chk.checked = !chk.checked;
+                alert(error.message || `No se pudo guardar validación de ${campo}`);
+        }
 };
 
 function actualizarStatusAutomatico(sem = {}) {
@@ -471,10 +468,9 @@ async function actualizarStatusBackend(status) {
 		if (!res.ok || !j?.ok) {
 			throw new Error(j?.error || 'No se pudo actualizar status');
 		}
-	} catch (err) {
-		vhHideLoader();
-		console.error(err);
-	}
+        } catch (err) {
+                vhHideLoader();
+        }
 }
 
 window.runIngresosProceso = async function (tipo) {
@@ -494,12 +490,11 @@ window.runIngresosProceso = async function (tipo) {
 		}
 
 		await loadStatus();
-	} catch (e) {
-		console.error(e);
-		alert(e.message || "No fue posible validar los ingresos.");
-	} finally {
-		vhHideLoader();
-	}
+        } catch (e) {
+                alert(e.message || "No fue posible validar los ingresos.");
+        } finally {
+                vhHideLoader();
+        }
 };
 function renderIngresos(resultado) {
 	if (!resultado) return;
@@ -535,11 +530,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
 	selStatus.addEventListener("change", async () => {
 		const nuevoStatus = selStatus.value;
-		try {
-			await actualizarStatusBackend(nuevoStatus);
-		} catch (e) {
-			console.error(e);
-			alert(e.message || "Error al actualizar el status");
-		}
-	});
+                try {
+                        await actualizarStatusBackend(nuevoStatus);
+                } catch (e) {
+                        alert(e.message || "Error al actualizar el status");
+                }
+        });
 });

@@ -38,8 +38,8 @@
 						: "Pago inicial desmarcado."
 				);
 				// refresca estado general
-				if (typeof loadStatus === "function")
-					loadStatus().catch(console.error);
+                                if (typeof loadStatus === "function")
+                                        loadStatus().catch(() => {});
 			} catch (err) {
 				// revertir el switch
 				e.target.checked = !checked;
@@ -48,10 +48,9 @@
 					"#pago-status-msg",
 					"Error al guardar. Intenta de nuevo."
 				);
-				console.error(err);
-			}
-		});
-	}
+                        }
+                });
+        }
 
 	if (document.readyState !== "loading") attachPagoInicialAutosave();
 	else
