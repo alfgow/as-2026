@@ -966,22 +966,33 @@ TXT;
                 return $mayus($valor);
             };
 
-            $fechaEscritura = trim((string)($poliza['fecha_escritura'] ?? ''));
-            if ($fechaEscritura !== '') {
-                $fechaObj = date_create($fechaEscritura);
+            $fechaEscritura = 'N/A';
+            $fechaEscrituraRaw = '';
+
+            if (array_key_exists('fiador_fecha_escritura', $poliza)) {
+                $fechaEscrituraRaw = trim((string)($poliza['fiador_fecha_escritura'] ?? ''));
+            }
+
+            if ($fechaEscrituraRaw === '' && array_key_exists('fecha_escritura', $poliza)) {
+                $fechaEscrituraRaw = trim((string)($poliza['fecha_escritura'] ?? ''));
+            }
+
+            if ($fechaEscrituraRaw !== '') {
+                $fechaObj = date_create($fechaEscrituraRaw);
                 if ($fechaObj instanceof DateTime) {
-                    $fechaEscritura = $fechaObj->format('d/m/Y');
+                    $fechaEscritura = $mayus($fechaObj->format('d/m/Y'));
+                } else {
+                    $fechaEscritura = $mayus($fechaEscrituraRaw);
                 }
             }
-            $fechaEscritura = $fechaEscritura !== '' ? $mayus($fechaEscritura) : 'N/A';
 
             $set('DIR_GARANTIA', $dirGarantia);
-            $set('ESCRITURA', $normaliza('numero_escritura'));
+            $set('ESCRITURA', $normaliza('fiador_numero_escritura'));
             $set('FECHA_ESCRITURA', $fechaEscritura);
             $set('NOMBRE_NOTARIO', $normaliza('nombre_notario'));
-            $set('NUM_NOTARIO', $normaliza('numero_notario'));
-            $set('CIUDAD_NOTARIO', $normaliza('ciudad_notario'));
-            $set('FOLIO_REAL', $normaliza('folio_real'));
+            $set('NUM_NOTARIO', $normaliza('fiador_numero_notario'));
+            $set('CIUDAD_NOTARIO', $normaliza('fiador_estado_notario'));
+            $set('FOLIO_REAL', $normaliza('fiador_folio_real'));
         }
 
         // Vigencia
