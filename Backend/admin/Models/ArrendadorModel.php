@@ -7,6 +7,7 @@ namespace App\Models;
 require_once __DIR__ . '/../Core/Database.php';
 require_once __DIR__ . '/../Helpers/NormalizadoHelper.php';
 require_once __DIR__ . '/../Helpers/SlugHelper.php';
+require_once __DIR__ . '/../Helpers/TextHelper.php';
 
 use App\Core\Database;
 use App\Helpers\NormalizadoHelper;

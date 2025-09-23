@@ -6,6 +6,7 @@ namespace App\Models;
 
 require_once __DIR__ . '/../Core/Database.php';
 require_once __DIR__ . '/../Helpers/S3Helper.php';
+require_once __DIR__ . '/../Helpers/TextHelper.php';
 require_once __DIR__ . '/AsesorModel.php';
 
 use App\Core\Database;
