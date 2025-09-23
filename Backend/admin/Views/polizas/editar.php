@@ -110,7 +110,7 @@
 
             <div>
                 <label class="block text-indigo-300 mb-1">Vigencia (texto)</label>
-                <input type="text" name="vigencia" value="<?= htmlspecialchars($poliza['vigencia']) ?>"
+                <input type="text" name="vigencia" id="vigencia-texto" value="<?= htmlspecialchars($poliza['vigencia']) ?>"
                     class="appearance-none w-full px-4 py-2 rounded-lg bg-[#232336] border border-indigo-800 text-indigo-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
             </div>
 
