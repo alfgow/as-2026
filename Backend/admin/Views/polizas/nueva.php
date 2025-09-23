@@ -209,11 +209,25 @@ $siguienteNumero = $siguienteNumero ?? '';
                     <?php endforeach; ?>
                 </select>
             </div>
-            <!-- Comisión Asesor (20% del monto) -->
+            <!-- Comisión Asesor (editable) -->
             <div>
-                <label class="block text-indigo-300 mb-1">Comisión del Asesor (20%)</label>
-                <input type="text" id="comision-asesor" readonly
-                    class="appearance-none w-full px-4 py-2 rounded-lg bg-[#1c1c2a] border border-indigo-800 text-indigo-400 font-semibold cursor-not-allowed">
+                <label class="block text-indigo-300 mb-1">Comisión del Asesor (<span id="comision-porcentaje-label">20%</span>)</label>
+                <div class="flex items-center gap-2">
+                    <input type="text" id="comision-asesor" readonly
+                        class="flex-1 appearance-none px-4 py-2 rounded-lg bg-[#1c1c2a] border border-indigo-800 text-indigo-400 font-semibold cursor-not-allowed">
+                    <button type="button" id="btn-editar-comision"
+                        class="shrink-0 inline-flex items-center justify-center p-2 rounded-lg bg-slate-600 text-white hover:bg-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-400"
+                        title="Editar porcentaje de comisión">
+                        <span class="sr-only">Editar porcentaje de comisión</span>
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"
+                            class="h-5 w-5">
+                            <path stroke-linecap="round" stroke-linejoin="round"
+                                d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L8.651 18.001a4.5 4.5 0 01-1.897 1.13l-2.685.77.77-2.685a4.5 4.5 0 011.13-1.897L16.862 4.487z" />
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 7.125L16.875 4.5" />
+                        </svg>
+                    </button>
+                </div>
+                <input type="hidden" name="porcentaje_comision" id="comision-porcentaje" value="20">
             </div>
 
         </div>
@@ -444,6 +458,15 @@ $siguienteNumero = $siguienteNumero ?? '';
         const rentaHidden = document.getElementById('monto-renta-hidden');
         const montoPolizaInput = document.getElementById('monto-poliza');
         const comisionInput = document.getElementById('comision-asesor');
+        const editCommissionBtn = document.getElementById('btn-editar-comision');
+        const commissionPercentageHidden = document.getElementById('comision-porcentaje');
+        const commissionPercentageLabel = document.getElementById('comision-porcentaje-label');
+        let commissionPercentage = Number(commissionPercentageHidden?.value ?? '20');
+        if (!Number.isFinite(commissionPercentage) || commissionPercentage < 0) {
+            commissionPercentage = 20;
+        }
+        const MIN_COMMISSION_PERCENT = 0;
+        const MAX_COMMISSION_PERCENT = 100;
 
         const refreshRentBtn = document.getElementById('btn-refrescar-renta');
         const editInmuebleBtn = document.getElementById('btn-editar-inmueble');
@@ -712,9 +735,43 @@ $siguienteNumero = $siguienteNumero ?? '';
         const vigenciaInput = document.getElementById('vigencia-texto');
 
         // ---------- Comisión ----------
+        function formatCommissionPercentageDisplay(value) {
+            const numeric = Number(value);
+            if (!Number.isFinite(numeric)) {
+                return '0%';
+            }
+            const normalized = Math.max(MIN_COMMISSION_PERCENT, Math.round(numeric * 100) / 100);
+            return `${normalized.toLocaleString('es-MX', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}%`;
+        }
+
+        function updateCommissionPercentageUI() {
+            if (commissionPercentageHidden) {
+                commissionPercentageHidden.value = commissionPercentage.toString();
+            }
+            if (commissionPercentageLabel) {
+                commissionPercentageLabel.textContent = formatCommissionPercentageDisplay(commissionPercentage);
+            }
+        }
+
         function actualizarComision() {
+            updateCommissionPercentageUI();
             const monto = parseMoneyToNumber(montoPolizaInput.value);
-            comisionInput.value = monto > 0 ? formatCurrency(monto * 0.20) : '';
+            if (monto > 0) {
+                const decimal = Math.max(commissionPercentage, MIN_COMMISSION_PERCENT) / 100;
+                const comisionCalculada = monto * decimal;
+                comisionInput.value = formatCurrency(comisionCalculada);
+            } else {
+                comisionInput.value = '';
+            }
+        }
+
+        function setCommissionPercentage(value) {
+            if (!Number.isFinite(value)) {
+                return;
+            }
+            const sanitized = Math.min(Math.max(value, MIN_COMMISSION_PERCENT), MAX_COMMISSION_PERCENT);
+            commissionPercentage = Math.round(sanitized * 100) / 100;
+            actualizarComision();
         }
 
         // ---------- Fechas / Vigencia ----------
@@ -886,6 +943,50 @@ $siguienteNumero = $siguienteNumero ?? '';
                     title: 'Error',
                     text: error instanceof Error ? error.message : 'No se pudo cargar el inmueble.',
                 });
+            }
+        });
+
+        editCommissionBtn?.addEventListener('click', async () => {
+            const result = await Swal.fire({
+                title: 'Editar porcentaje de comisión',
+                input: 'number',
+                inputLabel: 'Ingresa el porcentaje de comisión para el asesor',
+                inputValue: commissionPercentage.toString(),
+                inputAttributes: {
+                    min: String(MIN_COMMISSION_PERCENT),
+                    max: String(MAX_COMMISSION_PERCENT),
+                    step: '0.01',
+                },
+                confirmButtonText: 'Guardar',
+                cancelButtonText: 'Cancelar',
+                showCancelButton: true,
+                inputValidator: (value) => {
+                    if (value === '' || value === null) {
+                        return 'Ingresa un porcentaje válido.';
+                    }
+                    const numeric = Number(value);
+                    if (!Number.isFinite(numeric)) {
+                        return 'Ingresa un número válido.';
+                    }
+                    if (numeric < MIN_COMMISSION_PERCENT || numeric > MAX_COMMISSION_PERCENT) {
+                        return `Ingresa un valor entre ${MIN_COMMISSION_PERCENT} y ${MAX_COMMISSION_PERCENT}.`;
+                    }
+                    return null;
+                },
+            });
+
+            if (result.isConfirmed) {
+                const nuevoPorcentaje = Number(result.value);
+                if (Number.isFinite(nuevoPorcentaje)) {
+                    setCommissionPercentage(nuevoPorcentaje);
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'Porcentaje actualizado',
+                        text: `La comisión se calculará con ${formatCommissionPercentageDisplay(commissionPercentage)}.`,
+                        timer: 2000,
+                        showConfirmButton: false,
+                    });
+                }
             }
         });
 
