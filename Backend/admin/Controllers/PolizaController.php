@@ -946,17 +946,12 @@ TXT;
                 }
             };
 
-            $append('calle_inmueble');
-            $append('num_ext_inmueble');
-
-            $numInt = trim((string)($poliza['num_int_inmueble'] ?? ''));
-            if ($numInt !== '') {
-                $dirPartes[] = $numInt;
-            }
-
-            $append('colonia_inmueble');
-            $append('alcaldia_inmueble');
-            $append('estado_inmueble');
+            $append('fiador_calle_garantia');
+            $append('fiador_num_ext_garantia');
+            $append('fiador_num_int_garantia');
+            $append('fiador_colonia_garantia');
+            $append('fiador_alcaldia_garantia');
+            $append('fiador_estado_garantia');
 
             $dirGarantia = $dirPartes !== []
                 ? mb_strtoupper(implode(' ', $dirPartes), 'UTF-8')
