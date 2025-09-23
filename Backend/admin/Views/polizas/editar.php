@@ -8,6 +8,8 @@
 /** @var array $obligados */
 /** @var array $asesores */
 /** @var string $baseUrl */
+
+use App\Helpers\TextHelper;
 ?>
 <section class="px-4 md:px-8 py-5 text-white">
     <?php
@@ -200,7 +202,7 @@
                 <select name="id_arrendador" class="appearance-none w-full px-4 py-2 rounded-lg bg-[#232336] border border-indigo-800 text-indigo-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
                     <option value="">Selecciona un arrendador</option>
                     <?php foreach ($arrendadores as $arr): ?>
-                        <option value="<?= $arr['id'] ?>" <?= $arr['id'] == $poliza['id_arrendador'] ? 'selected' : '' ?>><?= htmlspecialchars($arr['nombre_arrendador']) ?></option>
+                        <option value="<?= $arr['id'] ?>" <?= $arr['id'] == $poliza['id_arrendador'] ? 'selected' : '' ?>><?= TextHelper::titleCase($arr['nombre_arrendador']) ?></option>
                     <?php endforeach; ?>
                 </select>
             </div>
@@ -218,7 +220,7 @@
                         $nombre = trim(($inq['nombre_inquilino'] ?? '') . ' ' . ($inq['apellidop_inquilino'] ?? '') . ' ' . ($inq['apellidom_inquilino'] ?? ''));
                     ?>
                         <option value="<?= $id ?>" <?= $id === $inqSel ? 'selected' : '' ?>>
-                            <?= htmlspecialchars($nombre ?: 'SIN NOMBRE') ?>
+                            <?= TextHelper::titleCase($nombre ?: 'SIN NOMBRE') ?>
                         </option>
                     <?php endforeach; ?>
                 </select>
@@ -246,7 +248,7 @@
                         $nombre = trim(($f['nombre_inquilino'] ?? '') . ' ' . ($f['apellidop_inquilino'] ?? '') . ' ' . ($f['apellidom_inquilino'] ?? ''));
                     ?>
                         <option value="<?= $id ?>" <?= ($id === $fSel) ? 'selected' : '' ?>>
-                            <?= htmlspecialchars($nombre ?: 'SIN NOMBRE') ?>
+                            <?= TextHelper::titleCase($nombre ?: 'SIN NOMBRE') ?>
                         </option>
                     <?php endforeach; ?>
                 </select>
@@ -272,7 +274,7 @@
                         $nombre = trim(($os['nombre_inquilino'] ?? '') . ' ' . ($os['apellidop_inquilino'] ?? '') . ' ' . ($os['apellidom_inquilino'] ?? ''));
                     ?>
                         <option value="<?= $id ?>" <?= ($id === $oblSel) ? 'selected' : '' ?>>
-                            <?= htmlspecialchars($nombre ?: 'SIN NOMBRE') ?>
+                            <?= TextHelper::titleCase($nombre ?: 'SIN NOMBRE') ?>
                         </option>
                     <?php endforeach; ?>
                 </select>
