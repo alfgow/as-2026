@@ -59,35 +59,50 @@ $siguienteNumero = $siguienteNumero ?? '';
             <!-- Inmueble -->
             <div>
                 <label class="block text-indigo-300 mb-1">Inmueble</label>
-                <select name="id_inmueble" id="inmueble-select" class="appearance-none w-full px-4 py-2 rounded-lg bg-[#232336] border border-indigo-800 text-indigo-100 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
-                    <option value="">- SELECCIONA UN INMUEBLE -</option>
-                    <?php foreach ($inmuebles as $inm):
-                        $pk         = (string)($inm['pk'] ?? '');
-                        $sk         = (string)($inm['sk'] ?? '');
-                        $virtualId  = $inm['id_virtual'] ?? ($pk !== '' && $sk !== '' ? $pk . '|' . $sk : '');
-                        $legacyId   = isset($inm['id']) ? (string)$inm['id'] : '';
-                        $optionVal  = $legacyId !== '' ? $legacyId : $virtualId;
-                        if ($optionVal === '') {
-                            continue;
-                        }
-                        $direccion  = (string)($inm['direccion_inmueble'] ?? ($virtualId !== '' ? $virtualId : 'SIN DIRECCIÓN'));
-                        $renta      = (string)($inm['renta'] ?? '');
-                        $tipo       = (string)($inm['tipo'] ?? '');
-                    ?>
-                        <option
-                            value="<?= htmlspecialchars($optionVal) ?>"
-                            data-pk="<?= htmlspecialchars($pk) ?>"
-                            data-sk="<?= htmlspecialchars($sk) ?>"
-                            data-virtual-id="<?= htmlspecialchars($virtualId) ?>"
-                            data-legacy-id="<?= htmlspecialchars($legacyId) ?>"
-                            data-monto="<?= htmlspecialchars($renta) ?>"
-                            data-tipo="<?= htmlspecialchars($tipo) ?>"
-                        ><?= htmlspecialchars($direccion) ?></option>
-                    <?php endforeach; ?>
-                </select>
+                <div class="flex items-center gap-2">
+                    <select name="id_inmueble" id="inmueble-select"
+                        class="flex-1 appearance-none w-full px-4 py-2 rounded-lg bg-[#232336] border border-indigo-800 text-indigo-100 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                        <option value="">- SELECCIONA UN INMUEBLE -</option>
+                        <?php foreach ($inmuebles as $inm):
+                            $pk         = (string)($inm['pk'] ?? '');
+                            $sk         = (string)($inm['sk'] ?? '');
+                            $virtualId  = $inm['id_virtual'] ?? ($pk !== '' && $sk !== '' ? $pk . '|' . $sk : '');
+                            $legacyId   = isset($inm['id']) ? (string)$inm['id'] : '';
+                            $optionVal  = $legacyId !== '' ? $legacyId : $virtualId;
+                            if ($optionVal === '') {
+                                continue;
+                            }
+                            $direccion  = (string)($inm['direccion_inmueble'] ?? ($virtualId !== '' ? $virtualId : 'SIN DIRECCIÓN'));
+                            $renta      = (string)($inm['renta'] ?? '');
+                            $tipo       = (string)($inm['tipo'] ?? '');
+                        ?>
+                            <option
+                                value="<?= htmlspecialchars($optionVal) ?>"
+                                data-pk="<?= htmlspecialchars($pk) ?>"
+                                data-sk="<?= htmlspecialchars($sk) ?>"
+                                data-virtual-id="<?= htmlspecialchars($virtualId) ?>"
+                                data-legacy-id="<?= htmlspecialchars($legacyId) ?>"
+                                data-monto="<?= htmlspecialchars($renta) ?>"
+                                data-tipo="<?= htmlspecialchars($tipo) ?>"
+                            ><?= htmlspecialchars($direccion) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                    <button type="button" id="btn-editar-inmueble"
+                        class="shrink-0 inline-flex items-center justify-center p-2 rounded-lg bg-slate-600 text-white hover:bg-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-400 disabled:opacity-60 disabled:cursor-not-allowed"
+                        title="Editar inmueble">
+                        <span class="sr-only">Editar inmueble</span>
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+                            stroke="currentColor" class="h-5 w-5">
+                            <path stroke-linecap="round" stroke-linejoin="round"
+                                d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L8.651 18.001a4.5 4.5 0 01-1.897 1.13l-2.685.77.77-2.685a4.5 4.5 0 011.13-1.897L16.862 4.487z" />
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 7.125L16.875 4.5" />
+                        </svg>
+                    </button>
+                </div>
             </div>
 
-            <!-- Tipo de inmueble -->
+
+<!-- Tipo de inmueble -->
             <div>
                 <label class="block text-indigo-300 mb-1">Tipo de inmueble</label>
                 <select name="tipo_inmueble" class="appearance-none w-full px-4 py-2 rounded-lg bg-[#232336] border border-indigo-800 text-indigo-100 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
@@ -98,15 +113,27 @@ $siguienteNumero = $siguienteNumero ?? '';
                 </select>
             </div>
 
-            <!-- Monto de renta (readonly) -->
+                        <!-- Monto de renta (readonly) -->
             <div>
                 <label class="block text-indigo-300 mb-1">Monto de renta</label>
-                <input type="text" id="monto-renta-display" readonly
-                    class="w-full px-3 py-2 rounded-lg bg-[#1e1e2d] text-indigo-200 border border-indigo-800 cursor-not-allowed">
+                <div class="flex items-center gap-2">
+                    <input type="text" id="monto-renta-display" readonly
+                        class="flex-1 px-3 py-2 rounded-lg bg-[#1e1e2d] text-indigo-200 border border-indigo-800 cursor-not-allowed">
+                    <button type="button" id="btn-refrescar-renta"
+                        class="shrink-0 inline-flex items-center justify-center p-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                        title="Refrescar monto de renta">
+                        <span class="sr-only">Refrescar monto de renta</span>
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                            stroke-width="1.5" stroke="currentColor" class="h-5 w-5">
+                            <path stroke-linecap="round" stroke-linejoin="round"
+                                d="M16.023 9.348h4.992m0 0V4.356m0 4.992l-3.181-3.181a8.25 8.25 0 10.63 10.698" />
+                        </svg>
+                    </button>
+                </div>
                 <input type="hidden" name="monto_renta" id="monto-renta-hidden">
             </div>
 
-            <!-- Monto de póliza -->
+<!-- Monto de póliza -->
             <div>
                 <label class="block text-indigo-300 mb-1">Monto póliza</label>
                 <input type="number" step="0.01" name="monto_poliza" id="monto-poliza"
@@ -205,6 +232,96 @@ $siguienteNumero = $siguienteNumero ?? '';
             </button>
         </div>
     </form>
+
+    <div id="modal-editar-inmueble" class="fixed inset-0 bg-black/70 hidden items-center justify-center z-50 px-3">
+        <div class="relative w-full max-w-3xl bg-[#1f1f2e] border border-indigo-900/40 rounded-2xl shadow-2xl overflow-hidden">
+            <button type="button" id="modal-editar-inmueble-close" class="absolute top-3 right-3 text-indigo-200 hover:text-pink-400 transition">
+                <span class="sr-only">Cerrar</span>
+                &times;
+            </button>
+            <div class="px-6 pt-8 pb-4 border-b border-white/10">
+                <h3 class="text-xl font-semibold text-indigo-100">Editar inmueble</h3>
+                <p class="text-sm text-indigo-300 mt-1">Actualiza la información del inmueble y guarda los cambios.</p>
+            </div>
+            <div id="modal-editar-inmueble-loader" class="hidden px-6 py-4 text-sm text-indigo-200">Cargando información del inmueble...</div>
+            <form id="form-editar-inmueble" class="px-6 py-6 space-y-5">
+                <input type="hidden" name="pk" value="">
+                <input type="hidden" name="sk" value="">
+                <input type="hidden" name="id" value="">
+                <input type="hidden" name="asesor_pk" value="">
+
+                <div>
+                    <label class="block text-sm text-indigo-200 mb-1" for="edit-direccion-inmueble">Dirección completa</label>
+                    <textarea id="edit-direccion-inmueble" name="direccion_inmueble" rows="2" class="w-full rounded-lg px-4 py-2 bg-[#232336] text-indigo-100 border border-indigo-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"></textarea>
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm text-indigo-200 mb-1" for="edit-tipo-inmueble">Tipo</label>
+                        <select id="edit-tipo-inmueble" name="tipo" class="w-full rounded-lg px-4 py-2 bg-[#232336] text-indigo-100 border border-indigo-800 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                            <option value="">Selecciona una opción</option>
+                            <option value="Departamento">Departamento</option>
+                            <option value="Casa">Casa</option>
+                            <option value="Local Comercial">Local Comercial</option>
+                            <option value="Oficina">Oficina</option>
+                            <option value="Terreno">Terreno</option>
+                            <option value="Bodega">Bodega</option>
+                            <option value="Edificio">Edificio</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm text-indigo-200 mb-1" for="edit-renta">Renta mensual (MXN)</label>
+                        <input id="edit-renta" type="number" step="0.01" min="0" name="renta" class="w-full rounded-lg px-4 py-2 bg-[#232336] text-indigo-100 border border-indigo-800 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    </div>
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm text-indigo-200 mb-1" for="edit-mantenimiento">¿Incluye mantenimiento?</label>
+                        <select id="edit-mantenimiento" name="mantenimiento" class="w-full rounded-lg px-4 py-2 bg-[#232336] text-indigo-100 border border-indigo-800 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                            <option value="Si">Si</option>
+                            <option value="No">No</option>
+                            <option value="na">No Aplica</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm text-indigo-200 mb-1" for="edit-monto-mantenimiento">Monto mantenimiento (MXN)</label>
+                        <input id="edit-monto-mantenimiento" type="number" step="0.01" min="0" name="monto_mantenimiento" class="w-full rounded-lg px-4 py-2 bg-[#232336] text-indigo-100 border border-indigo-800 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    </div>
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm text-indigo-200 mb-1" for="edit-deposito">Depósito (MXN)</label>
+                        <input id="edit-deposito" type="number" step="0.01" min="0" name="deposito" class="w-full rounded-lg px-4 py-2 bg-[#232336] text-indigo-100 border border-indigo-800 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    </div>
+                    <div>
+                        <label class="block text-sm text-indigo-200 mb-1" for="edit-estacionamiento">Estacionamientos</label>
+                        <input id="edit-estacionamiento" type="number" min="0" name="estacionamiento" class="w-full rounded-lg px-4 py-2 bg-[#232336] text-indigo-100 border border-indigo-800 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    </div>
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm text-indigo-200 mb-1" for="edit-mascotas">¿Permite mascotas?</label>
+                        <select id="edit-mascotas" name="mascotas" class="w-full rounded-lg px-4 py-2 bg-[#232336] text-indigo-100 border border-indigo-800 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                            <option value="NO">No</option>
+                            <option value="SI">Sí</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm text-indigo-200 mb-1" for="edit-comentarios">Comentarios</label>
+                        <textarea id="edit-comentarios" name="comentarios" rows="2" class="w-full rounded-lg px-4 py-2 bg-[#232336] text-indigo-100 border border-indigo-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"></textarea>
+                    </div>
+                </div>
+
+                <div class="flex justify-end gap-3 pt-2">
+                    <button type="button" class="px-4 py-2 rounded-lg bg-gray-600 hover:bg-gray-500 text-white" data-close-modal>Cancelar</button>
+                    <button type="submit" class="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white" data-submit>Guardar cambios</button>
+                </div>
+            </form>
+        </div>
+    </div>
 
 </div>
 <script>
@@ -328,6 +445,258 @@ $siguienteNumero = $siguienteNumero ?? '';
         const montoPolizaInput = document.getElementById('monto-poliza');
         const comisionInput = document.getElementById('comision-asesor');
 
+        const refreshRentBtn = document.getElementById('btn-refrescar-renta');
+        const editInmuebleBtn = document.getElementById('btn-editar-inmueble');
+        const editModal = document.getElementById('modal-editar-inmueble');
+        const editModalClose = document.getElementById('modal-editar-inmueble-close');
+        const editModalForm = document.getElementById('form-editar-inmueble');
+        const editModalLoader = document.getElementById('modal-editar-inmueble-loader');
+        const editModalCancel = editModalForm ? editModalForm.querySelector('[data-close-modal]') : null;
+        const editModalSubmit = editModalForm ? editModalForm.querySelector('[data-submit]') : null;
+
+        function getSelectedInmuebleOption() {
+            if (!inmuebleSel) return null;
+            const index = inmuebleSel.selectedIndex;
+            return index >= 0 ? inmuebleSel.options[index] : null;
+        }
+
+        function updateEditButtonState() {
+            if (!editInmuebleBtn) {
+                return;
+            }
+            const option = getSelectedInmuebleOption();
+            const hasValue = Boolean(option && option.value);
+            const hasIdentifiers = Boolean(option && (option.dataset.legacyId || (option.dataset.pk && option.dataset.sk)));
+            const enabled = hasValue && hasIdentifiers;
+            editInmuebleBtn.disabled = !enabled;
+            editInmuebleBtn.classList.toggle('opacity-60', !enabled);
+            editInmuebleBtn.classList.toggle('cursor-not-allowed', !enabled);
+        }
+
+        function toggleEditModal(show) {
+            if (!editModal) {
+                return;
+            }
+            if (show) {
+                editModal.classList.remove('hidden');
+                editModal.classList.add('flex');
+            } else {
+                editModal.classList.add('hidden');
+                editModal.classList.remove('flex');
+            }
+        }
+
+        function setEditModalLoading(isLoading) {
+            if (!editModalForm) {
+                return;
+            }
+            if (editModalLoader) {
+                editModalLoader.classList.toggle('hidden', !isLoading);
+            }
+            editModalForm.classList.toggle('pointer-events-none', isLoading);
+            editModalForm.classList.toggle('opacity-50', isLoading);
+        }
+
+        function closeEditModal() {
+            toggleEditModal(false);
+            setEditModalLoading(false);
+            editModalForm?.reset();
+        }
+
+        function sanitizeModalAmount(value) {
+            if (typeof value === 'number' && Number.isFinite(value)) {
+                return value.toFixed(2);
+            }
+            if (typeof value !== 'string') {
+                return '';
+            }
+            const normalized = value.replace(/[^0-9.,-]/g, '').replace(/,/g, '.');
+            if (normalized === '') {
+                return '';
+            }
+            const numeric = Number(normalized);
+            return Number.isFinite(numeric) ? numeric.toFixed(2) : '';
+        }
+
+        function fillEditModalForm(data, arrendadorValue, option) {
+            if (!editModalForm) {
+                return;
+            }
+            editModalForm.reset();
+
+            const pkField = editModalForm.querySelector('input[name="pk"]');
+            if (pkField) {
+                pkField.value = arrendadorValue || '';
+            }
+
+            const skField = editModalForm.querySelector('input[name="sk"]');
+            const optionSk = option?.dataset?.sk ?? '';
+            const dataSk = typeof data?.sk === 'string' && data.sk !== '' ? data.sk : optionSk;
+            if (skField) {
+                skField.value = dataSk;
+            }
+
+            const idField = editModalForm.querySelector('input[name="id"]');
+            let idValue = data?.id ?? data?.id_inmueble ?? data?.legacy_id ?? data?.inmueble_id ?? '';
+            if (!idValue && option?.dataset?.legacyId) {
+                idValue = option.dataset.legacyId;
+            }
+            if (idField) {
+                idField.value = idValue ? String(idValue) : '';
+            }
+
+            const asesorField = editModalForm.querySelector('input[name="asesor_pk"]');
+            const asesorValue = data?.id_asesor ?? data?.asesor_pk ?? (asesorSel?.value || '');
+            if (asesorField) {
+                asesorField.value = asesorValue !== undefined && asesorValue !== null ? String(asesorValue) : '';
+            }
+
+            const direccionField = editModalForm.querySelector('#edit-direccion-inmueble');
+            if (direccionField) {
+                direccionField.value = typeof data?.direccion_inmueble === 'string' ? data.direccion_inmueble : '';
+            }
+
+            const tipoField = editModalForm.querySelector('#edit-tipo-inmueble');
+            if (tipoField) {
+                tipoField.value = typeof data?.tipo === 'string' ? data.tipo : '';
+            }
+
+            const rentaField = editModalForm.querySelector('#edit-renta');
+            if (rentaField) {
+                rentaField.value = sanitizeModalAmount(data?.renta ?? '');
+            }
+
+            const mantenimientoField = editModalForm.querySelector('#edit-mantenimiento');
+            if (mantenimientoField) {
+                const raw = typeof data?.mantenimiento === 'string' ? data.mantenimiento.toUpperCase().trim() : '';
+                let value = 'No';
+                if (raw === 'SI') {
+                    value = 'Si';
+                } else if (raw === 'NA' || raw === 'NO_APLICA') {
+                    value = 'na';
+                }
+                mantenimientoField.value = value;
+            }
+
+            const montoMantenimientoField = editModalForm.querySelector('#edit-monto-mantenimiento');
+            if (montoMantenimientoField) {
+                montoMantenimientoField.value = sanitizeModalAmount(data?.monto_mantenimiento ?? '');
+            }
+
+            const depositoField = editModalForm.querySelector('#edit-deposito');
+            if (depositoField) {
+                depositoField.value = sanitizeModalAmount(data?.deposito ?? '');
+            }
+
+            const estacionamientoField = editModalForm.querySelector('#edit-estacionamiento');
+            if (estacionamientoField) {
+                const rawValue = Number.parseInt(data?.estacionamiento ?? data?.num_estacionamientos ?? '', 10);
+                estacionamientoField.value = Number.isFinite(rawValue) ? String(rawValue) : '';
+            }
+
+            const mascotasField = editModalForm.querySelector('#edit-mascotas');
+            if (mascotasField) {
+                const rawMascotas = typeof data?.mascotas === 'string' ? data.mascotas.toUpperCase().trim() : '';
+                mascotasField.value = rawMascotas === 'SI' ? 'SI' : 'NO';
+            }
+
+            const comentariosField = editModalForm.querySelector('#edit-comentarios');
+            if (comentariosField) {
+                comentariosField.value = typeof data?.comentarios === 'string' ? data.comentarios : '';
+            }
+        }
+
+        async function fetchInmuebleData(option) {
+            if (!option) {
+                throw new Error('Selecciona un inmueble.');
+            }
+            const legacyId = option.dataset?.legacyId;
+            const pkAttr = option.dataset?.pk;
+            const skAttr = option.dataset?.sk;
+            let url = '';
+            if (legacyId) {
+                url = `${BASE_URL}/inmuebles/info/${encodeURIComponent(legacyId)}`;
+            } else if (pkAttr && skAttr) {
+                url = `${BASE_URL}/inmuebles/info/${encodeURIComponent(pkAttr)}/${encodeURIComponent(skAttr)}`;
+            } else {
+                throw new Error('No se encontraron identificadores del inmueble.');
+            }
+            const response = await fetch(url, { headers: { 'Accept': 'application/json' } });
+            if (!response.ok) {
+                throw new Error('No se pudo consultar el inmueble.');
+            }
+            const data = await response.json();
+            if (!data || typeof data !== 'object') {
+                throw new Error('Información del inmueble inválida.');
+            }
+            return data;
+        }
+
+        function applyInmuebleDataToUI(data, option) {
+            if (!option || !data) {
+                return;
+            }
+            if (typeof data.pk === 'string' && data.pk !== '') {
+                option.dataset.pk = data.pk;
+            }
+            if (typeof data.sk === 'string' && data.sk !== '') {
+                option.dataset.sk = data.sk;
+            }
+            if (data.id !== undefined && data.id !== null && data.id !== '') {
+                option.dataset.legacyId = String(data.id);
+                if (/^\d+$/.test(String(data.id))) {
+                    option.value = String(data.id);
+                    inmuebleSel.value = option.value;
+                }
+            }
+            if (typeof data.id_virtual === 'string') {
+                option.dataset.virtualId = data.id_virtual;
+            }
+            if (typeof data.tipo === 'string') {
+                option.dataset.tipo = data.tipo;
+            }
+            const rentaBruta = data.renta ?? option.dataset.monto ?? '';
+            option.dataset.monto = rentaBruta ?? '';
+            if (typeof data.direccion_inmueble === 'string' && data.direccion_inmueble !== '') {
+                option.textContent = data.direccion_inmueble;
+            }
+            if (option.selected) {
+                if (typeof data.tipo === 'string' && tipoInmuebleSel) {
+                    tipoInmuebleSel.value = data.tipo;
+                }
+                const rentaValor = parseMoneyToNumber(rentaBruta);
+                rentaHidden.value = rentaValor ? String(rentaValor) : '';
+                rentaDisplay.value = rentaValor ? formatCurrency(rentaValor) : '';
+                const precio = rentaValor > 0 ? calcularPoliza(rentaValor, tipoPolizaSel.value) : 0;
+                montoPolizaInput.value = precio ? String(precio) : '';
+                actualizarComision();
+                if (option.dataset.pk) {
+                    inmueblePkHidden.value = option.dataset.pk;
+                }
+                if (option.dataset.sk) {
+                    inmuebleSkHidden.value = option.dataset.sk;
+                }
+            }
+        }
+
+        async function refreshSelectedInmueble({ showSuccess = true } = {}) {
+            const option = getSelectedInmuebleOption();
+            if (!option || !option.value) {
+                throw new Error('Selecciona un inmueble para refrescar la información.');
+            }
+            const data = await fetchInmuebleData(option);
+            applyInmuebleDataToUI(data, option);
+            updateEditButtonState();
+            if (showSuccess) {
+                Swal.fire({
+                    icon: 'success',
+                    title: 'Renta actualizada',
+                    text: 'El monto se sincronizó desde el inmueble.',
+                });
+            }
+            return data;
+        }
+
         const inmueblePkHidden = document.createElement('input');
         inmueblePkHidden.type = 'hidden';
         inmueblePkHidden.name = 'inmueble_pk';
@@ -398,6 +767,7 @@ $siguienteNumero = $siguienteNumero ?? '';
             actualizarComision();
             inmueblePkHidden.value = '';
             inmuebleSkHidden.value = '';
+            updateEditButtonState();
         }
 
         function resetInmuebleSelect(showLoading = false) {
@@ -407,6 +777,7 @@ $siguienteNumero = $siguienteNumero ?? '';
                 inmuebleSel.innerHTML = '<option value="">- SELECCIONA UN INMUEBLE -</option>';
             }
             clearInmuebleDetails();
+            updateEditButtonState();
         }
 
         function populateInmuebleOptions(inmuebles) {
@@ -444,7 +815,165 @@ $siguienteNumero = $siguienteNumero ?? '';
                 option.dataset.tipo = inmueble.tipo ?? '';
                 inmuebleSel.appendChild(option);
             });
+
+            updateEditButtonState();
         }
+
+        refreshRentBtn?.addEventListener('click', async () => {
+            const option = getSelectedInmuebleOption();
+            if (!option || !option.value) {
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'Selecciona un inmueble',
+                    text: 'Debes elegir un inmueble para refrescar la renta.',
+                });
+                return;
+            }
+
+            refreshRentBtn.disabled = true;
+            refreshRentBtn.classList.add('opacity-60', 'cursor-not-allowed');
+            const icon = refreshRentBtn.querySelector('svg');
+            icon?.classList.add('animate-spin');
+
+            try {
+                await refreshSelectedInmueble({ showSuccess: true });
+            } catch (error) {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Error',
+                    text: error instanceof Error ? error.message : 'No se pudo refrescar la renta.',
+                });
+            } finally {
+                refreshRentBtn.disabled = false;
+                refreshRentBtn.classList.remove('opacity-60', 'cursor-not-allowed');
+                icon?.classList.remove('animate-spin');
+            }
+        });
+
+        editInmuebleBtn?.addEventListener('click', async () => {
+            const arrendadorValue = arrendadorSel?.value || '';
+            if (!arrendadorValue) {
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'Selecciona un arrendador',
+                    text: 'Debes elegir un arrendador antes de editar el inmueble.',
+                });
+                return;
+            }
+
+            const option = getSelectedInmuebleOption();
+            if (!option || !option.value) {
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'Selecciona un inmueble',
+                    text: 'Debes elegir un inmueble para editarlo.',
+                });
+                return;
+            }
+
+            toggleEditModal(true);
+            setEditModalLoading(true);
+
+            try {
+                const data = await fetchInmuebleData(option);
+                fillEditModalForm(data, arrendadorValue, option);
+                setEditModalLoading(false);
+            } catch (error) {
+                setEditModalLoading(false);
+                toggleEditModal(false);
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Error',
+                    text: error instanceof Error ? error.message : 'No se pudo cargar el inmueble.',
+                });
+            }
+        });
+
+        editModalClose?.addEventListener('click', closeEditModal);
+        editModalCancel?.addEventListener('click', closeEditModal);
+        editModal?.addEventListener('click', (event) => {
+            if (event.target === editModal) {
+                closeEditModal();
+            }
+        });
+
+        editModalForm?.addEventListener('submit', async (event) => {
+            event.preventDefault();
+
+            const arrendadorValue = arrendadorSel?.value || '';
+            if (!arrendadorValue) {
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'Selecciona un arrendador',
+                    text: 'Debes elegir un arrendador antes de guardar el inmueble.',
+                });
+                return;
+            }
+
+            const option = getSelectedInmuebleOption();
+            if (!option || !option.value) {
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'Selecciona un inmueble',
+                    text: 'Debes elegir un inmueble para actualizarlo.',
+                });
+                return;
+            }
+
+            const formData = new FormData(editModalForm);
+            formData.set('pk', arrendadorValue);
+            formData.set('id_arrendador', arrendadorValue);
+            const asesorValue = asesorSel?.value || '';
+            if (asesorValue) {
+                formData.set('asesor_pk', asesorValue);
+            }
+
+            if (editModalSubmit) {
+                editModalSubmit.disabled = true;
+                editModalSubmit.classList.add('opacity-75');
+            }
+
+            try {
+                const response = await fetch(`${BASE_URL}/inmuebles/update`, {
+                    method: 'POST',
+                    body: formData,
+                    headers: { 'Accept': 'application/json' },
+                });
+
+                let result = null;
+                try {
+                    result = await response.json();
+                } catch (parseError) {
+                    result = null;
+                }
+
+                if (!response.ok || !result?.ok) {
+                    const message = result?.mensaje || result?.error || 'No se pudo actualizar el inmueble.';
+                    throw new Error(message);
+                }
+
+                closeEditModal();
+                await refreshSelectedInmueble({ showSuccess: false });
+                Swal.fire({
+                    icon: 'success',
+                    title: 'Inmueble actualizado',
+                    text: 'Los cambios se guardaron correctamente.',
+                });
+            } catch (error) {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Error',
+                    text: error instanceof Error ? error.message : 'No se pudo actualizar el inmueble.',
+                });
+            } finally {
+                if (editModalSubmit) {
+                    editModalSubmit.disabled = false;
+                    editModalSubmit.classList.remove('opacity-75');
+                }
+            }
+        });
+
+        updateEditButtonState();
 
         asesorSel.addEventListener('change', async function() {
             const id = this.value;
@@ -462,6 +991,7 @@ $siguienteNumero = $siguienteNumero ?? '';
                 opts += `<option value="${a.id}">${a.nombre_arrendador}</option>`;
             });
             arrendadorSel.innerHTML = opts;
+            updateEditButtonState();
         });
 
         arrendadorSel.addEventListener('change', async function() {
@@ -470,6 +1000,7 @@ $siguienteNumero = $siguienteNumero ?? '';
 
             if (!id) {
                 resetInmuebleSelect();
+                updateEditButtonState();
                 return;
             }
 
@@ -487,6 +1018,7 @@ $siguienteNumero = $siguienteNumero ?? '';
             const id = this.value;
             if (!id) {
                 clearInmuebleDetails();
+                updateEditButtonState();
                 return;
             }
             const option = this.options[this.selectedIndex];
@@ -511,6 +1043,7 @@ $siguienteNumero = $siguienteNumero ?? '';
 
             inmueblePkHidden.value = pk;
             inmuebleSkHidden.value = sk;
+            updateEditButtonState();
         });
 
         tipoPolizaSel.addEventListener('change', function() {
