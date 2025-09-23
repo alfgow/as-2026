@@ -143,7 +143,7 @@ class InmuebleModel extends Database
         $idAsesor      = isset($item['id_asesor']) ? (int) $item['id_asesor'] : null;
         $pk            = $idArrendador > 0 ? self::ARRENDADOR_PK_PREFIX . $idArrendador : '';
         $sk            = $id > 0 ? self::INMUEBLE_SK_PREFIX . $id : '';
-        $mantenimiento = strtoupper((string) ($item['mantenimiento'] ?? 'NO'));
+        $mantenimiento = $this->normalizarMantenimiento((string) ($item['mantenimiento'] ?? 'NO'));
         $mascotas      = strtoupper((string) ($item['mascotas'] ?? 'NO'));
 
         $inmueble = [
@@ -156,7 +156,7 @@ class InmuebleModel extends Database
             'tipo'                => (string) ($item['tipo'] ?? ''),
             'direccion_inmueble'  => (string) ($item['direccion_inmueble'] ?? ''),
             'renta'               => $this->formatearMonto($item['renta'] ?? null),
-            'mantenimiento'       => $mantenimiento === 'SI' ? 'SI' : 'NO',
+            'mantenimiento'       => $mantenimiento,
             'monto_mantenimiento' => $this->formatearMonto($item['monto_mantenimiento'] ?? null),
             'deposito'            => $this->formatearMonto($item['deposito'] ?? null),
             'estacionamiento'     => (int) ($item['estacionamiento'] ?? 0),
@@ -169,6 +169,23 @@ class InmuebleModel extends Database
         ];
 
         return $inmueble;
+    }
+
+    private function normalizarMantenimiento(string $valor): string
+    {
+        $normalizado = strtoupper(str_replace(' ', '_', trim($valor)));
+
+        switch ($normalizado) {
+            case 'SI':
+                return 'Si';
+            case 'NO':
+                return 'No';
+            case 'NO_APLICA':
+            case 'NA':
+                return 'na';
+            default:
+                return 'No';
+        }
     }
 
     /**
