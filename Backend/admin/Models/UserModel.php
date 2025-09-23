@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace App\Models;
 
 require_once __DIR__ . '/../Core/Database.php';
+require_once __DIR__ . '/../Helpers/TextHelper.php';
 
 use App\Core\Database;
+use App\Helpers\TextHelper;
 use PDO;
 use RuntimeException;
 
@@ -88,10 +90,10 @@ class UserModel extends Database
 
         $stmt = $this->db->prepare($sql);
         $stmt->execute([
-            ':nombre'    => (string)($data['nombre_usuario'] ?? ''),
-            ':apellidos' => (string)($data['apellidos_usuario'] ?? ''),
+            ':nombre'    => TextHelper::titleCase((string)($data['nombre_usuario'] ?? '')),
+            ':apellidos' => TextHelper::titleCase((string)($data['apellidos_usuario'] ?? '')),
             ':usuario'   => $username,
-            ':corto'     => (string)($data['corto_usuario'] ?? ''),
+            ':corto'     => TextHelper::titleCase((string)($data['corto_usuario'] ?? '')),
             ':mail'      => $email,
             ':password'  => $password,
             ':tipo'      => (int)($data['tipo_usuario'] ?? 0),

@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace App\Models;
 
 require_once __DIR__ . '/../Core/Database.php';
+require_once __DIR__ . '/../Helpers/TextHelper.php';
 
 use App\Core\Database;
+use App\Helpers\TextHelper;
 use InvalidArgumentException;
 use PDO;
 
@@ -347,7 +349,8 @@ class InmuebleModel extends Database
         } else {
             $stmt->bindValue(':id_asesor', null, PDO::PARAM_NULL);
         }
-        $stmt->bindValue(':direccion', (string) $data['direccion_inmueble']);
+        $direccion = TextHelper::titleCase((string) ($data['direccion_inmueble'] ?? ''));
+        $stmt->bindValue(':direccion', $direccion);
         $stmt->bindValue(':tipo', (string) $data['tipo']);
         $stmt->bindValue(':renta', (string) $data['renta']);
         $stmt->bindValue(':mantenimiento', (string) $data['mantenimiento']);
@@ -392,7 +395,8 @@ class InmuebleModel extends Database
         } else {
             $stmt->bindValue(':id_asesor', null, PDO::PARAM_NULL);
         }
-        $stmt->bindValue(':direccion', (string) $data['direccion_inmueble']);
+        $direccion = TextHelper::titleCase((string) ($data['direccion_inmueble'] ?? ''));
+        $stmt->bindValue(':direccion', $direccion);
         $stmt->bindValue(':tipo', (string) $data['tipo']);
         $stmt->bindValue(':renta', (string) $data['renta']);
         $stmt->bindValue(':mantenimiento', (string) $data['mantenimiento']);

@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace App\Models;
 
 require_once __DIR__ . '/../Core/Database.php';
+require_once __DIR__ . '/../Helpers/TextHelper.php';
 
 use App\Core\Database;
+use App\Helpers\TextHelper;
 use PDO;
 use RuntimeException;
 
@@ -197,7 +199,7 @@ class AsesorModel extends Database
      */
     public function create(array $data): int
     {
-        $nombre = trim((string) ($data['nombre_asesor'] ?? ''));
+        $nombre = TextHelper::titleCase(trim((string) ($data['nombre_asesor'] ?? '')));
         $email  = mb_strtolower(trim((string) ($data['email'] ?? '')), 'UTF-8');
         $cel    = trim((string) ($data['celular'] ?? ''));
 
@@ -234,7 +236,7 @@ class AsesorModel extends Database
      */
     public function update(int $id, array $data): bool
     {
-        $nombre = trim((string) ($data['nombre_asesor'] ?? ''));
+        $nombre = TextHelper::titleCase(trim((string) ($data['nombre_asesor'] ?? '')));
         $email  = mb_strtolower(trim((string) ($data['email'] ?? '')), 'UTF-8');
         $cel    = trim((string) ($data['celular'] ?? ''));
 

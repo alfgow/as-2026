@@ -6,10 +6,12 @@ namespace App\Models;
 
 require_once __DIR__ . '/../Core/Database.php';
 require_once __DIR__ . '/../Helpers/S3Helper.php';
+require_once __DIR__ . '/../Helpers/TextHelper.php';
 require_once __DIR__ . '/AsesorModel.php';
 
 use App\Core\Database;
 use App\Helpers\S3Helper;
+use App\Helpers\TextHelper;
 use PDO;
 
 class InquilinoModel extends Database
@@ -77,6 +79,23 @@ class InquilinoModel extends Database
             return null;
         }
         return json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     * @param array<int, string>   $keys
+     *
+     * @return array<string, mixed>
+     */
+    private function applyTitleCase(array $data, array $keys): array
+    {
+        foreach ($keys as $key) {
+            if (array_key_exists($key, $data)) {
+                $data[$key] = TextHelper::titleCase((string) $data[$key]);
+            }
+        }
+
+        return $data;
     }
 
     private function decodeJson($value): array
@@ -707,6 +726,13 @@ class InquilinoModel extends Database
             return false;
         }
 
+        $data = $this->applyTitleCase($data, [
+            'nombre_inquilino',
+            'apellidop_inquilino',
+            'apellidom_inquilino',
+            'conyuge',
+        ]);
+
         $campos = [
             'tipo', 'nombre_inquilino', 'apellidop_inquilino', 'apellidom_inquilino',
             'email', 'celular', 'estadocivil', 'nacionalidad', 'curp', 'rfc',
@@ -740,6 +766,7 @@ class InquilinoModel extends Database
 
         $datos = array_intersect_key($domicilio, $this->defaultDireccion());
         $datos = array_map(static fn($v) => (string) $v, $datos);
+        $datos = $this->applyTitleCase($datos, ['calle', 'colonia', 'alcaldia', 'ciudad']);
 
         $stmt = $this->db->prepare('SELECT id FROM inquilinos_direccion WHERE id_inquilino = :id LIMIT 1');
         $stmt->execute([':id' => $id]);
@@ -778,6 +805,7 @@ class InquilinoModel extends Database
 
         $datos = array_intersect_key($trabajo, $this->defaultTrabajo());
         $datos = array_map(static fn($v) => (string) $v, $datos);
+        $datos = $this->applyTitleCase($datos, ['empresa', 'direccion_empresa', 'nombre_jefe']);
 
         $stmt = $this->db->prepare('SELECT id FROM inquilinos_trabajo WHERE id_inquilino = :id LIMIT 1');
         $stmt->execute([':id' => $id]);
@@ -816,6 +844,14 @@ class InquilinoModel extends Database
 
         $datos = array_intersect_key($fiador, $this->defaultFiador());
         $datos = array_map(static fn($v) => (string) $v, $datos);
+        $datos = $this->applyTitleCase($datos, [
+            'calle_inmueble',
+            'colonia_inmueble',
+            'alcaldia_inmueble',
+            'estado_inmueble',
+            'nombre_notario',
+            'estado_notario',
+        ]);
 
         $stmt = $this->db->prepare('SELECT id FROM inquilinos_fiador WHERE id_inquilino = :id LIMIT 1');
         $stmt->execute([':id' => $id]);
@@ -854,6 +890,7 @@ class InquilinoModel extends Database
 
         $datos = array_intersect_key($historial, $this->defaultHistorial());
         $datos = array_map(static fn($v) => (string) $v, $datos);
+        $datos = $this->applyTitleCase($datos, ['arrendador_actual']);
 
         $stmt = $this->db->prepare('SELECT id FROM inquilinos_historial_vivienda WHERE id_inquilino = :id LIMIT 1');
         $stmt->execute([':id' => $id]);
