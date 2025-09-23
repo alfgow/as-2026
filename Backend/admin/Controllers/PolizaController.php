@@ -917,15 +917,19 @@ TXT;
         $set('TIPO_ID_ARRENDADOR', $normalizarTipoIdentificacion($poliza['tipo_id_arrendador'] ?? ''));
         $set('NUM_ID_ARRENDADOR',  $mayus($poliza['num_id_arrendador'] ?? ''));
         $set('DIRECCION_ARRENDADOR', $mayus($poliza['direccion_arrendador'] ?? ''));
+        $set('NACIONALIDAD_ARRENDADOR', $mayus(trim((string)($poliza['nacionalidad_arrendador'] ?? ''))));
 
         $set('TIPO_ID_ARRENDATARIO', $normalizarTipoIdentificacion($poliza['tipo_id_inquilino'] ?? ''));
         $set('NUM_ID_ARRENDATARIO', $mayus($poliza['num_id_inquilino'] ?? ''));
+        $set('NACIONALIDAD_ARRENDATARIO', $mayus(trim((string)($poliza['nacionalidad_inquilino'] ?? ''))));
 
         $set('TIPO_ID_OBLIGADO', $normalizarTipoIdentificacion($poliza['tipo_id_obligado'] ?? ''));
         $set('NUM_ID_OBLIGADO',  $mayus($poliza['num_id_obligado'] ?? ''));
+        $set('NACIONALIDAD_OBLIGADO', $mayus(trim((string)($poliza['nacionalidad_obligado'] ?? ''))));
 
         $set('TIPO_ID_FIADOR', $normalizarTipoIdentificacion($poliza['tipo_id_fiador'] ?? ''));
         $set('NUM_ID_FIADOR',  $mayus($poliza['num_id_fiador'] ?? ''));
+        $set('NACIONALIDAD_FIADOR', $mayus(trim((string)($poliza['nacionalidad_fiador'] ?? ''))));
 
         $set('monto_renta',         $montoEnNumeroYTexto((float)($poliza['monto_renta'] ?? 0)));
         $set('monto_mantenimiento', $montoEnNumeroYTexto((float)($poliza['monto_mantenimiento'] ?? 0)));
