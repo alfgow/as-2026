@@ -936,6 +936,58 @@ TXT;
         $set('MASCOTAS',            $mayus($mascotasTexto));
         $set('CLAUSULA_MTTO', $mayus($clausulaMtto));
 
+        if ($tipoContratoKey === 'fiador_pf') {
+            $dirPartes = [];
+            $append = function (string $campo) use (&$dirPartes, $poliza): void {
+                $valor = trim((string)($poliza[$campo] ?? ''));
+                if ($valor !== '') {
+                    $dirPartes[] = $valor;
+                }
+            };
+
+            $append('calle_inmueble');
+            $append('num_ext_inmueble');
+
+            $numInt = trim((string)($poliza['num_int_inmueble'] ?? ''));
+            if ($numInt !== '') {
+                $dirPartes[] = $numInt;
+            }
+
+            $append('colonia_inmueble');
+            $append('alcaldia_inmueble');
+            $append('estado_inmueble');
+
+            $dirGarantia = $dirPartes !== []
+                ? mb_strtoupper(implode(' ', $dirPartes), 'UTF-8')
+                : 'N/A';
+
+            $normaliza = function (string $campo) use ($poliza, $mayus): string {
+                $valor = trim((string)($poliza[$campo] ?? ''));
+                if ($valor === '') {
+                    return 'N/A';
+                }
+
+                return $mayus($valor);
+            };
+
+            $fechaEscritura = trim((string)($poliza['fecha_escritura'] ?? ''));
+            if ($fechaEscritura !== '') {
+                $fechaObj = date_create($fechaEscritura);
+                if ($fechaObj instanceof DateTime) {
+                    $fechaEscritura = $fechaObj->format('d/m/Y');
+                }
+            }
+            $fechaEscritura = $fechaEscritura !== '' ? $mayus($fechaEscritura) : 'N/A';
+
+            $set('DIR_GARANTIA', $dirGarantia);
+            $set('ESCRITURA', $normaliza('numero_escritura'));
+            $set('FECHA_ESCRITURA', $fechaEscritura);
+            $set('NOMBRE_NOTARIO', $normaliza('nombre_notario'));
+            $set('NUM_NOTARIO', $normaliza('numero_notario'));
+            $set('CIUDAD_NOTARIO', $normaliza('ciudad_notario'));
+            $set('FOLIO_REAL', $normaliza('folio_real'));
+        }
+
         // Vigencia
         $fechaInicio   = $poliza['fecha_poliza'] ?? date('Y-m-d');
         $vigenciaTexto = $poliza['vigencia'] ?: (date('d/m/Y', strtotime($fechaInicio)) . ' al ' . date('d/m/Y', strtotime('+1 year -1 day', strtotime($fechaInicio))));
