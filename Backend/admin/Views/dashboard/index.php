@@ -287,7 +287,7 @@ use App\Helpers\TextHelper;
                     // Codificar en UTF-8 antes de urlencode
                     $mensajeUtf8 = mb_convert_encoding($mensaje, 'UTF-8', 'auto');
 
-                    $waUrl = 'https://wa.me/+52' . $asesorTelefono . '?text=' . urlencode($mensaje);
+                    $waUrl = 'https://wa.me/+52' . $asesorTelefono . '?text=' . urlencode($mensajeUtf8);
 
 
                     $fechaVencimiento = null;
