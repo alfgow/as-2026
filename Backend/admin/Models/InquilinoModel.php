@@ -133,8 +133,11 @@ class InquilinoModel extends Database
             'colonia_inmueble'  => '',
             'alcaldia_inmueble' => '',
             'estado_inmueble'   => '',
+            'cp_inmueble'       => '',
             'numero_escritura'  => '',
+            'fecha_escritura'   => '',
             'numero_notario'    => '',
+            'nombre_notario'    => '',
             'estado_notario'    => '',
             'folio_real'        => '',
             's3_key'            => '',
@@ -270,8 +273,11 @@ class InquilinoModel extends Database
             'colonia_inmueble'  => (string) ($row['colonia_inmueble'] ?? ''),
             'alcaldia_inmueble' => (string) ($row['alcaldia_inmueble'] ?? ''),
             'estado_inmueble'   => (string) ($row['estado_inmueble'] ?? ''),
+            'cp_inmueble'       => (string) ($row['cp_inmueble'] ?? ''),
             'numero_escritura'  => (string) ($row['numero_escritura'] ?? ''),
+            'fecha_escritura'   => (string) ($row['fecha_escritura'] ?? ''),
             'numero_notario'    => (string) ($row['numero_notario'] ?? ''),
+            'nombre_notario'    => (string) ($row['nombre_notario'] ?? ''),
             'estado_notario'    => (string) ($row['estado_notario'] ?? ''),
             'folio_real'        => (string) ($row['folio_real'] ?? ''),
             's3_key'            => (string) ($row['s3_key'] ?? ''),
@@ -829,8 +835,8 @@ class InquilinoModel extends Database
             return $stmt->execute($params);
         }
 
-        $sql = 'INSERT INTO inquilinos_fiador (id_inquilino, calle_inmueble, num_ext_inmueble, num_int_inmueble, colonia_inmueble, alcaldia_inmueble, estado_inmueble, numero_escritura, numero_notario, estado_notario, folio_real, s3_key)
-                VALUES (:id, :calle_inmueble, :num_ext_inmueble, :num_int_inmueble, :colonia_inmueble, :alcaldia_inmueble, :estado_inmueble, :numero_escritura, :numero_notario, :estado_notario, :folio_real, :s3_key)';
+        $sql = 'INSERT INTO inquilinos_fiador (id_inquilino, calle_inmueble, num_ext_inmueble, num_int_inmueble, colonia_inmueble, alcaldia_inmueble, estado_inmueble, cp_inmueble, numero_escritura, fecha_escritura, numero_notario, nombre_notario, estado_notario, folio_real, s3_key)
+                VALUES (:id, :calle_inmueble, :num_ext_inmueble, :num_int_inmueble, :colonia_inmueble, :alcaldia_inmueble, :estado_inmueble, :cp_inmueble, :numero_escritura, :fecha_escritura, :numero_notario, :nombre_notario, :estado_notario, :folio_real, :s3_key)';
         $params = array_merge([':id' => $id], array_combine(
             array_map(static fn($c) => ':' . $c, array_keys($datos)),
             array_values($datos)

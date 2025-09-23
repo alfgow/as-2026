@@ -367,8 +367,11 @@ class InquilinoController
             'colonia_inmueble' => trim((string)($_POST['colonia_inmueble'] ?? '')),
             'alcaldia_inmueble'=> trim((string)($_POST['alcaldia_inmueble'] ?? '')),
             'estado_inmueble'  => trim((string)($_POST['estado_inmueble'] ?? '')),
+            'cp_inmueble'      => trim((string)($_POST['cp_inmueble'] ?? '')),
             'numero_escritura' => trim((string)($_POST['numero_escritura'] ?? '')),
+            'fecha_escritura'  => trim((string)($_POST['fecha_escritura'] ?? '')),
             'numero_notario'   => trim((string)($_POST['numero_notario'] ?? '')),
+            'nombre_notario'   => trim((string)($_POST['nombre_notario'] ?? '')),
             'estado_notario'   => trim((string)($_POST['estado_notario'] ?? '')),
             'folio_real'       => trim((string)($_POST['folio_real'] ?? '')),
         ];
@@ -379,6 +382,7 @@ class InquilinoController
             'colonia_inmueble',
             'alcaldia_inmueble',
             'estado_inmueble',
+            'cp_inmueble',
         ];
 
         foreach ($camposRequeridos as $campo) {
