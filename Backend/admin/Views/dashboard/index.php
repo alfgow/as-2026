@@ -274,18 +274,21 @@ use App\Helpers\TextHelper;
                     }
 
                     $rentaMonto = TextHelper::formatCurrency($v['monto_renta'] ?? 0);
-
                     $vigenciaTextoMostrar = $vigenciaTexto !== '' ? $vigenciaTexto : 'Sin vigencia';
 
-                    $mensaje = "🔔 *Recordatorio de vencimiento*\n"
-                        . "🏠 Dirección: {$direccion}\n"
+                    $mensaje = "📌  *Notificación automática de vencimiento*\n"
+                        . "🌐 Dirección: {$direccion}\n"
                         . "👤 Arrendador: {$arrendador}\n"
-                        . "🧑‍💼 Inquilino: {$nombreInquilino}\n"
-                        . "🤝 Obligado Solidario: {$obligadoSolidario}\n"
-                        . "💵 Renta: {$rentaMonto}\n"
-                        . "📅 Vigencia: {$vigenciaTextoMostrar}";
+                        . "🗝 Inquilino: {$nombreInquilino}\n"
+                        . "🔐 Obligado Solidario: {$obligadoSolidario}\n"
+                        . "💲 Renta: {$rentaMonto}\n"
+                        . "🗓 Vigencia: {$vigenciaTextoMostrar}";
 
-                    $waUrl = 'https://wa.me/+52' . $asesorTelefono . '?text=' . rawurlencode($mensaje);
+                    // Codificar en UTF-8 antes de urlencode
+                    $mensajeUtf8 = mb_convert_encoding($mensaje, 'UTF-8', 'auto');
+
+                    $waUrl = 'https://wa.me/+52' . $asesorTelefono . '?text=' . urlencode($mensaje);
+
 
                     $fechaVencimiento = null;
                     if (!empty($v['fecha_fin'])) {
