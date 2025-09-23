@@ -200,12 +200,11 @@ document.addEventListener("DOMContentLoaded", () => {
 					/\/$/,
 					""
 				)}/resultado`;
-			} catch (err) {
-				console.error(err);
-				Swal.fire({
-					icon: "error",
-					title: "Error de validación",
-					text: "Hubo un problema al validar la identidad.",
+                        } catch (err) {
+                                Swal.fire({
+                                        icon: "error",
+                                        title: "Error de validación",
+                                        text: "Hubo un problema al validar la identidad.",
 				});
 			}
 		});

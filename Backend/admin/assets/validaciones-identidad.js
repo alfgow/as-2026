@@ -44,9 +44,9 @@ window.leerNombresApellidos = async function () {
 
 	try {
 		await recalc("kv"); // trigger en backend
-	} catch (e) {
-		console.error("Error leer nombres/apellidos:", e);
-	}
+        } catch (e) {
+                // Error al recalcular nombres, se omite registro en consola
+        }
 	if (btn) btn.disabled = false;
 };
 
@@ -57,8 +57,8 @@ window.leerCurpCic = async function () {
 
 	try {
 		await recalc("save_curp_cic"); // trigger en backend
-	} catch (e) {
-		console.error("Error leer CURP/CIC:", e);
-	}
+        } catch (e) {
+                // Error al recalcular CURP/CIC, se omite registro en consola
+        }
 	if (btn) btn.disabled = false;
 };

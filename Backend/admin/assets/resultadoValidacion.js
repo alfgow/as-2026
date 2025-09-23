@@ -181,9 +181,9 @@ window.addEventListener("DOMContentLoaded", () => {
 		document
 			.getElementById("btn-descargar-pdf")
 			.addEventListener("click", generarPdf);
-	} catch (e) {
-		console.error(e);
-	}
+        } catch (e) {
+                // Error silenciado intencionalmente
+        }
 });
 
 function fillPdfCard(data) {
@@ -260,7 +260,7 @@ window.addEventListener("DOMContentLoaded", () => {
 		document
 			.getElementById("btn-descargar-pdf")
 			.addEventListener("click", exportarPdf);
-	} catch (e) {
-		console.error(e);
-	}
+        } catch (e) {
+                // Error silenciado intencionalmente
+        }
 });

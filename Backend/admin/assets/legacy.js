@@ -69,16 +69,15 @@ if (btnValidar) {
 			document
 				.getElementById("btnPdfContainer")
 				.classList.remove("hidden");
-		} catch (err) {
-			Swal.close();
-			Swal.fire(
-				"Error de red",
-				"No se pudo cargar el JSON de pruebas",
-				"error"
-			);
-			console.error(err);
-		}
-	});
+                } catch (err) {
+                        Swal.close();
+                        Swal.fire(
+                                "Error de red",
+                                "No se pudo cargar el JSON de pruebas",
+                                "error"
+                        );
+                }
+        });
 }
 
 // --- Render de resultados de validación ---

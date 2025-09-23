@@ -26,12 +26,11 @@
 				title: "Proceso completado",
 				text: "Los resultados han sido actualizados",
 			});
-		} catch (err) {
-			console.error(err);
-			Swal.close();
-			Swal.fire({
-				icon: "error",
-				title: "Error en proceso",
+                } catch (err) {
+                        Swal.close();
+                        Swal.fire({
+                                icon: "error",
+                                title: "Error en proceso",
 				text: err.message || "No se pudo completar el proceso",
 			});
 		}

@@ -198,12 +198,11 @@ document.addEventListener("DOMContentLoaded", () => {
 					/\/$/,
 					""
 				)}/resultado`;
-			} catch (err) {
-				console.error(err);
-				Swal.fire({
-					icon: "error",
-					title: "Error en la validación",
-					text: err,
+                        } catch (err) {
+                                Swal.fire({
+                                        icon: "error",
+                                        title: "Error en la validación",
+                                        text: err,
 				});
 			}
 		});

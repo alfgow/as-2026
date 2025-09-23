@@ -71,33 +71,23 @@ document.addEventListener("DOMContentLoaded", () => {
 	}
 
 	// ---- Validación/submit del formulario ----
-	if (!form) {
-		console.warn(
-			'[login] No se encontró #form-login ni form[action$="/login"]'
-		);
-		return;
-	}
-	if (!inputUser || !inputPass) {
-		console.warn('[login] No encontré input "usuario" o "password"');
-	}
+        if (!form) {
+                return;
+        }
+        // Si el botón no fuera submit por accidente, forzamos submit del form
+        if (btn && btn.type !== "submit") {
+                btn.addEventListener("click", (e) => {
+                        e.preventDefault();
+                        form.requestSubmit();
+                });
+        }
 
-	// Si el botón no fuera submit por accidente, forzamos submit del form
-	if (btn && btn.type !== "submit") {
-		btn.addEventListener("click", (e) => {
-			e.preventDefault();
-			console.log("[login] btn click → requestSubmit()");
-			form.requestSubmit();
-		});
-	}
+        let locked = false;
+        form.addEventListener("submit", (e) => {
+                const u = ((inputUser && inputUser.value) || "").trim();
+                const p = ((inputPass && inputPass.value) || "").trim();
 
-	let locked = false;
-	form.addEventListener("submit", (e) => {
-		console.log("[login] submit disparado");
-
-		const u = ((inputUser && inputUser.value) || "").trim();
-		const p = ((inputPass && inputPass.value) || "").trim();
-
-		if (!u || !p) {
+                if (!u || !p) {
 			e.preventDefault();
 			toast("😖", "Por favor ingresa usuario y contraseña.", "warning");
 			return;
