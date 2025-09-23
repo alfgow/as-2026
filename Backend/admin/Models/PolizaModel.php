@@ -4,8 +4,9 @@ namespace App\Models;
 
 require_once __DIR__ . '/../Core/Database.php';
 
-use App\Helpers\NormalizadoHelper;
 use App\Core\Database;
+use App\Helpers\NormalizadoHelper;
+use App\Helpers\TextHelper;
 use PDO;
 
 /**
@@ -657,7 +658,11 @@ class PolizaModel extends Database
         foreach ($permitidos as $campo) {
             if (array_key_exists($campo, $data)) {
                 $campos[] = "$campo = :$campo";
-                $params[":$campo"] = $data[$campo];
+                $valor = $data[$campo];
+                if ($campo === 'direccion_inmueble') {
+                    $valor = TextHelper::titleCase((string) $valor);
+                }
+                $params[":$campo"] = $valor;
             }
         }
 
@@ -684,7 +689,11 @@ class PolizaModel extends Database
         foreach ($permitidos as $campo) {
             if (array_key_exists($campo, $data)) {
                 $campos[] = "$campo = :$campo";
-                $params[":$campo"] = $data[$campo];
+                $valor = $data[$campo];
+                if ($campo === 'direccion_inmueble') {
+                    $valor = TextHelper::titleCase((string) $valor);
+                }
+                $params[":$campo"] = $valor;
             }
         }
 
@@ -778,10 +787,11 @@ class PolizaModel extends Database
         $ok = $this->update($numero, $data);
 
         if ($ok && isset($data['direccion'])) {
+            $direccion = TextHelper::titleCase((string) $data['direccion']);
             $poliza = $this->obtenerPorNumero($numero);
             if ($poliza && !empty($poliza['id_inmueble'])) {
                 $this->updateInmueble((int)$poliza['id_inmueble'], [
-                    'direccion_inmueble' => $data['direccion']
+                    'direccion_inmueble' => $direccion
                 ]);
             }
         }

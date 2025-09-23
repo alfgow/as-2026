@@ -11,6 +11,7 @@ require_once __DIR__ . '/../Helpers/SlugHelper.php';
 use App\Core\Database;
 use App\Helpers\NormalizadoHelper;
 use App\Helpers\SlugHelper;
+use App\Helpers\TextHelper;
 use RuntimeException;
 
 class ArrendadorModel extends Database
@@ -262,7 +263,10 @@ class ArrendadorModel extends Database
 
         $id = (int)$matches[1];
 
-        $slug = $this->buildSlug($id, $data['nombre_arrendador'] ?? '');
+        $nombreArrendador    = TextHelper::titleCase((string)($data['nombre_arrendador'] ?? ''));
+        $direccionArrendador = TextHelper::titleCase((string)($data['direccion_arrendador'] ?? ''));
+
+        $slug = $this->buildSlug($id, $nombreArrendador);
 
         $sql = 'UPDATE arrendadores SET
                     nombre_arrendador    = :nombre_arrendador,
@@ -278,10 +282,10 @@ class ArrendadorModel extends Database
                 WHERE id = :id';
 
         $this->execute($sql, [
-            ':nombre_arrendador' => $data['nombre_arrendador'] ?? '',
+            ':nombre_arrendador' => $nombreArrendador,
             ':email'             => $data['email'] ?? '',
             ':celular'           => $data['celular'] ?? '',
-            ':direccion'         => $data['direccion_arrendador'] ?? '',
+            ':direccion'         => $direccionArrendador,
             ':estadocivil'       => $data['estadocivil'] ?? '',
             ':nacionalidad'      => $data['nacionalidad'] ?? '',
             ':rfc'               => $data['rfc'] ?? '',
