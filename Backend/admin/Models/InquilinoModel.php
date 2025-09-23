@@ -907,7 +907,86 @@ class InquilinoModel extends Database
 
     public function guardarValidacionesVerificaMex(int $idInquilino, array $campos): bool
     {
-        return $this->saveValidation($idInquilino, 'verificamex', 2, ['campos' => $campos], null);
+        $idInquilino = max(0, $idInquilino);
+        if ($idInquilino <= 0 || $campos === []) {
+            return false;
+        }
+
+        $validacionIdJson = $campos['validacion_id_json'] ?? null;
+        if (is_array($validacionIdJson)) {
+            $status = $validacionIdJson['status'] ?? [];
+            $statusData = filter_var($status['data'] ?? null, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+            $statusRenapo = filter_var($status['renapo'] ?? null, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+
+            $similaridad = $validacionIdJson['nombre']['similaridad'] ?? null;
+            $similaridad = is_numeric($similaridad) ? (float) $similaridad : null;
+
+            $faceComparison = $validacionIdJson['faceComparison'] ?? [];
+            $faceResult = filter_var($faceComparison['result'] ?? null, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+
+            if ($statusData === true && $statusRenapo === true && $faceResult === true && $similaridad !== null && $similaridad > 90.0) {
+                $campos['proceso_validacion_id'] = 1;
+            }
+        }
+
+        $this->ensureValidacionesRow($idInquilino);
+
+        $set = [];
+        $params = [];
+        $index = 0;
+
+        foreach ($campos as $columna => $valor) {
+            if (!is_string($columna) || $columna === '') {
+                continue;
+            }
+
+            if (!preg_match('/^[a-zA-Z0-9_]+$/', $columna)) {
+                continue;
+            }
+
+            if (is_array($valor)) {
+                $valor = $this->encodeJson($valor);
+            }
+
+            $placeholder = 'v' . $index++;
+            $set[] = sprintf('%s = :%s', $columna, $placeholder);
+            $params[$placeholder] = $valor;
+        }
+
+        if ($set === []) {
+            return false;
+        }
+
+        $sql = sprintf(
+            'UPDATE inquilinos_validaciones SET %s, updated_at = NOW() WHERE id_inquilino = :id',
+            implode(', ', $set)
+        );
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->bindValue(':id', $idInquilino, PDO::PARAM_INT);
+
+        foreach ($params as $placeholder => $valor) {
+            $paramName = ':' . $placeholder;
+
+            if ($valor === null) {
+                $stmt->bindValue($paramName, null, PDO::PARAM_NULL);
+                continue;
+            }
+
+            if (is_bool($valor)) {
+                $stmt->bindValue($paramName, $valor ? 1 : 0, PDO::PARAM_INT);
+                continue;
+            }
+
+            if (is_int($valor)) {
+                $stmt->bindValue($paramName, $valor, PDO::PARAM_INT);
+                continue;
+            }
+
+            $stmt->bindValue($paramName, (string) $valor, PDO::PARAM_STR);
+        }
+
+        return $stmt->execute();
     }
 
     public function guardarValidacionVerificaMex(int $idInquilino, int $proceso, array $json, string $resumen): bool
