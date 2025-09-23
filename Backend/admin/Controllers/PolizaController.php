@@ -989,7 +989,28 @@ TXT;
             if ($fechaEscrituraRaw !== '') {
                 $fechaObj = date_create($fechaEscrituraRaw);
                 if ($fechaObj instanceof DateTime) {
-                    $fechaEscritura = $mayus($fechaObj->format('d/m/Y'));
+                    $formatterMes = new IntlDateFormatter(
+                        'es_MX',
+                        IntlDateFormatter::FULL,
+                        IntlDateFormatter::NONE,
+                        'America/Mexico_City',
+                        IntlDateFormatter::GREGORIAN,
+                        'MMMM'
+                    );
+
+                    $mesFormateado = $formatterMes->format($fechaObj);
+
+                    if ($mesFormateado !== false) {
+                        $fechaFormateada = sprintf(
+                            '%s DE %s DE %s',
+                            $fechaObj->format('d'),
+                            $mesFormateado,
+                            $fechaObj->format('Y')
+                        );
+                        $fechaEscritura = $mayus($fechaFormateada);
+                    } else {
+                        $fechaEscritura = $mayus($fechaObj->format('d/m/Y'));
+                    }
                 } else {
                     $fechaEscritura = $mayus($fechaEscrituraRaw);
                 }
