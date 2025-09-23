@@ -276,13 +276,16 @@ use App\Helpers\TextHelper;
                     $rentaMonto = TextHelper::formatCurrency($v['monto_renta'] ?? 0);
                     $vigenciaTextoMostrar = $vigenciaTexto !== '' ? $vigenciaTexto : 'Sin vigencia';
 
-                    $mensaje = "📌  *Notificación automática de vencimiento*\n"
-                        . "🌐 Dirección: {$direccion}\n"
+                    $mensaje = "📌  *Notificación automática de vencimiento* 📌\n"
+                        . "-----------------------------------\n"
+                        . "📄 Póliza No.: {$v['numero_poliza']}\n"
+                        . "🏠 Dirección: {$direccion}\n"
                         . "👤 Arrendador: {$arrendador}\n"
-                        . "🗝 Inquilino: {$nombreInquilino}\n"
+                        . "🪪 Inquilino: {$nombreInquilino}\n"
                         . "🔐 Obligado Solidario: {$obligadoSolidario}\n"
                         . "💲 Renta: {$rentaMonto}\n"
-                        . "🗓 Vigencia: {$vigenciaTextoMostrar}";
+                        . "🗓 Vigencia: {$vigenciaTextoMostrar}"
+                        . "-----------------------------------\n";
 
                     // Codificar en UTF-8 antes de urlencode
                     $mensajeUtf8 = mb_convert_encoding($mensaje, 'UTF-8', 'auto');
