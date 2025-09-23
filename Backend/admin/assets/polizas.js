@@ -99,6 +99,7 @@
                 const montoPoliza = document.getElementById("monto-poliza");
                 const fechaInicio = document.getElementById("fecha-inicio");
                 const fechaFin = document.getElementById("fecha-fin");
+                const vigenciaText = document.getElementById("vigencia-texto");
                 const numeroPolizaInput = form.querySelector('input[name="numero_poliza"]');
 
                 let montoPolizaEditadoManualmente = false;
@@ -259,8 +260,24 @@
 
                 // Fechas
                 fechaInicio?.addEventListener("change", () =>
-                        setFechaFinYVigencia({ inicioEl: fechaInicio, finEl: fechaFin })
+                        setFechaFinYVigencia({
+                                inicioEl: fechaInicio,
+                                finEl: fechaFin,
+                                vigenciaEl: vigenciaText,
+                        })
                 );
+                fechaFin?.addEventListener("change", () =>
+                        setFechaFinYVigencia({
+                                inicioEl: fechaInicio,
+                                finEl: fechaFin,
+                                vigenciaEl: vigenciaText,
+                        })
+                );
+                setFechaFinYVigencia({
+                        inicioEl: fechaInicio,
+                        finEl: fechaFin,
+                        vigenciaEl: vigenciaText,
+                });
                 // inicial
                 actualizarDisplayRenta(obtenerRentaLimpia(rentaHidden?.value));
                 if (!montoPoliza?.value) {
