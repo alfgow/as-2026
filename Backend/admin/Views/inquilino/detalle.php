@@ -464,7 +464,12 @@ z" />
                 </div>
                 <div>
                     <span class="block text-gray-200 font-semibold">Sitio web de la empresa:</span>
-                    <a href="<?= $profile['trabajo']['web_empresa'] ?>" target="_blank" class="text-blue-300 underline hover:text-blue-100 transition"><?= $profile['trabajo']['web_empresa'] ?></a>
+                    <a href="<?= $profile['trabajo']['web_empresa'] ?>"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="inline-flex items-center justify-center px-4 py-2 mt-2 text-sm font-semibold text-white bg-gradient-to-r from-indigo-500 via-pink-500 to-fuchsia-500 rounded-lg shadow w-full sm:w-auto text-center break-all max-w-full transition-transform duration-200 hover:scale-[1.02] hover:from-indigo-600 hover:via-pink-600 hover:to-fuchsia-600">
+                        <?= $profile['trabajo']['web_empresa'] ?>
+                    </a>
                 </div>
 
             </div>
@@ -867,10 +872,10 @@ z" />
                     </div>
 
                     <!-- Acciones -->
-                    <div id="selfie-actions" class="flex gap-2">
+                    <div id="selfie-actions" class="flex flex-wrap justify-center sm:justify-start gap-2 w-full">
                         <?php if (!empty($byType['selfie'])): ?>
                             <button type="button"
-                                class="bg-indigo-600 hover:bg-pink-600 text-white text-xs px-3 py-1 rounded-full"
+                                class="bg-indigo-600 hover:bg-pink-600 text-white text-xs px-3 py-1 rounded-full w-full sm:w-auto text-center"
                                 onclick="document.getElementById('dz-selfie').click()">
                                 Reemplazar
                             </button>
@@ -883,7 +888,7 @@ z" />
 
                         <?php else: ?>
                             <button type="button"
-                                class="bg-gradient-to-r from-pink-500 to-indigo-600 text-white text-xs px-3 py-2 rounded-lg shadow"
+                                class="bg-gradient-to-r from-pink-500 to-indigo-600 text-white text-xs px-3 py-2 rounded-lg shadow w-full sm:w-auto text-center"
                                 onclick="document.getElementById('dz-selfie').click()">
                                 Subir Selfie
                             </button>
@@ -927,10 +932,10 @@ z" />
                         </div>
 
                         <!-- Acciones -->
-                        <div id="ine-frente-actions" class="flex gap-2">
+                        <div id="ine-frente-actions" class="flex flex-wrap justify-center sm:justify-start gap-2 w-full">
                             <?php if (!empty($byType['ine_frontal'])): ?>
                                 <button type="button"
-                                    class="bg-indigo-600 hover:bg-pink-600 text-white text-xs px-3 py-1 rounded-full"
+                                    class="bg-indigo-600 hover:bg-pink-600 text-white text-xs px-3 py-1 rounded-full w-full sm:w-auto text-center"
                                     onclick="document.getElementById('dz-ine-frente').click()">
                                     Reemplazar
                                 </button>
@@ -942,7 +947,7 @@ z" />
                                     onchange="handleIneFrontalSelect(this)">
                             <?php else: ?>
                                 <button type="button"
-                                    class="bg-gradient-to-r from-pink-500 to-indigo-600 text-white text-xs px-3 py-2 rounded-lg shadow"
+                                    class="bg-gradient-to-r from-pink-500 to-indigo-600 text-white text-xs px-3 py-2 rounded-lg shadow w-full sm:w-auto text-center"
                                     onclick="document.getElementById('dz-ine-frente').click()">
                                     Subir INE Frente
                                 </button>
@@ -977,10 +982,10 @@ z" />
                         </div>
 
                         <!-- Acciones -->
-                        <div id="ine-reverso-actions" class="flex gap-2">
+                        <div id="ine-reverso-actions" class="flex flex-wrap justify-center sm:justify-start gap-2 w-full">
                             <?php if (!empty($byType['ine_reverso'])): ?>
                                 <button type="button"
-                                    class="bg-indigo-600 hover:bg-pink-600 text-white text-xs px-3 py-1 rounded-full"
+                                    class="bg-indigo-600 hover:bg-pink-600 text-white text-xs px-3 py-1 rounded-full w-full sm:w-auto text-center"
                                     onclick="document.getElementById('dz-ine-reverso').click()">
                                     Reemplazar
                                 </button>
@@ -992,7 +997,7 @@ z" />
                                     onchange="handleIneReversoSelect(this)">
                             <?php else: ?>
                                 <button type="button"
-                                    class="bg-gradient-to-r from-pink-500 to-indigo-600 text-white text-xs px-3 py-2 rounded-lg shadow"
+                                    class="bg-gradient-to-r from-pink-500 to-indigo-600 text-white text-xs px-3 py-2 rounded-lg shadow w-full sm:w-auto text-center"
                                     onclick="document.getElementById('dz-ine-reverso').click()">
                                     Subir INE Reverso
                                 </button>
@@ -1032,10 +1037,10 @@ z" />
                         </div>
 
                         <!-- Acciones -->
-                        <div id="pasaporte-actions" class="flex gap-2">
+                        <div id="pasaporte-actions" class="flex flex-wrap justify-center sm:justify-start gap-2 w-full">
                             <?php if (!empty($byType['pasaporte'])): ?>
                                 <button type="button"
-                                    class="bg-indigo-600 hover:bg-pink-600 text-white text-xs px-3 py-1 rounded-full"
+                                    class="bg-indigo-600 hover:bg-pink-600 text-white text-xs px-3 py-1 rounded-full w-full sm:w-auto text-center"
                                     onclick="document.getElementById('dz-pasaporte').click()">
                                     Reemplazar
                                 </button>
@@ -1047,7 +1052,7 @@ z" />
                                     onchange="handlePasaporteSelect(this)">
                             <?php else: ?>
                                 <button type="button"
-                                    class="bg-gradient-to-r from-pink-500 to-indigo-600 text-white text-xs px-3 py-2 rounded-lg shadow"
+                                    class="bg-gradient-to-r from-pink-500 to-indigo-600 text-white text-xs px-3 py-2 rounded-lg shadow w-full sm:w-auto text-center"
                                     onclick="document.getElementById('dz-pasaporte').click()">
                                     Subir Pasaporte
                                 </button>
@@ -1088,10 +1093,10 @@ z" />
                         </div>
 
                         <!-- Acciones -->
-                        <div id="forma-frontal-actions" class="flex gap-2">
+                        <div id="forma-frontal-actions" class="flex flex-wrap justify-center sm:justify-start gap-2 w-full">
                             <?php if (!empty($byType['forma_frontal'])): ?>
                                 <button type="button"
-                                    class="bg-indigo-600 hover:bg-pink-600 text-white text-xs px-3 py-1 rounded-full"
+                                    class="bg-indigo-600 hover:bg-pink-600 text-white text-xs px-3 py-1 rounded-full w-full sm:w-auto text-center"
                                     onclick="document.getElementById('dz-forma-frontal').click()">
                                     Reemplazar
                                 </button>
@@ -1103,7 +1108,7 @@ z" />
                                     onchange="handleFormaFrontalSelect(this)">
                             <?php else: ?>
                                 <button type="button"
-                                    class="bg-gradient-to-r from-pink-500 to-indigo-600 text-white text-xs px-3 py-2 rounded-lg shadow"
+                                    class="bg-gradient-to-r from-pink-500 to-indigo-600 text-white text-xs px-3 py-2 rounded-lg shadow w-full sm:w-auto text-center"
                                     onclick="document.getElementById('dz-forma-frontal').click()">
                                     Subir Frente
                                 </button>
@@ -1138,10 +1143,10 @@ z" />
                         </div>
 
                         <!-- Acciones -->
-                        <div id="forma-reverso-actions" class="flex gap-2">
+                        <div id="forma-reverso-actions" class="flex flex-wrap justify-center sm:justify-start gap-2 w-full">
                             <?php if (!empty($byType['forma_reverso'])): ?>
                                 <button type="button"
-                                    class="bg-indigo-600 hover:bg-pink-600 text-white text-xs px-3 py-1 rounded-full"
+                                    class="bg-indigo-600 hover:bg-pink-600 text-white text-xs px-3 py-1 rounded-full w-full sm:w-auto text-center"
                                     onclick="document.getElementById('dz-forma-reverso').click()">
                                     Reemplazar
                                 </button>
@@ -1153,7 +1158,7 @@ z" />
                                     onchange="handleFormaReversoSelect(this)">
                             <?php else: ?>
                                 <button type="button"
-                                    class="bg-gradient-to-r from-pink-500 to-indigo-600 text-white text-xs px-3 py-2 rounded-lg shadow"
+                                    class="bg-gradient-to-r from-pink-500 to-indigo-600 text-white text-xs px-3 py-2 rounded-lg shadow w-full sm:w-auto text-center"
                                     onclick="document.getElementById('dz-forma-reverso').click()">
                                     Subir Reverso
                                 </button>
@@ -1223,10 +1228,10 @@ z" />
                         </div>
 
                         <!-- Acciones -->
-                        <div id="escritura-actions" class="flex gap-2">
+                        <div id="escritura-actions" class="flex flex-wrap justify-center sm:justify-start gap-2 w-full">
                             <?php if (! empty($archivoEscritura)): ?>
                                 <button type="button"
-                                    class="bg-indigo-600 hover:bg-pink-600 text-white text-xs px-3 py-1 rounded-full"
+                                    class="bg-indigo-600 hover:bg-pink-600 text-white text-xs px-3 py-1 rounded-full w-full sm:w-auto text-center"
                                     onclick="document.getElementById('dz-escritura').click()">
                                     Reemplazar
                                 </button>
@@ -1238,7 +1243,7 @@ z" />
                                     onchange="handleEscrituraSelect(this)">
                             <?php else: ?>
                                 <button type="button"
-                                    class="bg-gradient-to-r from-pink-500 to-indigo-600 text-white text-xs px-3 py-2 rounded-lg shadow"
+                                    class="bg-gradient-to-r from-pink-500 to-indigo-600 text-white text-xs px-3 py-2 rounded-lg shadow w-full sm:w-auto text-center"
                                     onclick="document.getElementById('dz-escritura').click()">
                                     Subir Escritura
                                 </button>
@@ -1300,10 +1305,10 @@ z" />
                         </div>
 
                         <!-- Acciones -->
-                        <div id="comp-ingreso-<?= $index ?>-actions" class="flex gap-2">
+                        <div id="comp-ingreso-<?= $index ?>-actions" class="flex flex-wrap justify-center sm:justify-start gap-2 w-full">
                             <?php if (!empty($comprobante)): ?>
                                 <button type="button"
-                                    class="bg-indigo-600 hover:bg-pink-600 text-white text-xs px-3 py-1 rounded-full"
+                                    class="bg-indigo-600 hover:bg-pink-600 text-white text-xs px-3 py-1 rounded-full w-full sm:w-auto text-center"
                                     onclick="document.getElementById('dz-comp-ingreso-<?= $index ?>').click()">
                                     Reemplazar
                                 </button>
@@ -1316,7 +1321,7 @@ z" />
                                     onchange="handleCompIngresoSelect(this)">
                             <?php else: ?>
                                 <button type="button"
-                                    class="bg-gradient-to-r from-pink-500 to-indigo-600 text-white text-xs px-3 py-2 rounded-lg shadow"
+                                    class="bg-gradient-to-r from-pink-500 to-indigo-600 text-white text-xs px-3 py-2 rounded-lg shadow w-full sm:w-auto text-center"
                                     onclick="document.getElementById('dz-comp-ingreso-<?= $index ?>').click()">
                                     Subir PDF
                                 </button>
