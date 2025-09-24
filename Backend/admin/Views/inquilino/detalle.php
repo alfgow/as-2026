@@ -46,11 +46,11 @@ $resolverUrlArchivo = static function (array $archivo) use ($s3BaseUrl): string 
 
             <div class="flex-1 w-full">
                 <!-- Nombre + TAG (TAG visible en desktop, oculto en móvil) -->
-                <div class="flex flex-wrap items-center gap-2">
-                    <h1 class="text-3xl font-bold text-white tracking-tight drop-shadow text-center">
-                        <?= ucwords("{$profile['nombre']}") ?>
-                    </h1>
-                </div>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <h1 class="text-3xl font-bold text-white tracking-tight drop-shadow text-center">
+                            <?= ucwords("{$profile['nombre']}") ?>
+                        </h1>
+                    </div>
 
                 <!-- Línea meta -->
                 <div class="flex flex-wrap gap-4 mt-2 text-sm text-indigo-100/70">
@@ -92,6 +92,24 @@ z" />
                             </svg>
                             <span>Validaciones</span>
                         </a>
+
+                        <!-- Botón eliminar prospecto -->
+                        <button
+                            type="button"
+                            id="btn-eliminar-prospecto"
+                            data-id-inquilino="<?= (int)($profile['id'] ?? 0) ?>"
+                            data-nombre="<?= htmlspecialchars($profile['nombre'] ?? '', ENT_QUOTES, 'UTF-8') ?>"
+                            data-base-url="<?= htmlspecialchars($baseUrl, ENT_QUOTES, 'UTF-8') ?>"
+                            class="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-full w-full md:w-auto
+            text-white shadow-lg text-sm font-semibold text-center
+            bg-gradient-to-r from-red-600 to-red-700
+            hover:from-red-700 hover:to-red-800
+            transition-transform duration-200 hover:scale-[1.02]">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                            <span>Eliminar prospecto</span>
+                        </button>
                     </div>
                 </div>
                 <!-- === /FRANJA DE ACCIONES === -->
@@ -1730,6 +1748,98 @@ $dbDumpJs = json_encode($dbDumpPayload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_
     window.INQ_DB_DUMP = <?= $dbDumpJs ?: '{}' ?>;
 
     (function() {
+        const btnEliminarProspecto = document.getElementById('btn-eliminar-prospecto');
+
+        if (btnEliminarProspecto) {
+            btnEliminarProspecto.addEventListener('click', async () => {
+                const idProspecto = btnEliminarProspecto.dataset.idInquilino || '';
+                if (!idProspecto) {
+                    return;
+                }
+
+                const baseUrl = btnEliminarProspecto.dataset.baseUrl || (window.ADMIN_BASE || '');
+                const nombreProspecto = btnEliminarProspecto.dataset.nombre || '';
+                const mensajeConfirmacion = nombreProspecto
+                    ? `¿Deseas eliminar a ${nombreProspecto}? Esta acción no se puede deshacer.`
+                    : '¿Deseas eliminar este prospecto? Esta acción no se puede deshacer.';
+
+                let confirmado = false;
+
+                if (window.Swal) {
+                    const result = await Swal.fire({
+                        icon: 'warning',
+                        title: 'Eliminar prospecto',
+                        text: mensajeConfirmacion,
+                        showCancelButton: true,
+                        confirmButtonText: 'Sí, eliminar',
+                        cancelButtonText: 'Cancelar',
+                        reverseButtons: true,
+                    });
+                    confirmado = !!result.isConfirmed;
+                } else {
+                    confirmado = window.confirm(mensajeConfirmacion);
+                }
+
+                if (!confirmado) {
+                    return;
+                }
+
+                btnEliminarProspecto.disabled = true;
+                btnEliminarProspecto.classList.add('opacity-60', 'cursor-not-allowed');
+
+                try {
+                    const params = new URLSearchParams();
+                    params.append('id', idProspecto);
+
+                    const resp = await fetch(`${baseUrl}/inquilino/eliminar`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                            'X-Requested-With': 'XMLHttpRequest',
+                        },
+                        body: params.toString(),
+                    });
+
+                    const data = await resp.json().catch(() => ({}));
+
+                    if (!resp.ok || !data?.ok) {
+                        throw new Error(data?.error || 'No se pudo eliminar el prospecto.');
+                    }
+
+                    if (window.Swal) {
+                        await Swal.fire({
+                            icon: 'success',
+                            title: 'Prospecto eliminado',
+                            text: nombreProspecto !== ''
+                                ? `Se eliminaron los datos de ${nombreProspecto}.`
+                                : 'Se eliminaron los datos del prospecto.',
+                            timer: 2000,
+                            showConfirmButton: false,
+                        });
+                    }
+
+                    window.location.href = `${baseUrl}/inquilino`;
+                } catch (error) {
+                    const mensaje = error instanceof Error
+                        ? error.message
+                        : 'Ocurrió un error al eliminar el prospecto.';
+
+                    if (window.Swal) {
+                        await Swal.fire({
+                            icon: 'error',
+                            title: 'No se pudo eliminar',
+                            text: mensaje,
+                        });
+                    } else {
+                        alert(mensaje);
+                    }
+                } finally {
+                    btnEliminarProspecto.disabled = false;
+                    btnEliminarProspecto.classList.remove('opacity-60', 'cursor-not-allowed');
+                }
+            });
+        }
+
         const btn = document.getElementById('btn-ver-db');
         const modal = document.getElementById('modal-db');
         const pre = document.getElementById('db-json');
