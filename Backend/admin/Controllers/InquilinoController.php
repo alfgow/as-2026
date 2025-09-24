@@ -17,6 +17,7 @@ use App\Helpers\SlugHelper;
 use App\Middleware\AuthMiddleware;
 use App\Models\AsesorModel;
 use App\Models\InquilinoModel;
+use RuntimeException;
 
 class InquilinoController
 {
@@ -719,6 +720,36 @@ class InquilinoController
         } catch (\Throwable $e) {
             http_response_code(500);
             echo json_encode(['ok' => false, 'error' => $e->getMessage()]);
+        }
+    }
+
+    public function eliminar(): void
+    {
+        header('Content-Type: application/json; charset=utf-8');
+
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            http_response_code(405);
+            echo json_encode(['ok' => false, 'error' => 'Metodo no permitido']);
+            return;
+        }
+
+        $idInquilino = (int)($_POST['id'] ?? $_POST['id_inquilino'] ?? 0);
+
+        if ($idInquilino <= 0) {
+            http_response_code(400);
+            echo json_encode(['ok' => false, 'error' => 'ID de inquilino inválido']);
+            return;
+        }
+
+        try {
+            $this->model->eliminarInquilino($idInquilino);
+            echo json_encode(['ok' => true]);
+        } catch (RuntimeException $e) {
+            http_response_code(400);
+            echo json_encode(['ok' => false, 'error' => $e->getMessage()]);
+        } catch (\Throwable $e) {
+            http_response_code(500);
+            echo json_encode(['ok' => false, 'error' => 'No se pudo eliminar al inquilino']);
         }
     }
 

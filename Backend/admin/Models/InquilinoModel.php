@@ -13,6 +13,7 @@ use App\Core\Database;
 use App\Helpers\S3Helper;
 use App\Helpers\TextHelper;
 use PDO;
+use RuntimeException;
 
 class InquilinoModel extends Database
 {
@@ -541,6 +542,63 @@ class InquilinoModel extends Database
         $stmt->bindValue(':id', $archivoId, PDO::PARAM_INT);
         $stmt->bindValue(':inq', $idInquilino, PDO::PARAM_INT);
         return $stmt->execute();
+    }
+
+    /**
+     * @throws RuntimeException
+     */
+    public function eliminarInquilino(int $idInquilino): bool
+    {
+        if ($idInquilino <= 0) {
+            throw new RuntimeException('ID de inquilino inválido.');
+        }
+
+        if ($this->tienePolizasRelacionadas($idInquilino)) {
+            throw new RuntimeException('No se puede eliminar el prospecto porque está relacionado con una póliza.');
+        }
+
+        $s3Keys = $this->recolectarClavesS3($idInquilino);
+
+        $this->beginTransaction();
+
+        try {
+            $tablas = [
+                'inquilinos_archivos',
+                'inquilinos_validaciones',
+                'inquilinos_historial_vivienda',
+                'inquilinos_trabajo',
+                'inquilinos_fiador',
+                'inquilinos_direccion',
+            ];
+
+            foreach ($tablas as $tabla) {
+                $stmt = $this->db->prepare("DELETE FROM {$tabla} WHERE id_inquilino = :id");
+                $stmt->bindValue(':id', $idInquilino, PDO::PARAM_INT);
+                $stmt->execute();
+            }
+
+            $stmtProspecto = $this->db->prepare('DELETE FROM inquilinos WHERE id = :id');
+            $stmtProspecto->bindValue(':id', $idInquilino, PDO::PARAM_INT);
+            $stmtProspecto->execute();
+
+            if ($stmtProspecto->rowCount() === 0) {
+                throw new RuntimeException('El prospecto no existe.');
+            }
+
+            $erroresS3 = $this->eliminarArchivosS3($s3Keys);
+            if ($erroresS3 !== []) {
+                throw new RuntimeException('No se pudieron eliminar algunos archivos del almacenamiento.');
+            }
+
+            $this->commit();
+            return true;
+        } catch (RuntimeException $e) {
+            $this->rollBack();
+            throw $e;
+        } catch (\Throwable $e) {
+            $this->rollBack();
+            throw new RuntimeException('No se pudo eliminar al prospecto. Inténtalo más tarde.', 0, $e);
+        }
     }
 
     public function searchByTerm(string $q): array
@@ -1292,6 +1350,72 @@ class InquilinoModel extends Database
         }
 
         return $resultados;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function recolectarClavesS3(int $idInquilino): array
+    {
+        $keys = [];
+
+        foreach ($this->obtenerArchivos($idInquilino) as $archivo) {
+            $key = trim((string)($archivo['s3_key'] ?? ''));
+            if ($key !== '') {
+                $keys[$key] = $key;
+            }
+        }
+
+        $stmt = $this->db->prepare("SELECT s3_key FROM inquilinos_fiador WHERE id_inquilino = :id AND s3_key IS NOT NULL AND s3_key <> ''");
+        $stmt->bindValue(':id', $idInquilino, PDO::PARAM_INT);
+        $stmt->execute();
+
+        $fiadorKeys = $stmt->fetchAll(PDO::FETCH_COLUMN) ?: [];
+        foreach ($fiadorKeys as $fiadorKey) {
+            $key = trim((string) $fiadorKey);
+            if ($key !== '') {
+                $keys[$key] = $key;
+            }
+        }
+
+        return array_values($keys);
+    }
+
+    /**
+     * @param array<int, string> $keys
+     * @return array<int, string>
+     */
+    private function eliminarArchivosS3(array $keys): array
+    {
+        if ($keys === []) {
+            return [];
+        }
+
+        $s3 = new S3Helper('inquilinos');
+        $fallidos = [];
+
+        foreach (array_unique($keys) as $key) {
+            $key = trim($key);
+            if ($key === '') {
+                continue;
+            }
+
+            if (!$s3->deleteFile($key)) {
+                $fallidos[] = $key;
+            }
+        }
+
+        return $fallidos;
+    }
+
+    private function tienePolizasRelacionadas(int $idInquilino): bool
+    {
+        $stmt = $this->db->prepare('SELECT COUNT(*) FROM polizas WHERE id_inquilino = :id OR id_obligado = :id OR id_fiador = :id');
+        $stmt->bindValue(':id', $idInquilino, PDO::PARAM_INT);
+        $stmt->execute();
+
+        $conteo = $stmt->fetchColumn();
+        return (int)($conteo ?: 0) > 0;
     }
 
     private function profileListEntry(array $profile): array

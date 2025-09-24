@@ -531,6 +531,12 @@ switch (true) {
         exit;
         break;
 
+    case $uri === '/inquilino/eliminar' && $_SERVER['REQUEST_METHOD'] === 'POST':
+        require __DIR__ . '/Controllers/InquilinoController.php';
+        (new \App\Controllers\InquilinoController())->eliminar();
+        exit;
+        break;
+
     case $uri === '/inquilino/editar-validaciones' && $_SERVER['REQUEST_METHOD'] === 'POST':
         require __DIR__ . '/Controllers/InquilinoController.php';
         (new \App\Controllers\InquilinoController())->editarValidaciones();
