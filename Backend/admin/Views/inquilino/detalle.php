@@ -1172,325 +1172,81 @@ z" />
                 ?>
 
 
-                <!-- Comprobante ingresos 1 -->
-                <div id="card-comp-ingreso-1"
-                    class="flex flex-col items-center border-2 border-dashed border-pink-400/60 
-                        rounded-xl p-4 bg-white/5 min-h-[220px] 
+                <?php
+                $comprobantesIngreso = $byType['comprobante_ingreso'] ?? [];
+                $comprobantesIngresoCount = is_array($comprobantesIngreso) ? count($comprobantesIngreso) : 0;
+                $comprobantesIngresoSlots = max(1, $comprobantesIngresoCount + 1);
+
+                for ($index = 1; $index <= $comprobantesIngresoSlots; $index++):
+                    $comprobante = $comprobantesIngreso[$index - 1] ?? null;
+                    $compId = $comprobante['id'] ?? $comprobante['sk'] ?? '';
+                    $compUrl = $comprobante['url'] ?? '';
+                ?>
+                    <div id="card-comp-ingreso-<?= $index ?>"
+                        class="flex flex-col items-center border-2 border-dashed border-pink-400/60
+                        rounded-xl p-4 bg-white/5 min-h-[220px]
                         transition-transform duration-200 hover:scale-105 hover:animate-shake">
 
-                    <h3 class="font-semibold text-sm text-pink-900 mb-2">Comprobante ingresos 1 *</h3>
-
-                    <!-- Contenedor preview -->
-                    <div id="comp-ingreso-1-preview" class="flex-1 flex items-center justify-center w-full mb-3">
-                        <?php if (!empty($byType['comprobante_ingreso'][0])):
-                            $comp1 = $byType['comprobante_ingreso'][0];
-                        ?>
-                            <div class="flex flex-col items-center">
-                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"
-                                    fill="currentColor" class="w-10 h-10 text-pink-500 mb-1 cursor-pointer"
-                                    onclick="abrirModalPdf('<?= htmlspecialchars($comp1['url']) ?>','Comprobante ingresos 1')">
-                                    <path fill-rule="evenodd"
-                                        d="M9 1.5H5.625c-1.036 0-1.875.84-1.875 
-                             1.875v17.25c0 1.035.84 1.875 
-                             1.875 1.875h12.75c1.035 0 1.875-.84 
-                             1.875-1.875V12.75A3.75 3.75 0 0 
-                             0 16.5 9h-1.875a1.875 1.875 0 0 
-                             1-1.875-1.875V5.25A3.75 3.75 0 0 
-                             0 9 1.5Zm6.61 10.936a.75.75 
-                             0 1 0-1.22-.872l-3.236 4.53L9.53 
-                             14.47a.75.75 0 0 0-1.06 1.06l2.25 
-                             2.25a.75.75 0 0 0 1.14-.094l3.75-5.25Z"
-                                        clip-rule="evenodd" />
-                                </svg>
-                                <span class="text-xs text-gray-400">Archivo PDF</span>
-                            </div>
-                        <?php else: ?>
-                            <span class="text-xs text-gray-400">Sube un comprobante en PDF</span>
-                        <?php endif; ?>
-                    </div>
-
-                    <!-- Acciones -->
-                    <div id="comp-ingreso-1-actions" class="flex gap-2">
-                        <?php if (!empty($byType['comprobante_ingreso'][0])): ?>
-                            <button type="button"
-                                class="bg-indigo-600 hover:bg-pink-600 text-white text-xs px-3 py-1 rounded-full"
-                                onclick="document.getElementById('dz-comp-ingreso-1').click()">
-                                Reemplazar
-                            </button>
-                            <input type="file" id="dz-comp-ingreso-1" class="hidden"
-                                accept="application/pdf"
-                                data-id="<?= htmlspecialchars($comp1['id'] ?? $comp1['sk'] ?? '') ?>"
-                                data-inquilino="<?= (int)$profile['id'] ?>"
-                                data-nombre="<?= htmlspecialchars($nombreInquilino) ?>"
-                                onchange="handleCompIngreso1Select(this)">
-                        <?php else: ?>
-                            <button type="button"
-                                class="bg-gradient-to-r from-pink-500 to-indigo-600 text-white text-xs px-3 py-2 rounded-lg shadow"
-                                onclick="document.getElementById('dz-comp-ingreso-1').click()">
-                                Subir PDF
-                            </button>
-                            <input type="file" id="dz-comp-ingreso-1" class="hidden"
-                                accept="application/pdf"
-                                data-inquilino="<?= (int)$profile['id'] ?>"
-                                data-nombre="<?= htmlspecialchars($nombreInquilino) ?>"
-                                onchange="handleCompIngreso1Select(this)">
-                        <?php endif; ?>
-                    </div>
-                </div>
-
-                <!-- Comprobante ingresos 2 -->
-                <div id="card-comp-ingreso-2"
-                    class="flex flex-col items-center border-2 border-dashed border-pink-400/60 
-                        rounded-xl p-4 bg-white/5 min-h-[220px] 
-                        transition-transform duration-200 hover:scale-105 hover:animate-shake">
-
-                    <h3 class="font-semibold text-sm text-pink-900 mb-2">Comprobante ingresos 2 *</h3>
-
-                    <!-- Contenedor preview -->
-                    <div id="comp-ingreso-2-preview" class="flex-1 flex items-center justify-center w-full mb-3">
-                        <?php if (!empty($byType['comprobante_ingreso'][1])):
-                            $comp2 = $byType['comprobante_ingreso'][1];
-                        ?>
-                            <div class="flex flex-col items-center">
-                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"
-                                    fill="currentColor" class="w-10 h-10 text-pink-500 mb-1 cursor-pointer"
-                                    onclick="abrirModalPdf('<?= htmlspecialchars($comp2['url']) ?>','Comprobante ingresos 2')">
-                                    <path fill-rule="evenodd"
-                                        d="M9 1.5H5.625c-1.036 0-1.875.84-1.875 
-                             1.875v17.25c0 1.035.84 1.875 
-                             1.875 1.875h12.75c1.035 0 1.875-.84 
-                             1.875-1.875V12.75A3.75 3.75 0 0 
-                             0 16.5 9h-1.875a1.875 1.875 0 0 
-                             1-1.875-1.875V5.25A3.75 3.75 0 0 
-                             0 9 1.5Zm6.61 10.936a.75.75 
-                             0 1 0-1.22-.872l-3.236 4.53L9.53 
-                             14.47a.75.75 0 0 0-1.06 1.06l2.25 
-                             2.25a.75.75 0 0 0 1.14-.094l3.75-5.25Z"
-                                        clip-rule="evenodd" />
-                                </svg>
-                                <span class="text-xs text-gray-400">Archivo PDF</span>
-                            </div>
-                        <?php else: ?>
-                            <span class="text-xs text-gray-400">Sube un comprobante en PDF</span>
-                        <?php endif; ?>
-                    </div>
-
-                    <!-- Acciones -->
-                    <div id="comp-ingreso-2-actions" class="flex gap-2">
-                        <?php if (!empty($byType['comprobante_ingreso'][1])): ?>
-                            <button type="button"
-                                class="bg-indigo-600 hover:bg-pink-600 text-white text-xs px-3 py-1 rounded-full"
-                                onclick="document.getElementById('dz-comp-ingreso-2').click()">
-                                Reemplazar
-                            </button>
-                            <input type="file" id="dz-comp-ingreso-2" class="hidden"
-                                accept="application/pdf"
-                                data-id="<?= htmlspecialchars($comp2['id'] ?? $comp2['sk'] ?? '') ?>"
-                                data-inquilino="<?= (int)$profile['id'] ?>"
-                                data-nombre="<?= htmlspecialchars($nombreInquilino) ?>"
-                                onchange="handleCompIngreso2Select(this)">
-                        <?php else: ?>
-                            <button type="button"
-                                class="bg-gradient-to-r from-pink-500 to-indigo-600 text-white text-xs px-3 py-2 rounded-lg shadow"
-                                onclick="document.getElementById('dz-comp-ingreso-2').click()">
-                                Subir PDF
-                            </button>
-                            <input type="file" id="dz-comp-ingreso-2" class="hidden"
-                                accept="application/pdf"
-                                data-inquilino="<?= (int)$profile['id'] ?>"
-                                data-nombre="<?= htmlspecialchars($nombreInquilino) ?>"
-                                onchange="handleCompIngreso2Select(this)">
-                        <?php endif; ?>
-                    </div>
-                </div>
-
-                <!-- Comprobante ingresos 3 -->
-                <div id="card-comp-ingreso-3"
-                    class="flex flex-col items-center border-2 border-dashed border-pink-400/60 
-                    rounded-xl p-4 bg-white/5 min-h-[220px] 
-                    transition-transform duration-200 hover:scale-105 hover:animate-shake">
-
-                    <h3 class="font-semibold text-sm text-pink-900 mb-2">Comprobante ingresos 3 *</h3>
-
-                    <!-- Contenedor preview -->
-                    <div id="comp-ingreso-3-preview" class="flex-1 flex items-center justify-center w-full mb-3">
-                        <?php if (!empty($byType['comprobante_ingreso'][2])):
-                            $comp3 = $byType['comprobante_ingreso'][2];
-                        ?>
-                            <div class="flex flex-col items-center">
-                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"
-                                    fill="currentColor" class="w-10 h-10 text-pink-500 mb-1 cursor-pointer"
-                                    onclick="abrirModalPdf('<?= htmlspecialchars($comp3['url']) ?>','Comprobante ingresos 3')">
-                                    <path fill-rule="evenodd"
-                                        d="M9 1.5H5.625c-1.036 0-1.875.84-1.875 
-                             1.875v17.25c0 1.035.84 1.875 
-                             1.875 1.875h12.75c1.035 0 1.875-.84 
-                             1.875-1.875V12.75A3.75 3.75 0 0 
-                             0 16.5 9h-1.875a1.875 1.875 0 0 
-                             1-1.875-1.875V5.25A3.75 3.75 0 0 
-                             0 9 1.5Zm6.61 10.936a.75.75 
-                             0 1 0-1.22-.872l-3.236 4.53L9.53 
-                             14.47a.75.75 0 0 0-1.06 1.06l2.25 
-                             2.25a.75.75 0 0 0 1.14-.094l3.75-5.25Z"
-                                        clip-rule="evenodd" />
-                                </svg>
-                                <span class="text-xs text-gray-400">Archivo PDF</span>
-                            </div>
-                        <?php else: ?>
-                            <span class="text-xs text-gray-400">Sube un comprobante en PDF</span>
-                        <?php endif; ?>
-                    </div>
-
-                    <!-- Acciones -->
-                    <div id="comp-ingreso-3-actions" class="flex gap-2">
-                        <?php if (!empty($byType['comprobante_ingreso'][2])): ?>
-                            <button type="button"
-                                class="bg-indigo-600 hover:bg-pink-600 text-white text-xs px-3 py-1 rounded-full"
-                                onclick="document.getElementById('dz-comp-ingreso-3').click()">
-                                Reemplazar
-                            </button>
-                            <input type="file" id="dz-comp-ingreso-3" class="hidden"
-                                accept="application/pdf"
-                                data-id="<?= htmlspecialchars($comp3['id'] ?? $comp3['sk'] ?? '') ?>"
-                                data-inquilino="<?= (int)$profile['id'] ?>"
-                                data-nombre="<?= htmlspecialchars($nombreInquilino) ?>"
-                                data-slot="3"
-                                onchange="handleCompIngreso3Select(this)">
-                        <?php else: ?>
-                            <button type="button"
-                                class="bg-gradient-to-r from-pink-500 to-indigo-600 text-white text-xs px-3 py-2 rounded-lg shadow"
-                                onclick="document.getElementById('dz-comp-ingreso-3').click()">
-                                Subir PDF
-                            </button>
-                            <input type="file" id="dz-comp-ingreso-3" class="hidden"
-                                accept="application/pdf"
-                                data-inquilino="<?= (int)$profile['id'] ?>"
-                                data-nombre="<?= htmlspecialchars($nombreInquilino) ?>"
-                                data-slot="3"
-                                onchange="handleCompIngreso3Select(this)">
-                        <?php endif; ?>
-                    </div>
-                </div>
-
-                <!-- Validación Ingresos -->
-                <div id="card-validacion-ingresos"
-                    class="flex flex-col items-center border-2 border-dashed border-pink-400/60 
-           rounded-xl p-4 bg-white/5 min-h-[220px] 
-           transition-transform duration-200 hover:scale-105 hover:animate-shake">
-
-                    <h3 class="font-semibold text-sm text-pink-900 mb-2">Validación Ingresos *</h3>
-
-                    <!-- Contenedor preview -->
-                    <div id="validacion-ingresos-preview" class="flex-1 flex items-center justify-center w-full mb-3">
-                        <?php if (!empty($byType['validacion_ingresos'])):
-                            $valIng = $byType['validacion_ingresos'][0];
-
-                        ?>
-                            <img src="<?= htmlspecialchars($valIng['url']) ?>" alt="Validación Ingresos"
-                                class="max-h-28 rounded shadow cursor-zoom-in"
-                                onclick="abrirModalImg('<?= htmlspecialchars($valIng['url']) ?>','Validación Ingresos')" />
-                        <?php else: ?>
-                            <span class="text-xs text-gray-400">Sube una imagen de la validación de ingresos</span>
-                        <?php endif; ?>
-                    </div>
-
-                    <!-- Acciones -->
-                    <div id="validacion-ingresos-actions" class="flex gap-2">
-                        <?php if (!empty($byType['validacion_ingresos'])): ?>
-                            <button type="button"
-                                class="bg-indigo-600 hover:bg-pink-600 text-white text-xs px-3 py-1 rounded-full"
-                                onclick="document.getElementById('dz-validacion-ingresos').click()">
-                                Reemplazar
-                            </button>
-                            <input type="file" id="dz-validacion-ingresos" class="hidden"
-                                accept="image/*"
-                                data-id="<?= htmlspecialchars($valIng['id'] ?? $valIng['sk'] ?? '') ?>"
-                                data-inquilino="<?= (int)$profile['id'] ?>"
-                                data-nombre="<?= htmlspecialchars($nombreInquilino) ?>"
-                                onchange="handleValidacionIngresosSelect(this)">
-                        <?php else: ?>
-                            <button type="button"
-                                class="bg-gradient-to-r from-pink-500 to-indigo-600 text-white text-xs px-3 py-2 rounded-lg shadow"
-                                onclick="document.getElementById('dz-validacion-ingresos').click()">
-                                Subir Imagen
-                            </button>
-                            <input type="file" id="dz-validacion-ingresos" class="hidden"
-                                accept="image/*"
-                                data-inquilino="<?= (int)$profile['id'] ?>"
-                                data-nombre="<?= htmlspecialchars($nombreInquilino) ?>"
-                                onchange="handleValidacionIngresosSelect(this)">
-                        <?php endif; ?>
-                    </div>
-                </div>
-
-                <?php if (strtolower($profile['tipo'] ?? '') === 'fiador'): ?>
-                    <!-- Escritura inmueble -->
-                    <div id="card-escritura"
-                        class="flex flex-col items-center border-2 border-dashed border-pink-400/60 
-                        rounded-xl p-4 bg-white/5 min-h-[220px] 
-                        transition-transform duration-200 hover:scale-105 hover:animate-shake">
-
-                        <h3 class="font-semibold text-sm text-pink-900 mb-2">Escritura inmueble (PDF)</h3>
+                        <h3 class="font-semibold text-sm text-pink-900 mb-2">Comprobante ingresos <?= $index ?> *</h3>
 
                         <!-- Contenedor preview -->
-                        <div id="escritura-preview" class="flex-1 flex items-center justify-center w-full mb-3">
-                            <?php if (!empty($byType['escritura'])):
-                                $escritura = $byType['escritura'][0];
-                            ?>
+                        <div id="comp-ingreso-<?= $index ?>-preview" class="flex-1 flex items-center justify-center w-full mb-3">
+                            <?php if (!empty($comprobante)): ?>
                                 <div class="flex flex-col items-center">
                                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"
                                         fill="currentColor" class="w-10 h-10 text-pink-500 mb-1 cursor-pointer"
-                                        onclick="abrirModalPdf('<?= htmlspecialchars($escritura['url']) ?>','Escritura inmueble')">
+                                        onclick="abrirModalPdf('<?= htmlspecialchars($compUrl) ?>','Comprobante ingresos <?= $index ?>')">
                                         <path fill-rule="evenodd"
-                                            d="M9 1.5H5.625c-1.036 0-1.875.84-1.875 
-                                1.875v17.25c0 1.035.84 1.875 
-                                1.875 1.875h12.75c1.035 0 1.875-.84 
-                                1.875-1.875V12.75A3.75 3.75 0 0 
-                                0 16.5 9h-1.875a1.875 1.875 0 0 
-                                1-1.875-1.875V5.25A3.75 3.75 0 0 
-                                0 9 1.5Zm6.61 10.936a.75.75 
-                                0 1 0-1.22-.872l-3.236 4.53L9.53 
-                                14.47a.75.75 0 0 0-1.06 1.06l2.25 
-                                2.25a.75.75 0 0 0 1.14-.094l3.75-5.25Z"
+                                            d="M9 1.5H5.625c-1.036 0-1.875.84-1.875
+                             1.875v17.25c0 1.035.84 1.875
+                             1.875 1.875h12.75c1.035 0 1.875-.84
+                             1.875-1.875V12.75A3.75 3.75 0 0
+                             0 16.5 9h-1.875a1.875 1.875 0 0
+                             1-1.875-1.875V5.25A3.75 3.75 0 0
+                             0 9 1.5Zm6.61 10.936a.75.75
+                             0 1 0-1.22-.872l-3.236 4.53L9.53
+                             14.47a.75.75 0 0 0-1.06 1.06l2.25
+                             2.25a.75.75 0 0 0 1.14-.094l3.75-5.25Z"
                                             clip-rule="evenodd" />
                                     </svg>
                                     <span class="text-xs text-gray-400">Archivo PDF</span>
                                 </div>
                             <?php else: ?>
-                                <span class="text-xs text-gray-400">Sube un archivo PDF</span>
+                                <span class="text-xs text-gray-400">Sube un comprobante en PDF</span>
                             <?php endif; ?>
                         </div>
 
                         <!-- Acciones -->
-                        <div id="escritura-actions" class="flex gap-2">
-                            <?php if (!empty($byType['escritura'])): ?>
+                        <div id="comp-ingreso-<?= $index ?>-actions" class="flex gap-2">
+                            <?php if (!empty($comprobante)): ?>
                                 <button type="button"
                                     class="bg-indigo-600 hover:bg-pink-600 text-white text-xs px-3 py-1 rounded-full"
-                                    onclick="document.getElementById('dz-escritura').click()">
+                                    onclick="document.getElementById('dz-comp-ingreso-<?= $index ?>').click()">
                                     Reemplazar
                                 </button>
-                                <input type="file" id="dz-escritura" class="hidden"
+                                <input type="file" id="dz-comp-ingreso-<?= $index ?>" class="hidden"
                                     accept="application/pdf"
-                                    data-id="<?= htmlspecialchars($escritura['id'] ?? $escritura['sk'] ?? '') ?>"
+                                    data-id="<?= htmlspecialchars($compId) ?>"
                                     data-inquilino="<?= (int)$profile['id'] ?>"
                                     data-nombre="<?= htmlspecialchars($nombreInquilino) ?>"
-                                    onchange="handleEscrituraSelect(this)">
+                                    data-slot="<?= $index ?>"
+                                    onchange="handleCompIngresoSelect(this)">
                             <?php else: ?>
                                 <button type="button"
                                     class="bg-gradient-to-r from-pink-500 to-indigo-600 text-white text-xs px-3 py-2 rounded-lg shadow"
-                                    onclick="document.getElementById('dz-escritura').click()">
+                                    onclick="document.getElementById('dz-comp-ingreso-<?= $index ?>').click()">
                                     Subir PDF
                                 </button>
-                                <input type="file" id="dz-escritura" class="hidden"
+                                <input type="file" id="dz-comp-ingreso-<?= $index ?>" class="hidden"
                                     accept="application/pdf"
                                     data-inquilino="<?= (int)$profile['id'] ?>"
                                     data-nombre="<?= htmlspecialchars($nombreInquilino) ?>"
-                                    onchange="handleEscrituraSelect(this)">
+                                    data-slot="<?= $index ?>"
+                                    onchange="handleCompIngresoSelect(this)">
                             <?php endif; ?>
                         </div>
                     </div>
-                <?php endif; ?>
-
+                <?php endfor; ?>
                 <!-- Otros Archivos -->
                 <div id="card-otros" class="sm:col-span-2 md:col-span-3 flex flex-col border-2 border-dashed            border-pink-400/60 
                         rounded-xl p-4 bg-white/5 
@@ -1738,9 +1494,7 @@ $dbDumpJs = json_encode($dbDumpPayload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_
 <script src="<?= $baseUrl ?>/assets/inquilinoFormaFrente.js"></script>
 <script src="<?= $baseUrl ?>/assets/inquilinoFromaReverso.js"></script>
 <script src="<?= $baseUrl ?>/assets/inquilinoPasaporte.js"></script>
-<script src="<?= $baseUrl ?>/assets/inquilinoCompIngreso1.js"></script>
-<script src="<?= $baseUrl ?>/assets/inquilinoCompIngreso2.js"></script>
-<script src="<?= $baseUrl ?>/assets/inquilinoCompIngreso3.js"></script>
+<script src="<?= $baseUrl ?>/assets/inquilinoCompIngreso.js"></script>
 <script src="<?= $baseUrl ?>/assets/inquilinoEscritura.js"></script>
 <script src="<?= $baseUrl ?>/assets/inquilinoOtros.js"></script>
 <script src="<?= $baseUrl ?>/assets/inquilinoImgValidacionIngresos.js"></script>
