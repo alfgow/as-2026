@@ -89,10 +89,11 @@
                     // Determinar el enlace o el texto según los valores de id_fiador y id_fiador_2025
                     $fiadorHtml = '';
 
+
                     if ($poliza['id_fiador'] == 40) {
                         // Caso: sin fiador
                         $fiadorHtml = '<span class="text-gray-300 ml-1">No Aplica</span>';
-
+                    } else {
                         $fiadorHtml = '<a href="' . $baseUrl . '/inquilino/' . $poliza['slug_fiador'] . '" 
                                 class="text-indigo-300 underline hover:text-indigo-100 transition font-medium ml-1"
                                 id="val-fiador" target="_blank">'
@@ -100,6 +101,7 @@
                             '</a>';
                     }
                     ?>
+
 
                     <div>
                         <span class="font-semibold text-indigo-400">Fiador:</span>
@@ -259,8 +261,8 @@
 
         if (btnEliminar && POLIZA_NUM) {
             btnEliminar.addEventListener('click', async () => {
-                const confirmacion = await (window.Swal
-                    ? Swal.fire({
+                const confirmacion = await (window.Swal ?
+                    Swal.fire({
                         title: 'Eliminar póliza',
                         text: `¿Deseas eliminar la póliza #${POLIZA_NUM}? Esta acción no se puede deshacer.`,
                         icon: 'warning',
@@ -270,8 +272,8 @@
                         confirmButtonText: 'Sí, eliminar',
                         cancelButtonText: 'Cancelar',
                         focusCancel: true
-                    }).then((result) => result.isConfirmed)
-                    : Promise.resolve(window.confirm(`¿Deseas eliminar la póliza #${POLIZA_NUM}?`)));
+                    }).then((result) => result.isConfirmed) :
+                    Promise.resolve(window.confirm(`¿Deseas eliminar la póliza #${POLIZA_NUM}?`)));
 
                 if (!confirmacion) {
                     return;
@@ -289,7 +291,9 @@
                         headers: {
                             'Content-Type': 'application/json'
                         },
-                        body: JSON.stringify({ numero: POLIZA_NUM }),
+                        body: JSON.stringify({
+                            numero: POLIZA_NUM
+                        }),
                         credentials: 'same-origin'
                     });
 
