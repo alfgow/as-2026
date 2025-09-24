@@ -87,9 +87,16 @@ function montoNumeroYTexto($valor)
                 <select name="tipo_contrato" id="tipo_contrato" required
                     class="w-full bg-gray-900 border border-gray-700 text-white p-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
                     <option value="" disabled selected>Selecciona una opción</option>
-                    <option value="normal_pf">1 PF Normal</option>
-                    <option value="os_pf">2 PF OS PF</option>
-                    <option value="fiador_pf">3 PF Fiador PF</option>
+                    <option value="normal_pf">1. Arrendador e Inquilino - P.F.</option>
+                    <option value="os_pf">2. Arrendador, Inquilino y Obligado Solidario - P.F.</option>
+                    <option value="fiador_pf">3. Arrendador, Inquilino y Fiador - P.F.</option>
+                    <option value="os_fiador_pf">🚨4. Arrendador, Inquilino, Obligado Solidario y Fiador - P.F.</option>
+                    <option value="arr_pm_inq_pf">🚨5. Arrendador P.M. e Inquilino - P.F.</option>
+                    <option value="inq_pm_arr_pf">🚨5. Arrendador P.F. e Inquilino - P.M.</option>
+                    <option value="normal_pm">🚨5. Arrendador e Inquilino - P.M.</option>
+                    <option value="os_pm">🚨6. Arrendador, Inquilino y Obligado Solidario - P.M.</option>
+                    <option value="fiador_pm">🚨7. Arrendador, Inquilino y Fiador - P.M.</option>
+                    <option value="os_fiador_pm">🚨8. Arrendador, Inquilino, Obligado Solidario y Fiador - P.M.</option>
                 </select>
             </div>
 
