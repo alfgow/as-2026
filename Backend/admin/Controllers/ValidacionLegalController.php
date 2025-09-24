@@ -163,12 +163,53 @@ class ValidacionLegalController
             }
             $historial    = $this->model->obtenerHistorialPorInquilino($idInquilino);
 
-            $admin_base_url = $_ENV['ADMIN_BASE_URL']
-                ?? getenv('ADMIN_BASE_URL')
-                ?? '/as-2026/Backend/admin';
+            $admin_base_url = '';
 
-            if (!is_string($admin_base_url) || trim($admin_base_url) === '') {
-                $admin_base_url = '/as-2026/Backend/admin';
+            if (function_exists('admin_base_url')) {
+                $admin_base_url = admin_base_url();
+            }
+
+            if ($admin_base_url === '' || $admin_base_url === null) {
+                $envAdminBase = $_ENV['ADMIN_BASE_URL'] ?? getenv('ADMIN_BASE_URL') ?? '';
+
+                if (!is_string($envAdminBase)) {
+                    $envAdminBase = (string) $envAdminBase;
+                }
+
+                $envAdminBase = trim($envAdminBase);
+
+                if ($envAdminBase !== '') {
+                    $admin_base_url = $envAdminBase;
+                } else {
+                    $isHttps = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+                        || (($_SERVER['SERVER_PORT'] ?? '') == 443);
+                    $scheme = $isHttps ? 'https' : 'http';
+                    $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+
+                    $scriptName = $_SERVER['SCRIPT_NAME'] ?? '';
+                    $scriptDir = dirname($scriptName);
+                    $scriptDir = str_replace('\\', '/', $scriptDir);
+                    if ($scriptDir === '\\' || $scriptDir === '/' || $scriptDir === '.') {
+                        $scriptDir = '';
+                    } else {
+                        $scriptDir = trim($scriptDir, '/');
+                    }
+
+                    $admin_base_url = $scheme . '://' . $host;
+                    if ($scriptDir !== '') {
+                        $admin_base_url .= '/' . $scriptDir;
+                    }
+                }
+            }
+
+            $admin_base_url = is_string($admin_base_url) ? trim($admin_base_url) : '';
+            if ($admin_base_url === '') {
+                $admin_base_url = '/';
+            } else {
+                $admin_base_url = rtrim($admin_base_url, '/');
+                if ($admin_base_url === '') {
+                    $admin_base_url = '/';
+                }
             }
 
             $title = "Validaciones del inquilino";
