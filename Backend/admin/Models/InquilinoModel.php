@@ -1410,12 +1410,17 @@ class InquilinoModel extends Database
 
     private function tienePolizasRelacionadas(int $idInquilino): bool
     {
-        $stmt = $this->db->prepare('SELECT COUNT(*) FROM polizas WHERE id_inquilino = :id OR id_obligado = :id OR id_fiador = :id');
-        $stmt->bindValue(':id', $idInquilino, PDO::PARAM_INT);
+        $query = 'SELECT COUNT(*) FROM polizas WHERE id_inquilino = :inq OR id_obligado = :obl OR id_fiador = :fia';
+        $stmt = $this->db->prepare($query);
+
+        $stmt->bindValue(':inq', $idInquilino, PDO::PARAM_INT);
+        $stmt->bindValue(':obl', $idInquilino, PDO::PARAM_INT);
+        $stmt->bindValue(':fia', $idInquilino, PDO::PARAM_INT);
+
         $stmt->execute();
 
         $conteo = $stmt->fetchColumn();
-        return (int)($conteo ?: 0) > 0;
+        return (int) ($conteo ?: 0) > 0;
     }
 
     private function profileListEntry(array $profile): array
