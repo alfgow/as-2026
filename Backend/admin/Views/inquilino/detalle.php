@@ -897,6 +897,87 @@ z" />
                 </div>
 
                 <?php
+                $tipoInquilino = strtolower(trim($profile['tipo'] ?? ''));
+                if ($tipoInquilino === 'fiador') {
+                    $archivoEscritura = $byType['escritura'][0] ?? $byType['pdf'][0] ?? null;
+                    $escrituraDatos = is_array($archivoEscritura) ? $archivoEscritura : [];
+                    $escrituraId = $escrituraDatos['id'] ?? $escrituraDatos['sk'] ?? '';
+                    $escrituraUrl = $archivoEscritura ? $resolverUrlArchivo($escrituraDatos) : '';
+                    $escrituraS3Key = $escrituraDatos['s3_key'] ?? '';
+                    $escrituraExtension = strtolower(pathinfo($escrituraS3Key, PATHINFO_EXTENSION));
+                    $escrituraEsImagen = in_array($escrituraExtension, ['jpg', 'jpeg', 'png', 'webp', 'gif'], true);
+                ?>
+                    <div id="card-escritura"
+                        class="flex flex-col items-center border-2 border-dashed border-pink-400/60 rounded-xl p-4 bg-white/5 min-h-[220px] transition-transform duration-200 hover:scale-105 hover:animate-shake">
+
+                        <h3 class="font-semibold text-sm text-pink-900 mb-2">Escritura *</h3>
+
+                        <!-- Contenedor preview -->
+                        <div id="escritura-preview" class="flex-1 flex items-center justify-center w-full mb-3">
+                            <?php if (! empty($archivoEscritura)): ?>
+                                <?php if ($escrituraEsImagen): ?>
+                                    <img src="<?= htmlspecialchars($escrituraUrl) ?>" alt="Escritura"
+                                        class="max-h-28 rounded shadow cursor-zoom-in"
+                                        onclick="abrirModalImg('<?= htmlspecialchars($escrituraUrl) ?>','Escritura')" />
+                                <?php else: ?>
+                                    <div class="flex flex-col items-center">
+                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"
+                                            fill="currentColor" class="w-10 h-10 text-pink-500 mb-1 cursor-pointer"
+                                            onclick="abrirModalPdf('<?= htmlspecialchars($escrituraUrl) ?>','Escritura')">
+                                            <path fill-rule="evenodd"
+                                                d="M9 1.5H5.625c-1.036 0-1.875.84-1.875
+                                                     1.875v17.25c0 1.035.84 1.875
+                                                     1.875 1.875h12.75c1.035 0 1.875-.84
+                                                     1.875-1.875V12.75A3.75 3.75 0 0
+                                                     0 16.5 9h-1.875a1.875 1.875 0 0
+                                                     1-1.875-1.875V5.25A3.75 3.75 0 0
+                                                     0 9 1.5Zm6.61 10.936a.75.75
+                                                     0 1 0-1.22-.872l-3.236 4.53L9.53
+                                                     14.47a.75.75 0 0 0-1.06 1.06l2.25
+                                                     2.25a.75.75 0 0 0 1.14-.094l3.75-5.25Z"
+                                                clip-rule="evenodd" />
+                                        </svg>
+                                        <span class="text-xs text-gray-400">Archivo PDF</span>
+                                    </div>
+                                <?php endif; ?>
+                            <?php else: ?>
+                                <span class="text-xs text-gray-400">Sube la escritura del fiador</span>
+                            <?php endif; ?>
+                        </div>
+
+                        <!-- Acciones -->
+                        <div id="escritura-actions" class="flex gap-2">
+                            <?php if (! empty($archivoEscritura)): ?>
+                                <button type="button"
+                                    class="bg-indigo-600 hover:bg-pink-600 text-white text-xs px-3 py-1 rounded-full"
+                                    onclick="document.getElementById('dz-escritura').click()">
+                                    Reemplazar
+                                </button>
+                                <input type="file" id="dz-escritura" class="hidden"
+                                    accept="application/pdf"
+                                    data-id="<?= htmlspecialchars($escrituraId) ?>"
+                                    data-inquilino="<?= (int) $profile['id'] ?>"
+                                    data-nombre="<?= htmlspecialchars($nombreInquilino) ?>"
+                                    onchange="handleEscrituraSelect(this)">
+                            <?php else: ?>
+                                <button type="button"
+                                    class="bg-gradient-to-r from-pink-500 to-indigo-600 text-white text-xs px-3 py-2 rounded-lg shadow"
+                                    onclick="document.getElementById('dz-escritura').click()">
+                                    Subir Escritura
+                                </button>
+                                <input type="file" id="dz-escritura" class="hidden"
+                                    accept="application/pdf"
+                                    data-inquilino="<?= (int) $profile['id'] ?>"
+                                    data-nombre="<?= htmlspecialchars($nombreInquilino) ?>"
+                                    onchange="handleEscrituraSelect(this)">
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                <?php
+                }
+                ?>
+
+                <?php
                 $tipoId = strtolower(trim($profile['tipo_id'] ?? ''));
 
                 if (strpos($tipoId, 'ine') !== false) {
