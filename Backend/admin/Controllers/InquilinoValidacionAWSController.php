@@ -2089,6 +2089,22 @@ class InquilinoValidacionAWSController
 
                 // Normalizar tipo_id (puede venir "INE", "ine", "IFE", "INE/IFE")
                 $tipoId = strtolower(trim($inquilino['tipo_id'] ?? ''));
+                $isIneDocument = str_contains($tipoId, 'ine') || str_contains($tipoId, 'ife');
+                $verificamexData = $vals['verificamex'] ?? [];
+                if (!is_array($verificamexData)) {
+                    $verificamexData = [];
+                }
+                $verificamexResumen = trim((string)($verificamexData['resumen'] ?? ''));
+                $verificamexJsonRaw = $verificamexData['json'] ?? null;
+                $hasVerificamexJson = false;
+                if (is_array($verificamexJsonRaw)) {
+                    $hasVerificamexJson = !empty($verificamexJsonRaw);
+                } elseif (is_string($verificamexJsonRaw)) {
+                    $hasVerificamexJson = trim($verificamexJsonRaw) !== '';
+                }
+                $hasVerificamexData = $verificamexResumen !== ''
+                    || $hasVerificamexJson
+                    || array_key_exists('proceso', $verificamexData);
 
                 // Semáforos (0=NO_OK, 1=OK, 2=PEND.)
                 $semaforos = [
@@ -2101,9 +2117,9 @@ class InquilinoValidacionAWSController
                     'demandas'     => (int)($vals['demandas']['proceso']     ?? 2),
                 ];
 
-                // 👇 Solo añadimos VerificaMex si es INE/IFE
-                if (in_array($tipoId, ['ine', 'ife', 'ine/ife'])) {
-                    $semaforos['verificamex'] = (int)($vals['verificamex']['proceso'] ?? 2);
+                // 👇 Solo añadimos VerificaMex si es INE/IFE o si ya hay datos almacenados
+                if ($isIneDocument || $hasVerificamexData) {
+                    $semaforos['verificamex'] = (int)($verificamexData['proceso'] ?? 2);
                 }
 
                 // Resumen Humano global (ej. "✔️ Docs · ⏳ Arch · ✖️ Rostro · ...")
@@ -2118,12 +2134,11 @@ class InquilinoValidacionAWSController
                     'ingresos'     => $vals['ingresos']['resumen']     ?? null,
                     'pago_inicial' => $vals['pago_inicial']['resumen'] ?? null,
                     'demandas'     => $vals['demandas']['resumen']     ?? null,
-                    'verificamex'  => $vals['verificamex']['resumen']  ?? null,
                 ];
 
                 // 👇 Igual, agregamos resumen VerificaMex solo si aplica
                 if (isset($semaforos['verificamex'])) {
-                    $resumenes['verificamex'] = $vals['verificamex']['resumen'] ?? null;
+                    $resumenes['verificamex'] = $verificamexData['resumen'] ?? null;
                 }
 
                 // 🚀 Extra: detectar si en la validación identidad tenemos CURP

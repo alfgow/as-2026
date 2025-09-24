@@ -40,7 +40,6 @@ $curp        = $inquilino['curp'] ?? null;
 $rfc         = $inquilino['rfc'] ?? null;
 $slug        = $inquilino['slug'] ?? ($slug ?? null);
 $tipoId = strtolower(trim($inquilino['tipo_id'] ?? ''));
-$tiposIne = ['ine', 'ife', 'ine/ife'];
 
 $byType = [];
 foreach ($archivos ?? [] as $archivoItem) {
@@ -105,6 +104,27 @@ $tipoIdLower = strtolower((string)($inquilino['tipo_id'] ?? ''));
 $isIne       = str_contains($tipoIdLower, 'ine') || str_contains($tipoIdLower, 'ife');
 $isPassport  = str_contains($tipoIdLower, 'pasaporte') || str_contains($tipoIdLower, 'passport');
 $isFm        = str_contains($tipoIdLower, 'fm') || str_contains($tipoIdLower, 'forma');
+
+$verificamexValidacion = $validaciones['verificamex'] ?? [];
+if (!is_array($verificamexValidacion)) {
+    $verificamexValidacion = [];
+}
+
+$verificamexResumen = trim((string)($verificamexValidacion['resumen'] ?? ''));
+$verificamexJson    = $verificamexValidacion['json'] ?? null;
+if (is_string($verificamexJson)) {
+    $decodedJson = json_decode($verificamexJson, true);
+    if (json_last_error() === JSON_ERROR_NONE) {
+        $verificamexValidacion['json'] = $decodedJson;
+    }
+}
+
+$hasVerificamexData = $verificamexResumen !== ''
+    || (is_array($verificamexValidacion['json'] ?? null) && !empty($verificamexValidacion['json']))
+    || (is_string($verificamexJson) && trim($verificamexJson) !== '')
+    || array_key_exists('proceso', $verificamexValidacion);
+
+$showVerificamex = $isIne || $hasVerificamexData;
 
 $visibleIne = $isIne || (!$isPassport && !$isFm) || $ineFrontal || $ineReverso;
 $visiblePassport = (!$isIne && ($isPassport || $pasaporte));
@@ -178,7 +198,7 @@ function chipColor($valor)
                 <span id="pill-archivos" class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-sm"><span class="h-2 w-2 rounded-full bg-emerald-500"></span>Archivos</span>
                 <span id="pill-rostro" class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-sm"><span class="h-2 w-2 rounded-full bg-amber-500"></span>Rostro</span>
                 <span id="pill-identidad" class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-sm"><span class="h-2 w-2 rounded-full bg-amber-500"></span>Identidad</span>
-                <?php if (in_array($tipoId, $tiposIne, true)): ?>
+                <?php if ($showVerificamex): ?>
                     <span id="pill-verificamex" class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-sm"><span class="h-2 w-2 rounded-full bg-amber-500"></span>Verificamex</span>
                 <?php endif; ?>
                 <span id="pill-ingresos" class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-sm"><span class="h-2 w-2 rounded-full bg-rose-500"></span>Ingresos</span>
@@ -341,7 +361,7 @@ function chipColor($valor)
 
 
         <!-- VerificaMex -->
-        <?php if (in_array($tipoId, $tiposIne, true)): ?>
+        <?php if ($showVerificamex): ?>
             <!-- VerificaMex -->
             <div class="w-full max-w-full overflow-hidden rounded-2xl border border-white/10 bg-white/5 p-4 shadow-xl backdrop-blur" data-cat="verificamex">
                 <h3 class="text-base font-semibold text-white">Validación INE</h3>
@@ -368,7 +388,7 @@ function chipColor($valor)
 
                 <!-- Resumen humano -->
                 <p id="txt-verificamex" class="vh-scroll mt-2 pr-2 text-sm text-slate-300 break-words w-full">
-                    🚫No hay información aún de VerificaMex🚫
+                    <?= $verificamexResumen !== '' ? nl2br($h($verificamexResumen)) : '🚫No hay información aún de VerificaMex🚫' ?>
                 </p>
 
                 <!-- Botones -->
@@ -382,6 +402,14 @@ function chipColor($valor)
 
                 </div>
             </div>
+            <?php if (!empty($verificamexValidacion)): ?>
+                <script>
+                    window.__VH_DETALLES__ = window.__VH_DETALLES__ || {};
+                    if (!window.__VH_DETALLES__.verificamex) {
+                        window.__VH_DETALLES__.verificamex = <?= json_encode($verificamexValidacion, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?>;
+                    }
+                </script>
+            <?php endif; ?>
         <?php endif; ?>
 
 
@@ -421,7 +449,7 @@ function chipColor($valor)
                         Ver detalle
                     </button>
                     <!-- Botón dinámico si es proceso verificamex -->
-                    <?php if (!in_array($tipoId, $tiposIne, true)): ?>
+                    <?php if (!$showVerificamex): ?>
                         <button class="vh-recalc rounded-xl border border-white/10 bg-white/10 px-4 py-2 text-sm font-semibold hover:bg-white/15" data-check="save_face">
                             Volver a comparar
                         </button>
@@ -466,7 +494,7 @@ function chipColor($valor)
                     <button class="vh-detalle rounded-xl border border-white/10 bg-white/10 px-4 py-2 text-sm font-semibold hover:bg-white/15" data-cat="identidad">
                         Ver detalle
                     </button>
-                    <?php if (!in_array($tipoId, $tiposIne, true)): ?>
+                    <?php if (!$showVerificamex): ?>
                         <button class="vh-recalc rounded-xl border border-white/10 bg-white/10 px-4 py-2 text-sm font-semibold hover:bg-white/15" data-check="save_match">
                             Leer CURP/CIC
                         </button>

@@ -185,8 +185,29 @@ async function loadStatus() {
 	setText("#vh-ts", `Última actualización ${ts}`);
 	setText("#vh-ts-bottom", `Última actualización ${ts}`);
 
-	// Guardamos detalles globales
-	window.__VH_DETALLES__ = j.detalles || j;
+        // Guardamos detalles globales fusionando con lo previamente cargado
+        const incomingDetalles = (() => {
+                if (j && typeof j === "object" && j.detalles && typeof j.detalles === "object") {
+                        return j.detalles;
+                }
+                return j && typeof j === "object" ? j : {};
+        })();
+
+        const prevDetalles =
+                window.__VH_DETALLES__ && typeof window.__VH_DETALLES__ === "object"
+                        ? window.__VH_DETALLES__
+                        : {};
+
+        const mergedDetalles = { ...prevDetalles };
+        Object.entries(incomingDetalles || {}).forEach(([clave, valor]) => {
+                if (valor !== undefined && valor !== null) {
+                        mergedDetalles[clave] = valor;
+                } else if (!(clave in mergedDetalles)) {
+                        mergedDetalles[clave] = valor;
+                }
+        });
+
+        window.__VH_DETALLES__ = mergedDetalles;
 
 	// 🔎 Normalizamos identidad
 	const identidadInfo = j.detalles?.identidad || {};
