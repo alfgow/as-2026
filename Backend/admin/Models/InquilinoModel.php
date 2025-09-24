@@ -553,8 +553,12 @@ class InquilinoModel extends Database
             throw new RuntimeException('ID de inquilino inválido.');
         }
 
-        if ($this->tienePolizasRelacionadas($idInquilino)) {
-            throw new RuntimeException('No se puede eliminar el prospecto porque está relacionado con una póliza.');
+        $numeroPoliza = $this->tienePolizasRelacionadas($idInquilino);
+        if ($numeroPoliza !== null) {
+            throw new RuntimeException(sprintf(
+                'No se puede eliminar porque el prospecto está relacionado con la póliza %s',
+                $numeroPoliza
+            ));
         }
 
         $s3Keys = $this->recolectarClavesS3($idInquilino);
@@ -1408,19 +1412,20 @@ class InquilinoModel extends Database
         return $fallidos;
     }
 
-    private function tienePolizasRelacionadas(int $idInquilino): bool
+    private function tienePolizasRelacionadas(int $idInquilino): ?string
     {
-        $query = 'SELECT COUNT(*) FROM polizas WHERE id_inquilino = :inq OR id_obligado = :obl OR id_fiador = :fia';
+        $query = 'SELECT numero_poliza FROM polizas WHERE estado = 1 AND (
+                id_inquilino = :id OR id_obligado = :id OR id_fiador = :id
+            ) ORDER BY id ASC LIMIT 1';
+
         $stmt = $this->db->prepare($query);
-
-        $stmt->bindValue(':inq', $idInquilino, PDO::PARAM_INT);
-        $stmt->bindValue(':obl', $idInquilino, PDO::PARAM_INT);
-        $stmt->bindValue(':fia', $idInquilino, PDO::PARAM_INT);
-
+        $stmt->bindValue(':id', $idInquilino, PDO::PARAM_INT);
         $stmt->execute();
 
-        $conteo = $stmt->fetchColumn();
-        return (int) ($conteo ?: 0) > 0;
+        $numeroPoliza = $stmt->fetchColumn();
+        $numeroPoliza = is_string($numeroPoliza) ? trim($numeroPoliza) : null;
+
+        return $numeroPoliza !== '' ? $numeroPoliza : null;
     }
 
     private function profileListEntry(array $profile): array
