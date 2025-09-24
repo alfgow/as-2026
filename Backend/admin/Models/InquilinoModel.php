@@ -1416,7 +1416,8 @@ class InquilinoModel extends Database
     {
         $query = 'SELECT numero_poliza FROM polizas WHERE estado = 1 AND (
                 id_inquilino = :id OR id_obligado = :id OR id_fiador = :id
-            ) ORDER BY id ASC LIMIT 1';
+
+            ) ORDER BY id_poliza ASC LIMIT 1';
 
         $stmt = $this->db->prepare($query);
         $stmt->bindValue(':id', $idInquilino, PDO::PARAM_INT);
