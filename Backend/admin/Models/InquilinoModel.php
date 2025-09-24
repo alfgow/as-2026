@@ -1415,12 +1415,14 @@ class InquilinoModel extends Database
     private function tienePolizasRelacionadas(int $idInquilino): ?string
     {
         $query = 'SELECT numero_poliza FROM polizas WHERE estado = 1 AND (
-                id_inquilino = :id OR id_obligado = :id OR id_fiador = :id
+                id_inquilino = :idInquilino OR id_obligado = :idObligado OR id_fiador = :idFiador
 
             ) ORDER BY id_poliza ASC LIMIT 1';
 
         $stmt = $this->db->prepare($query);
-        $stmt->bindValue(':id', $idInquilino, PDO::PARAM_INT);
+        $stmt->bindValue(':idInquilino', $idInquilino, PDO::PARAM_INT);
+        $stmt->bindValue(':idObligado', $idInquilino, PDO::PARAM_INT);
+        $stmt->bindValue(':idFiador', $idInquilino, PDO::PARAM_INT);
         $stmt->execute();
 
         $numeroPoliza = $stmt->fetchColumn();
