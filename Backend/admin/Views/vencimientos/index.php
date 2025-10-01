@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../../Helpers/TextHelper.php';
 
 use App\Helpers\TextHelper;
+use DateTimeImmutable;
 
 
 /**
@@ -187,8 +188,6 @@ $tituloAnio = (int)($anioSeleccionado ?? date('Y'));
             $vigencia = TextHelper::titleCase($poliza['vigencia'] ?? '');
             $estado   = $poliza['estado'] ?? '';
 
-            $venceMes  = str_pad((string)($poliza['mes_vencimiento'] ?? ''), 2, '0', STR_PAD_LEFT);
-            $venceAnio = htmlspecialchars($poliza['year_vencimiento'] ?? '');
             $renta     = money_mx($poliza['monto_renta'] ?? 0, 0);
             $mpoliza   = money_mx($poliza['monto_poliza'] ?? 0, 2);
 
@@ -199,6 +198,17 @@ $tituloAnio = (int)($anioSeleccionado ?? date('Y'));
             $asesor     = TextHelper::titleCase($poliza['nombre_asesor'] ?? '');
             $direccion  = TextHelper::titleCase($poliza['direccion'] ?? '');
             $tipoInm    = TextHelper::titleCase($poliza['tipo_inmueble'] ?? '');
+
+            $fechaVencimiento = $poliza['fecha_vencimiento_normalizada'] ?? null;
+            $venceTexto       = $poliza['fecha_vencimiento_formateada'] ?? null;
+
+            if ($fechaVencimiento instanceof DateTimeImmutable) {
+                $venceTexto = $fechaVencimiento->format('d/m/Y');
+            }
+
+            if (!is_string($venceTexto) || $venceTexto === '') {
+                $venceTexto = 'Sin fecha';
+            }
             ?>
 
             <article class="relative w-full max-w-2xl mx-auto bg-gradient-to-br from-indigo-950/80 to-gray-900/90 rounded-3xl shadow-2xl border border-indigo-900/70 p-5 md:p-7 overflow-hidden group transition-all hover:scale-[1.012]">
@@ -237,7 +247,7 @@ $tituloAnio = (int)($anioSeleccionado ?? date('Y'));
                 <!-- Fechas y montos -->
                 <section class="relative z-10 mt-6 flex flex-wrap items-center gap-3">
                     <span class="bg-pink-500 text-white px-4 py-1 rounded-full text-sm font-bold tracking-wide shadow group-hover:bg-pink-600 transition">
-                        Vence: <?= $venceMes ?>/<?= $venceAnio ?>
+                        Vence: <?= htmlspecialchars($venceTexto) ?>
                     </span>
                     <span class="bg-gray-800 text-pink-200 px-4 py-1 rounded-full text-sm font-semibold">
                         Renta: $<?= $renta ?>
