@@ -2,9 +2,6 @@
 require_once __DIR__ . '/../../Helpers/TextHelper.php';
 
 use App\Helpers\TextHelper;
-use DateTimeImmutable;
-
-
 /**
  * Vista: Vencimientos / index.php
  * ------------------------------------------------------------------
