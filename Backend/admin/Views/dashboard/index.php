@@ -186,51 +186,6 @@ use App\Helpers\TextHelper;
             </thead>
 
             <tbody>
-                <?php
-                $parseVigencia = static function (?string $vigencia): ?\DateTimeImmutable {
-                    if ($vigencia === null || trim($vigencia) === '') {
-                        return null;
-                    }
-
-                    $patron = '/al\s+(\d{1,2})\s+de\s+([[:alpha:]]+)\s+de\s+(\d{4})/iu';
-
-                    if (!preg_match($patron, (string)$vigencia, $coincidencias)) {
-                        return null;
-                    }
-
-                    $dia = (int)$coincidencias[1];
-                    $mesNombre = mb_strtolower($coincidencias[2], 'UTF-8');
-                    $anio = (int)$coincidencias[3];
-
-                    $meses = [
-                        'enero' => 1,
-                        'febrero' => 2,
-                        'marzo' => 3,
-                        'abril' => 4,
-                        'mayo' => 5,
-                        'junio' => 6,
-                        'julio' => 7,
-                        'agosto' => 8,
-                        'septiembre' => 9,
-                        'setiembre' => 9,
-                        'octubre' => 10,
-                        'noviembre' => 11,
-                        'diciembre' => 12,
-                    ];
-
-                    if (!array_key_exists($mesNombre, $meses)) {
-                        return null;
-                    }
-
-                    $fecha = sprintf('%04d-%02d-%02d', $anio, $meses[$mesNombre], $dia);
-
-                    try {
-                        return new \DateTimeImmutable($fecha);
-                    } catch (\Throwable $exception) {
-                        return null;
-                    }
-                };
-                ?>
                 <?php foreach ($vencimientosProximos as $v): ?>
                     <?php
                     $nombreInquilino = TextHelper::titleCase((string)($v['nombre_inquilino_completo'] ?? '—'));
@@ -293,43 +248,12 @@ use App\Helpers\TextHelper;
                     $waUrl = 'https://wa.me/+52' . $asesorTelefono . '?text=' . urlencode($mensajeUtf8);
 
 
-                    $fechaVencimiento = null;
-                    if (!empty($v['fecha_fin'])) {
-                        try {
-                            $fechaVencimiento = new \DateTime((string)$v['fecha_fin']);
-                        } catch (\Throwable $e) {
-                            $fechaVencimiento = null;
-                        }
-                    }
+                    $fechaVencimiento = $v['fecha_vencimiento_normalizada'] ?? null;
 
-                    if ($fechaVencimiento === null) {
-                        $fechaVencimiento = $parseVigencia($v['vigencia'] ?? null);
-                    }
-
-                    if ($fechaVencimiento === null) {
-                        $mes  = $v['mes_vencimiento'] ?? '';
-                        $anio = $v['year_vencimiento'] ?? '';
-
-                        if ($mes !== '' && $anio !== '') {
-                            $mesFormateado = str_pad((string)$mes, 2, '0', STR_PAD_LEFT);
-                            $fechaConstruida = sprintf('%s-%s-01', (string)$anio, $mesFormateado);
-
-                            try {
-                                $fechaVencimiento = new \DateTime($fechaConstruida);
-                            } catch (\Throwable $e) {
-                                $fechaVencimiento = null;
-                            }
-                        }
-                    }
-
-                    if ($fechaVencimiento instanceof DateTimeInterface) {
+                    if ($fechaVencimiento instanceof DateTimeImmutable) {
                         $fechaFormateada = TextHelper::titleCase($fechaVencimiento->format('d/m/Y'));
-                        $venceNormalizado = $fechaVencimiento instanceof \DateTimeImmutable
-                            ? $fechaVencimiento->setTime(0, 0)
-                            : \DateTimeImmutable::createFromMutable($fechaVencimiento)->setTime(0, 0);
-
                         $hoy = new \DateTimeImmutable('today');
-                        $intervalo = $hoy->diff($venceNormalizado);
+                        $intervalo = $hoy->diff($fechaVencimiento);
                         $diasRestantes = (int)$intervalo->format('%r%a');
 
                         if ($intervalo->invert === 0 && $diasRestantes > 0) {
