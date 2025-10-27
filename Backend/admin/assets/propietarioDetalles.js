@@ -193,42 +193,122 @@ document.addEventListener("DOMContentLoaded", () => {
 			.classList.remove("hidden");
 	};
 
-	window.guardarComentarios = function (e) {
-		e.preventDefault();
-		const form = document.getElementById("form-comentarios");
-		const data = new FormData(form);
+        window.guardarComentarios = function (e) {
+                e.preventDefault();
+                const form = document.getElementById("form-comentarios");
+                const data = new FormData(form);
 
-		fetch(BASE_URL + "/arrendador/actualizar-comentarios", {
-			method: "POST",
-			body: data,
-		})
-			.then((r) => r.json())
-			.then((res) => {
-				if (res.ok) {
-					Swal.fire({
-						icon: "success",
-						title: "Éxito",
-						text: "Comentario agregado.",
-						background: "#1f1f2e",
-						color: "#fde8e8ca",
-						iconColor: "#a5b4fc",
-						confirmButtonColor: "#4f46e5",
-					});
-					setTimeout(() => location.reload(), 2000);
-				} else {
-					Swal.fire({
-						icon: "error",
-						title: "Error",
-						text: res.error || "No se pudo guardar",
-					});
-				}
-			});
-	};
+                fetch(BASE_URL + "/arrendador/actualizar-comentarios", {
+                        method: "POST",
+                        body: data,
+                })
+                        .then((r) => r.json())
+                        .then((res) => {
+                                if (res.ok) {
+                                        Swal.fire({
+                                                icon: "success",
+                                                title: "Éxito",
+                                                text: "Comentario agregado.",
+                                                background: "#1f1f2e",
+                                                color: "#fde8e8ca",
+                                                iconColor: "#a5b4fc",
+                                                confirmButtonColor: "#4f46e5",
+                                        });
+                                        setTimeout(() => location.reload(), 2000);
+                                } else {
+                                        Swal.fire({
+                                                icon: "error",
+                                                title: "Error",
+                                                text: res.error || "No se pudo guardar",
+                                        });
+                                }
+                        });
+        };
 
-	// =====================
-	// Modal imágenes
-	// =====================
-	window.abrirModal = function (src) {
+        // =====================
+        // Asesor asignado
+        // =====================
+        window.mostrarFormAsesor = function () {
+                document.getElementById("asesor-vista")?.classList.add("hidden");
+                document.getElementById("form-asesor")?.classList.remove("hidden");
+                document.getElementById("btn-edit-asesor")?.classList.add("hidden");
+        };
+
+        window.cancelarAsesor = function () {
+                document.getElementById("form-asesor")?.classList.add("hidden");
+                document.getElementById("asesor-vista")?.classList.remove("hidden");
+                document.getElementById("btn-edit-asesor")?.classList.remove("hidden");
+                const msg = document.getElementById("mensaje-asesor");
+                if (msg) {
+                        msg.textContent = "";
+                        msg.className = "text-sm text-center";
+                }
+        };
+
+        window.guardarAsesor = function (e) {
+                e.preventDefault();
+                const form = document.getElementById("form-asesor");
+                if (!form) {
+                        return;
+                }
+
+                const mensaje = document.getElementById("mensaje-asesor");
+                if (mensaje) {
+                        mensaje.textContent = "Guardando...";
+                        mensaje.className = "text-sm text-center text-yellow-400";
+                }
+
+                fetch(BASE_URL + "/arrendador/actualizar-asesor", {
+                        method: "POST",
+                        body: new FormData(form),
+                })
+                        .then((r) => r.json())
+                        .then((res) => {
+                                if (res.ok) {
+                                        if (mensaje) {
+                                                mensaje.textContent = "Asesor actualizado";
+                                                mensaje.className = "text-sm text-center text-green-400";
+                                        }
+                                        Swal.fire({
+                                                icon: "success",
+                                                title: "¡Asesor actualizado!",
+                                                text: "El asesor se cambió correctamente.",
+                                                background: "#1f1f2e",
+                                                color: "#fde8e8ca",
+                                                iconColor: "#38bdf8",
+                                                confirmButtonColor: "#4f46e5",
+                                        }).then(() => {
+                                                window.location.reload();
+                                        });
+                                } else {
+                                        if (mensaje) {
+                                                mensaje.textContent = res.error || "No se pudo guardar";
+                                                mensaje.className = "text-sm text-center text-red-400";
+                                        }
+                                        Swal.fire({
+                                                icon: "error",
+                                                title: "Error",
+                                                text: res.error || "No se pudo guardar",
+                                        });
+                                }
+                        })
+                        .catch(() => {
+                                if (mensaje) {
+                                        mensaje.textContent = "Error al conectar";
+                                        mensaje.className = "text-sm text-center text-red-400";
+                                }
+                                Swal.fire({
+                                        icon: "error",
+                                        title: "Error",
+                                        text: "Hubo un problema en la conexión.",
+                                });
+                        });
+        };
+
+        // =====================
+        // Modal imágenes
+        // =====================
+        window.abrirModal = function (src) {
 		const modal = document.getElementById("imageModal");
 		const modalImg = document.getElementById("modalImage");
 		modalImg.src = src;

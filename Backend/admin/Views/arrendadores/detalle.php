@@ -106,6 +106,65 @@ use App\Helpers\TextHelper;
         </form>
     </div>
 
+    <?php
+    $asesorActual     = $asesorActual ?? null;
+    $asesores         = $asesores ?? [];
+    $asesorIdActual   = $asesorActual['id'] ?? ($arrendador['profile']['id_asesor'] ?? null);
+    $asesorNombre     = $asesorActual['nombre_asesor'] ?? 'No asignado';
+    $asesorEmail      = $asesorActual['email'] ?? 'N/A';
+    $asesorCelular    = $asesorActual['celular'] ?? 'N/A';
+    $arrendadorIdForm = (int)($arrendador['profile']['id'] ?? 0);
+    ?>
+
+    <div class="bg-gray-900 p-6 rounded-xl shadow-xl">
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-xl font-semibold flex items-center gap-2 text-indigo-400">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M5.121 17.804A13.937 13.937 0 0112 15c2.485 0 4.797.657 6.879 1.804" />
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 10a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                Asesor asignado
+            </h2>
+            <button id="btn-edit-asesor" type="button" onclick="mostrarFormAsesor()" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg">Editar</button>
+        </div>
+
+        <div id="asesor-vista" class="grid sm:grid-cols-3 gap-4 text-indigo-100 text-left">
+            <p><span class="font-semibold text-indigo-200">Nombre:</span> <?= htmlspecialchars($asesorNombre) ?></p>
+            <p><span class="font-semibold text-indigo-200">Email:</span> <?= htmlspecialchars($asesorEmail ?: 'N/A') ?></p>
+            <p><span class="font-semibold text-indigo-200">Celular:</span> <?= htmlspecialchars($asesorCelular ?: 'N/A') ?></p>
+        </div>
+
+        <form id="form-asesor" class="hidden mt-4 space-y-4" onsubmit="guardarAsesor(event)">
+            <input type="hidden" name="id_arrendador" value="<?= $arrendadorIdForm ?>">
+
+            <div>
+                <label class="block text-sm mb-1">Selecciona el asesor</label>
+                <select name="id_asesor" required class="w-full px-3 py-2 rounded-lg bg-[#232336] border border-indigo-800 text-indigo-100">
+                    <option value="">Selecciona...</option>
+                    <?php foreach ($asesores as $asesor):
+                        $idAsesor = (int)($asesor['id'] ?? 0);
+                        $selected = $asesorIdActual && $idAsesor === (int)$asesorIdActual ? 'selected' : '';
+                        $label    = (string)($asesor['nombre_asesor'] ?? '');
+                        if (!empty($asesor['email'])) {
+                            $label .= ' (' . $asesor['email'] . ')';
+                        }
+                    ?>
+                        <option value="<?= $idAsesor ?>" <?= $selected ?>>
+                            <?= htmlspecialchars($label) ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+
+            <div id="mensaje-asesor" class="text-sm text-center"></div>
+
+            <div class="flex justify-end gap-4 pt-2">
+                <button type="button" onclick="cancelarAsesor()" class="px-4 py-2 bg-pink-600 hover:bg-pink-500 rounded-lg">Cancelar</button>
+                <button type="submit" class="px-4 py-2 bg-green-600 hover:bg-green-500 rounded-lg">Guardar</button>
+            </div>
+        </form>
+    </div>
+
     <div class="bg-gray-900 py-6 px-2 rounded-xl shadow-xl">
         <h2 class="text-xl font-semibold text-white mb-6">📂 Documentos</h2>
 

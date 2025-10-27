@@ -9,6 +9,7 @@ use App\Middleware\AuthMiddleware;
 AuthMiddleware::verificarSesion();
 
 require_once __DIR__ . '/../Models/ArrendadorModel.php';
+require_once __DIR__ . '/../Models/AsesorModel.php';
 require_once __DIR__ . '/../Helpers/S3Helper.php';
 require_once __DIR__ . '/../Helpers/NormalizadoHelper.php';
 require_once __DIR__ . '/../Helpers/SlugHelper.php';
@@ -17,6 +18,7 @@ use App\Helpers\S3Helper;
 use App\Helpers\NormalizadoHelper;
 use App\Helpers\SlugHelper;
 use App\Models\ArrendadorModel;
+use App\Models\AsesorModel;
 
 /**
  * Controlador de gestión de arrendadores
@@ -25,10 +27,12 @@ use App\Models\ArrendadorModel;
 class ArrendadorController
 {
     protected $model;
+    private AsesorModel $asesorModel;
 
     public function __construct()
     {
-        $this->model = new ArrendadorModel();
+        $this->model       = new ArrendadorModel();
+        $this->asesorModel = new AsesorModel();
     }
 
     /**
@@ -107,6 +111,15 @@ class ArrendadorController
                 $f['url'] = $s3->getPresignedUrl($f['s3_key']);
             }
         }
+        unset($f);
+
+        $asesorActual = null;
+        $profile      = $arrendador['profile'] ?? [];
+        if (!empty($profile['id_asesor'])) {
+            $asesorActual = $this->asesorModel->find((int) $profile['id_asesor']);
+        }
+
+        $asesores = $this->asesorModel->all();
 
         $title       = 'Detalle Arrendador';
         $headerTitle = $arrendador['profile']['nombre_arrendador'];
@@ -302,6 +315,54 @@ class ArrendadorController
         header('Content-Type: application/json');
         $arrendadores = $this->model->obtenerPorAsesor($id);
         echo json_encode($arrendadores);
+    }
+
+    public function actualizarAsesor(): void
+    {
+        if (!$this->validarMetodoPost()) {
+            return;
+        }
+
+        header('Content-Type: application/json');
+
+        $idArrendador = isset($_POST['id_arrendador']) ? (int) $_POST['id_arrendador'] : 0;
+        $idAsesor     = isset($_POST['id_asesor']) ? (int) $_POST['id_asesor'] : 0;
+
+        if ($idArrendador <= 0) {
+            echo json_encode(['ok' => false, 'error' => 'Arrendador inválido']);
+            return;
+        }
+
+        if ($idAsesor <= 0) {
+            echo json_encode(['ok' => false, 'error' => 'Selecciona un asesor válido']);
+            return;
+        }
+
+        try {
+            $arrendador = $this->model->obtenerPorId($idArrendador);
+            if (!$arrendador) {
+                echo json_encode(['ok' => false, 'error' => 'Arrendador no encontrado']);
+                return;
+            }
+
+            $asesor = $this->asesorModel->find($idAsesor);
+            if (!$asesor) {
+                echo json_encode(['ok' => false, 'error' => 'Asesor no encontrado']);
+                return;
+            }
+
+            $payload = $this->model->cambiarAsesor($idArrendador, $asesor);
+
+            echo json_encode([
+                'ok'     => true,
+                'asesor' => $payload,
+            ]);
+        } catch (\Throwable $e) {
+            echo json_encode([
+                'ok'    => false,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /* ================= Métodos auxiliares internos ================= */
