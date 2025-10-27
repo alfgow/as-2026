@@ -8,6 +8,7 @@ require_once __DIR__ . '/../Core/Database.php';
 require_once __DIR__ . '/../Helpers/NormalizadoHelper.php';
 require_once __DIR__ . '/../Helpers/SlugHelper.php';
 require_once __DIR__ . '/../Helpers/TextHelper.php';
+require_once __DIR__ . '/AsesorModel.php';
 
 use App\Core\Database;
 use App\Helpers\NormalizadoHelper;
@@ -327,6 +328,41 @@ class ArrendadorModel extends Database
         ]);
 
         return true;
+    }
+
+    /**
+     * @param array<string, mixed> $asesorData
+     */
+    public function cambiarAsesor(int $idArrendador, array $asesorData): array
+    {
+        $nuevoId = (int) ($asesorData['id'] ?? 0);
+        if ($nuevoId <= 0) {
+            throw new RuntimeException('ID de asesor inválido.');
+        }
+
+        $stmt = $this->db->prepare('UPDATE arrendadores SET id_asesor = :asesor WHERE id = :id');
+        $stmt->execute([
+            ':asesor' => $nuevoId,
+            ':id'     => $idArrendador,
+        ]);
+
+        $asesorModel = new AsesorModel();
+        $asesor      = $asesorModel->find($nuevoId);
+
+        if ($asesor === null) {
+            $asesor = [
+                'id'            => $nuevoId,
+                'nombre_asesor' => (string) ($asesorData['nombre_asesor'] ?? ''),
+                'email'         => (string) ($asesorData['email'] ?? ''),
+                'celular'       => (string) ($asesorData['celular'] ?? ''),
+            ];
+        }
+
+        if (!isset($asesor['pk'])) {
+            $asesor['pk'] = sprintf('ase#%d', (int) ($asesor['id'] ?? $nuevoId));
+        }
+
+        return $asesor;
     }
 
     private function obtenerInmuebles(int $idArrendador): array

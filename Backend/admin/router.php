@@ -412,6 +412,12 @@ switch (true) {
         exit;
         break;
 
+    case $uri === '/arrendador/actualizar-asesor' && $_SERVER['REQUEST_METHOD'] === 'POST':
+        require __DIR__ . '/Controllers/ArrendadorController.php';
+        (new \App\Controllers\ArrendadorController())->actualizarAsesor();
+        exit;
+        break;
+
     // Prospecto - listado principal
     case $uri === '/inquilino' || $uri === '/inquilino/index':
         require __DIR__ . '/Controllers/InquilinoController.php';
