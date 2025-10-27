@@ -44,7 +44,6 @@ class AsesorModel extends Database
             'nombre_asesor'       => (string) ($row['nombre_asesor'] ?? ''),
             'email'               => (string) ($row['email'] ?? ''),
             'celular'             => (string) ($row['celular'] ?? ''),
-            'telefono'            => (string) ($row['telefono'] ?? ''),
             'arrendadores_total'  => (int) ($row['arrendadores_total'] ?? 0),
             'inquilinos_total'    => (int) ($row['inquilinos_total'] ?? 0),
         ];
@@ -52,7 +51,7 @@ class AsesorModel extends Database
 
     private function baseSelect(): string
     {
-        return 'SELECT a.id, a.nombre_asesor, a.email, a.celular, a.telefono,
+        return 'SELECT a.id, a.nombre_asesor, a.email, a.celular,
                        COALESCE(arr.total_arrendadores, 0) AS arrendadores_total,
                        COALESCE(inq.total_inquilinos, 0) AS inquilinos_total
                 FROM asesores a
@@ -179,8 +178,7 @@ class AsesorModel extends Database
         $params     = [':email' => $email];
 
         if ($cel !== null && $cel !== '') {
-            $conditions[]     = 'celular = :celular';
-            $conditions[]     = 'telefono = :celular';
+            $conditions[]       = 'celular = :celular';
             $params[':celular'] = $cel;
         }
 
@@ -215,17 +213,11 @@ class AsesorModel extends Database
             throw new RuntimeException('El correo electrónico del asesor ya existe.');
         }
 
-        $telefono = trim((string) ($data['telefono'] ?? ''));
-        if ($telefono === '') {
-            $telefono = $cel;
-        }
-
-        $stmt = $this->db->prepare('INSERT INTO asesores (nombre_asesor, email, celular, telefono)
-            VALUES (:nombre, :email, :celular, :telefono)');
+        $stmt = $this->db->prepare('INSERT INTO asesores (nombre_asesor, email, celular)
+            VALUES (:nombre, :email, :celular)');
         $stmt->bindValue(':nombre', $nombre, PDO::PARAM_STR);
         $stmt->bindValue(':email', $email, PDO::PARAM_STR);
         $stmt->bindValue(':celular', $cel, PDO::PARAM_STR);
-        $stmt->bindValue(':telefono', $telefono, PDO::PARAM_STR);
         $stmt->execute();
 
         return (int) $this->lastInsertId();
@@ -252,21 +244,14 @@ class AsesorModel extends Database
             throw new RuntimeException('El correo electrónico del asesor ya existe.');
         }
 
-        $telefono = trim((string) ($data['telefono'] ?? ''));
-        if ($telefono === '') {
-            $telefono = $cel;
-        }
-
         $stmt = $this->db->prepare('UPDATE asesores
             SET nombre_asesor = :nombre,
                 email         = :email,
-                celular       = :celular,
-                telefono      = :telefono
+                celular       = :celular
             WHERE id = :id');
         $stmt->bindValue(':nombre', $nombre, PDO::PARAM_STR);
         $stmt->bindValue(':email', $email, PDO::PARAM_STR);
         $stmt->bindValue(':celular', $cel, PDO::PARAM_STR);
-        $stmt->bindValue(':telefono', $telefono, PDO::PARAM_STR);
         $stmt->bindValue(':id', $id, PDO::PARAM_INT);
 
         return $stmt->execute();
