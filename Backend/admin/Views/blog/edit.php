@@ -10,8 +10,10 @@ $s3 = new S3Helper('blog');
   <p class="mb-7 text-indigo-400">Modifica el contenido, imagen o etiquetas SEO de este artículo.</p>
 
   <?php $postId = (string)($post['id'] ?? ''); ?>
-  <form method="POST" action="<?= admin_url('blog/update') . '?id=' . urlencode($postId) ?>" enctype="multipart/form-data"
+  <form method="POST" action="<?= admin_url('blog/update') ?>" enctype="multipart/form-data"
     class="bg-white/10 backdrop-blur-lg rounded-2xl shadow-2xl p-8 border border-indigo-900/20 space-y-7">
+
+    <input type="hidden" name="id" value="<?= htmlspecialchars($postId, ENT_QUOTES, 'UTF-8') ?>">
 
     <!-- Título -->
     <div>

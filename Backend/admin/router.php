@@ -142,6 +142,13 @@ switch (true) {
         exit;
         break;
 
+    // Blog - actualizar post existente
+    case $uri === '/blog/update' && $method === 'POST':
+        require __DIR__ . '/Controllers/BlogController.php';
+        (new \App\Controllers\BlogController())->update();
+        exit;
+        break;
+
     // Blog - editar (ejemplo: /blog/edit?id=4)
     case preg_match('#^/blog/edit$#', $uri):
         require __DIR__ . '/Controllers/BlogController.php';
