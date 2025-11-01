@@ -76,8 +76,8 @@ $s3 = new S3Helper('blog');
 
     <!-- Contenido enriquecido -->
     <div>
-      <label for="content" class="block font-bold text-indigo-300 mb-2">Contenido *</label>
-      <textarea id="content" name="content" required rows="9"
+      <label for="contenido" class="block font-bold text-indigo-300 mb-2">Contenido *</label>
+      <textarea id="contenido" name="contenido" required rows="9"
         class="w-full rounded-lg px-4 py-3 bg-[#232336] text-indigo-100 border border-indigo-800 shadow placeholder-indigo-400 focus:ring-indigo-600 focus:border-indigo-600 transition resize-y"
         placeholder="Contenido del blog"><?= htmlspecialchars($post['contenido'] ?? '') ?></textarea>
       <p class="text-xs text-indigo-400 mt-1">Puedes usar formato HTML básico.</p>
