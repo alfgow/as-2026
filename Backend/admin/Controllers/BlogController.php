@@ -91,14 +91,14 @@ class BlogController
     {
         $id = isset($_GET['id']) ? (int) $_GET['id'] : 0;
         if ($id <= 0) {
-            header('Location: ' . getBaseUrl() . '/blog');
+            header('Location: ' . admin_base_url('blog'));
             exit;
         }
 
         $blogModel = new BlogModel();
         $post      = $blogModel->find($id);
         if (!$post) {
-            header('Location: ' . getBaseUrl() . '/blog');
+            header('Location: ' . admin_base_url('blog'));
             exit;
         }
 
@@ -114,7 +114,7 @@ class BlogController
     public function update()
     {
         if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-            header('Location: ' . getBaseUrl() . '/blog');
+            header('Location: ' . admin_base_url('blog'));
             exit;
         }
 
@@ -126,14 +126,14 @@ class BlogController
         $imagen    = $_FILES['image'] ?? null;
 
         if ($id <= 0 || $titulo === '' || $contenido === '') {
-            header('Location: ' . getBaseUrl() . '/blog');
+            header('Location: ' . admin_base_url('blog'));
             exit;
         }
 
         $blogModel = new BlogModel();
         $post      = $blogModel->find($id);
         if (!$post) {
-            header('Location: ' . getBaseUrl() . '/blog');
+            header('Location: ' . admin_base_url('blog'));
             exit;
         }
 
@@ -151,7 +151,7 @@ class BlogController
             'imagen_key' => $imagen_key,
         ]);
 
-        header('Location: ' . getBaseUrl() . '/blog');
+        header('Location: ' . admin_base_url('blog'));
         exit;
     }
 
@@ -168,7 +168,7 @@ class BlogController
                 $blogModel->delete($id);
             }
         }
-        header('Location: ' . getBaseUrl() . '/blog');
+        header('Location: ' . admin_base_url('blog'));
         exit;
     }
 
