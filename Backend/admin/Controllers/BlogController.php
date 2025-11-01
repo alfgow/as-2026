@@ -160,14 +160,42 @@ class BlogController
      */
     public function delete()
     {
-        $id = isset($_GET['id']) ? (int) $_GET['id'] : 0;
-        if ($id > 0) {
-            $blogModel = new BlogModel();
-            $post      = $blogModel->find($id);
-            if ($post) {
-                $blogModel->delete($id);
-            }
+        $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+        $id = 0;
+
+        if ($method === 'POST') {
+            $id = (int) ($_POST['id'] ?? 0);
+        } else {
+            $id = isset($_GET['id']) ? (int) $_GET['id'] : 0;
         }
+
+        if ($id <= 0) {
+            if ($method === 'POST') {
+                return $this->jsonResponse(false, 'Identificador de entrada inválido.');
+            }
+
+            header('Location: ' . admin_base_url('blog'));
+            exit;
+        }
+
+        $blogModel = new BlogModel();
+        $post      = $blogModel->find($id);
+
+        if (! $post) {
+            if ($method === 'POST') {
+                return $this->jsonResponse(false, 'La entrada especificada no existe.');
+            }
+
+            header('Location: ' . admin_base_url('blog'));
+            exit;
+        }
+
+        $blogModel->delete($id);
+
+        if ($method === 'POST') {
+            return $this->jsonResponse(true, 'Entrada eliminada correctamente.');
+        }
+
         header('Location: ' . admin_base_url('blog'));
         exit;
     }

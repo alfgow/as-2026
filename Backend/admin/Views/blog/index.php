@@ -45,35 +45,84 @@ $s3 = new S3Helper('blog');
                     <?php $postId = (string)($post['id'] ?? ''); ?>
                     <a href="<?= admin_url('blog/edit') . '?id=' . urlencode($postId) ?>"
                        class="flex-1 text-center py-1.5 bg-indigo-600 hover:bg-indigo-700 rounded text-white text-sm transition">Editar</a>
-                    <!-- Si quieres eliminar, añade aquí -->
-                    <!--
-                    <button class="flex-1 text-center py-1.5 bg-red-600 hover:bg-red-700 rounded text-white text-sm transition"
-                        onclick="eliminarBlog(<?= $post['id'] ?>)">Eliminar</button>
-                    -->
+                    <button type="button"
+                            class="flex-1 text-center py-1.5 bg-red-600 hover:bg-red-700 rounded text-white text-sm transition"
+                            data-delete-post
+                            data-post-id="<?= htmlspecialchars($postId) ?>">
+                        Eliminar
+                    </button>
                 </div>
             </div>
         </div>
     <?php endforeach; ?>
 </div>
 
-<!-- Si quieres Eliminar, añade el siguiente script: -->
-<!--
 <script>
-function eliminarBlog(id) {
-    Swal.fire({
-        title: '¿Eliminar entrada?',
-        text: "Esta acción no se puede deshacer.",
-        icon: 'warning',
-        showCancelButton: true,
-        confirmButtonColor: '#e53e3e',
-        cancelButtonColor: '#6b7280',
-        confirmButtonText: 'Sí, eliminar'
-    }).then((result) => {
-        if (result.isConfirmed) {
-            // Puedes hacer un fetch POST aquí para eliminar el blog por id
-            // Y luego refrescar la página
+    document.addEventListener('DOMContentLoaded', () => {
+        const deleteButtons = document.querySelectorAll('[data-delete-post]');
+        if (!deleteButtons.length) {
+            return;
         }
+
+        const deleteUrl = <?= json_encode(admin_url('blog/delete')) ?>;
+
+        deleteButtons.forEach((button) => {
+            button.addEventListener('click', () => {
+                const postId = button.getAttribute('data-post-id');
+                if (!postId) {
+                    return;
+                }
+
+                Swal.fire({
+                    title: '¿Eliminar entrada?',
+                    text: 'Esta acción no se puede deshacer.',
+                    icon: 'warning',
+                    showCancelButton: true,
+                    confirmButtonColor: '#e53e3e',
+                    cancelButtonColor: '#6b7280',
+                    confirmButtonText: 'Sí, eliminar'
+                }).then((result) => {
+                    if (!result.isConfirmed) {
+                        return;
+                    }
+
+                    fetch(deleteUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
+                        },
+                        body: new URLSearchParams({ id: postId }).toString(),
+                        credentials: 'same-origin'
+                    })
+                        .then((response) => response.json())
+                        .then((data) => {
+                            if (data?.success) {
+                                Swal.fire({
+                                    title: 'Eliminado',
+                                    text: data.message || 'La entrada se eliminó correctamente.',
+                                    icon: 'success',
+                                    timer: 1500,
+                                    showConfirmButton: false
+                                }).then(() => {
+                                    window.location.reload();
+                                });
+                            } else {
+                                Swal.fire({
+                                    title: 'Error',
+                                    text: data?.message || 'No se pudo eliminar la entrada.',
+                                    icon: 'error'
+                                });
+                            }
+                        })
+                        .catch(() => {
+                            Swal.fire({
+                                title: 'Error',
+                                text: 'No se pudo eliminar la entrada. Inténtalo de nuevo.',
+                                icon: 'error'
+                            });
+                        });
+                });
+            });
+        });
     });
-}
 </script>
--->
