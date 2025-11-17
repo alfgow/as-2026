@@ -23,6 +23,13 @@ if ($adminBasePath !== '' && str_starts_with($uri, $adminBasePath)) {
 }
 
 $uri = $uri === '/' ? '' : '/' . ltrim($uri, '/');
+$isApi = str_starts_with($uri, '/api');
+$requestIsApi = $isApi;
+
+if ($isApi) {
+    $uri = substr($uri, 4);
+    $uri = $uri === '' ? '' : '/' . ltrim($uri, '/');
+}
 
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 // Rutas públicas (NO requieren sesión)
@@ -35,7 +42,8 @@ $isCallback = ($uri === '/validaciones/demandas/callback');
 // Si estoy en el área admin y NO es /login ni el callback,
 // y no hay sesión → redirige a /login (una sola vez).
 if (
-    $isAdmin
+    !$isApi
+    && $isAdmin
     && !$isLogin
     && !$isCallback
     && (!isset($_SESSION['user']) || empty($_SESSION['user']['id']))
@@ -46,7 +54,7 @@ if (
 
 // Redirección a login si no está autenticado
 $publicRoutes = ['/login'];
-if (!isset($_SESSION['user']) && !in_array($uri, $publicRoutes)) {
+if (!$isApi && !isset($_SESSION['user']) && !in_array($uri, $publicRoutes)) {
     header('Location: ' . admin_base_url('login'));
     exit;
 }
