@@ -13,6 +13,8 @@ use Throwable;
 
 class AuthApiController
 {
+    private const REFRESH_WINDOW_SECONDS = 900;
+
     private UserModel $userModel;
 
     private int $tokenTtl;
@@ -67,6 +69,58 @@ class AuthApiController
         }
     }
 
+    public function refreshToken(): void
+    {
+        try {
+            $token = $this->extractTokenFromRequest();
+            if ($token === null) {
+                $this->jsonResponse(['error' => 'invalid_request'], 400);
+                return;
+            }
+
+            try {
+                $decoded = JwtHelper::decode($token);
+            } catch (Throwable $exception) {
+                $this->jsonResponse(['error' => 'invalid_token'], 401);
+                return;
+            }
+
+            $claims = (array)$decoded;
+            $now    = time();
+            $exp    = isset($claims['exp']) ? (int)$claims['exp'] : 0;
+
+            if ($exp <= $now) {
+                $this->jsonResponse(['error' => 'token_expired'], 401);
+                return;
+            }
+
+            $remainingLifetime = $exp - $now;
+            if ($remainingLifetime > self::REFRESH_WINDOW_SECONDS) {
+                $this->jsonResponse(['error' => 'refresh_not_required'], 400);
+                return;
+            }
+
+            if (empty($claims['sub']) || empty($claims['scope'])) {
+                $this->jsonResponse(['error' => 'invalid_token'], 401);
+                return;
+            }
+
+            $newClaims = $claims;
+            unset($newClaims['exp'], $newClaims['iat'], $newClaims['nbf']);
+
+            $token = JwtHelper::encode($newClaims, $this->tokenTtl);
+            $scope = (string)$claims['scope'];
+
+            $this->jsonResponse([
+                'access_token' => $token,
+                'expires_in'   => $this->tokenTtl,
+                'scope'        => $scope,
+            ]);
+        } catch (Throwable $exception) {
+            $this->jsonResponse(['error' => 'server_error'], 500);
+        }
+    }
+
     private function readJsonInput(): ?array
     {
         $input = file_get_contents('php://input');
@@ -80,6 +134,62 @@ class AuthApiController
         }
 
         return $decoded;
+    }
+
+    private function extractTokenFromRequest(): ?string
+    {
+        $token = $this->getBearerTokenFromHeaders();
+        if ($token !== null) {
+            return $token;
+        }
+
+        $data = $this->readJsonInput();
+        if (!is_array($data)) {
+            return null;
+        }
+
+        $bodyToken = $data['token'] ?? $data['access_token'] ?? null;
+        if (!is_string($bodyToken) || trim($bodyToken) === '') {
+            return null;
+        }
+
+        return trim($bodyToken);
+    }
+
+    private function getBearerTokenFromHeaders(): ?string
+    {
+        $header = $this->getAuthorizationHeader();
+        if ($header === null) {
+            return null;
+        }
+
+        if (stripos($header, 'Bearer ') !== 0) {
+            return null;
+        }
+
+        $token = trim(substr($header, 7));
+        return $token === '' ? null : $token;
+    }
+
+    private function getAuthorizationHeader(): ?string
+    {
+        if (isset($_SERVER['HTTP_AUTHORIZATION'])) {
+            return (string)$_SERVER['HTTP_AUTHORIZATION'];
+        }
+
+        if (isset($_SERVER['Authorization'])) {
+            return (string)$_SERVER['Authorization'];
+        }
+
+        if (function_exists('getallheaders')) {
+            foreach (getallheaders() as $name => $value) {
+                if (strcasecmp((string)$name, 'Authorization') === 0) {
+                    return (string)$value;
+                }
+            }
+        }
+
+        return null;
     }
 
     private function jsonResponse(array $data, int $statusCode = 200): void
