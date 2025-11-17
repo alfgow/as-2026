@@ -7,7 +7,9 @@ require_once __DIR__ . '/../Middleware/AuthMiddleware.php';
 use App\Middleware\AuthMiddleware;
 AuthMiddleware::verificarSesion();
 require_once __DIR__ . '/../Helpers/MailHelper.php';
+require_once __DIR__ . '/../Helpers/JwtHelper.php';
 use App\Helpers\MailHelper;
+use App\Helpers\JwtHelper;
 require_once __DIR__ . '/../Models/ProspectAccessModel.php';
 use App\Models\ProspectAccessModel;
 
@@ -41,10 +43,11 @@ class ProspectAccessController
         header('Content-Type: application/json; charset=utf-8');
 
         try {
-            $in    = json_decode(file_get_contents('php://input'), true) ?: [];
-            $email = strtolower(trim((string)($in['email'] ?? '')));
-            $actor = isset($in['actor']) ? strtolower(trim((string)$in['actor'])) : null;
-            $ttl   = max(5, (int)($in['ttl_minutes'] ?? 1440)); // default 24h; sube/baja a gusto
+            $in         = json_decode(file_get_contents('php://input'), true) ?: [];
+            $email      = strtolower(trim((string)($in['email'] ?? '')));
+            $actor      = isset($in['actor']) ? strtolower(trim((string)$in['actor'])) : null;
+            $ttlMinutes = max(5, (int)($in['ttl_minutes'] ?? 1440)); // default 24h; sube/baja a gusto
+            $ttlSeconds = $ttlMinutes * 60;
 
             if (!$email || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
                 echo json_encode(['ok' => false, 'mensaje' => 'Email inválido']); 
@@ -64,7 +67,7 @@ class ProspectAccessController
 
             $jti        = $this->uuidv4();
             $now        = time();
-            $exp        = $now + ($ttl * 60);
+            $exp        = $now + $ttlSeconds;
             $scope      = 'self:update';
 
             // Claims del JWT:
@@ -81,8 +84,7 @@ class ProspectAccessController
                 'actor_type' => $actorType,
             ];
 
-            $secret   = $this->jwtSecret();
-            $tokenRaw = $this->jwtEncodeHS256($payload, $secret);
+            $tokenRaw = JwtHelper::encode($payload, $ttlSeconds);
 
             // Guardamos solo el hash del token por higiene (no el token plano)
             $tokenHash = hash('sha256', $tokenRaw);
@@ -123,30 +125,6 @@ class ProspectAccessController
     // =================
     // Helpers privados
     // =================
-
-    /** Devuelve el secreto JWT de env/config */
-    private function jwtSecret(): string
-    {
-        // PRODUCCIÓN: define JWT_SECRET en el entorno del backend
-        return (string)($_ENV['JWT_SECRET'] ?? 'cambia-esto-en-env');
-    }
-
-    /** Codifica JWT HS256: header.payload.signature (base64url) */
-    private function jwtEncodeHS256(array $payload, string $secret): string
-    {
-        $header = ['alg' => 'HS256', 'typ' => 'JWT'];
-        $h = $this->b64url(json_encode($header,  JSON_UNESCAPED_SLASHES));
-        $p = $this->b64url(json_encode($payload, JSON_UNESCAPED_SLASHES));
-        $sig = hash_hmac('sha256', "{$h}.{$p}", $secret, true);
-        $s = $this->b64url($sig);
-        return "{$h}.{$p}.{$s}";
-    }
-
-    /** Base64 URL-safe sin padding */
-    private function b64url(string $bin): string
-    {
-        return rtrim(strtr(base64_encode($bin), '+/', '-_'), '=');
-    }
 
     /** UUID v4 */
     private function uuidv4(): string
