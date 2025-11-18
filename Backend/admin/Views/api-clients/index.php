@@ -79,7 +79,7 @@ if (!function_exists('status_badge_class')) {
     <div class="grid lg:grid-cols-2 gap-6">
         <div class="bg-white/5 border border-white/10 rounded-2xl p-6">
             <h3 class="text-lg font-semibold mb-3 flex items-center gap-2">✨ Nuevo cliente API</h3>
-            <form action="<?= admin_base_url('api-clients') ?>" method="POST" class="space-y-4">
+            <form action="<?= admin_base_url('integrations/clients') ?>" method="POST" class="space-y-4">
                 <div>
                     <label class="block text-sm mb-1 text-slate-200" for="client-name">Nombre visible</label>
                     <input type="text" id="client-name" name="name" class="w-full rounded-xl bg-black/30 border border-white/10 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-400" placeholder="n8n Producción" required>
@@ -181,7 +181,7 @@ if (!function_exists('status_badge_class')) {
                                 <?php endif; ?>
                             </td>
                             <td class="py-4 text-right align-top">
-                                <form action="<?= admin_base_url('api-clients/rotate-secret') ?>" method="POST" class="inline-flex flex-col items-end gap-2">
+                                <form action="<?= admin_base_url('integrations/clients/rotate-secret') ?>" method="POST" class="inline-flex flex-col items-end gap-2">
                                     <input type="hidden" name="client_id" value="<?= (int)($client['id'] ?? 0) ?>">
                                     <button type="submit" class="text-xs px-3 py-1.5 rounded-full border border-amber-400/50 text-amber-200 hover:bg-amber-400/20">Rotar secreto</button>
                                     <button type="button" class="text-xs text-slate-300 underline" data-copy="<?= htmlspecialchars($client['client_id'] ?? '', ENT_QUOTES, 'UTF-8') ?>">Copiar ID</button>

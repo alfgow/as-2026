@@ -108,7 +108,7 @@
       </a>
       <hr class="my-3 border-indigo-900/30" />
       <!-- nav: API Tokens -->
-      <a href="<?= $baseUrl ?>/api-clients" class=" sidebar-link flex items-center gap-3 px-4 py-3 rounded-xl" data-path="api-clients">
+      <a href="<?= $baseUrl ?>/integrations/clients" class=" sidebar-link flex items-center gap-3 px-4 py-3 rounded-xl" data-path="integrations/clients">
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6">
             <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 5.25a3 3 0 1 1 2.122 5.122l-7.99 7.99a4.5 4.5 0 0 1-6.364-6.364l7.99-7.99A3 3 0 0 1 15.75 5.25Z" />
             <path stroke-linecap="round" stroke-linejoin="round" d="M5.25 15.75h6" />
