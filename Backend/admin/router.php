@@ -43,6 +43,19 @@ if ($isApi) {
         $jsonResponse(['error' => 'method_not_allowed'], 405);
     };
 
+    $requiresAuth = !($apiUri === '/auth/login' || $apiUri === '/auth/refresh' || str_starts_with($apiUri, '/auth/'));
+
+    if ($requiresAuth) {
+        require_once __DIR__ . '/Middleware/ApiTokenMiddleware.php';
+
+        try {
+            (new \App\Middleware\ApiTokenMiddleware())->handle();
+        } catch (\App\Middleware\ApiTokenException $exception) {
+            $jsonResponse(['error' => $exception->reason()], 401);
+            exit;
+        }
+    }
+
     switch ($apiUri) {
         case '/auth/login':
             if ($method !== 'POST') {

@@ -152,6 +152,11 @@ class UserModel extends Database
         return (bool)$stmt->fetchColumn();
     }
 
+    public function findByIdAsArray(int|string $id): ?array
+    {
+        return $this->findById($id);
+    }
+
     private function findById(int|string $id): ?array
     {
         if (!is_numeric($id)) {
