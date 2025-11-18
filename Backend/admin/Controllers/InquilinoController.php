@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Controllers;
 
+require_once __DIR__ . '/../Core/RequestContext.php';
 require_once __DIR__ . '/../Middleware/AuthMiddleware.php';
 require_once __DIR__ . '/../Models/InquilinoModel.php';
 require_once __DIR__ . '/../Models/AsesorModel.php';
@@ -11,6 +12,7 @@ require_once __DIR__ . '/../Helpers/NormalizadoHelper.php';
 require_once __DIR__ . '/../Helpers/S3Helper.php';
 require_once __DIR__ . '/../Helpers/SlugHelper.php';
 
+use App\Core\RequestContext;
 use App\Helpers\NormalizadoHelper;
 use App\Helpers\S3Helper;
 use App\Helpers\SlugHelper;
@@ -824,11 +826,8 @@ class InquilinoController
                 $payload['origen'] = 'manual';
             }
 
-            if (!isset($payload['usuario']) && isset($_SESSION['user'])) {
-                $payload['usuario'] = $_SESSION['user']['email']
-                    ?? $_SESSION['user']['usuario']
-                    ?? $_SESSION['user']['nombre']
-                    ?? null;
+            if (!isset($payload['usuario'])) {
+                $payload['usuario'] = $this->resolvePayloadUser();
             }
 
             $descripciones = [
@@ -1107,5 +1106,25 @@ class InquilinoController
                 'error' => $e->getMessage(),
             ]);
         }
+    }
+
+    private function resolvePayloadUser(): ?string
+    {
+        $contextUser = RequestContext::user();
+        if (is_array($contextUser)) {
+            return $contextUser['email']
+                ?? $contextUser['usuario']
+                ?? $contextUser['nombre']
+                ?? null;
+        }
+
+        if (isset($_SESSION['user']) && is_array($_SESSION['user'])) {
+            return $_SESSION['user']['email']
+                ?? $_SESSION['user']['usuario']
+                ?? $_SESSION['user']['nombre']
+                ?? null;
+        }
+
+        return null;
     }
 }

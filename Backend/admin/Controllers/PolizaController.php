@@ -13,7 +13,9 @@ require_once __DIR__ . '/../Models/InmueblesModel.php';
 require_once __DIR__ . '/../Models/AsesorModel.php';
 require_once __DIR__ . '/../Models/FinancieroModel.php';
 require_once __DIR__ . '/../../vendor/autoload.php';
+require_once __DIR__ . '/../Core/RequestContext.php';
 
+use App\Core\RequestContext;
 use App\Models\PolizaModel;
 use App\Models\ArrendadorModel;
 use App\Models\InquilinoModel;
@@ -527,7 +529,7 @@ class PolizaController
             $data['numero_poliza'] = (int)$polizaModel->obtenerUltimaPolizaEmitida() + 1;
 
             // Campos requeridos por crear()
-            $data['usuario'] = $_SESSION['user_id'] ?? 1;
+            $data['usuario'] = $this->resolveUsuarioId();
             $data['serie_poliza'] = $data['serie_poliza'] ?? date('Y');
             if (!empty($data['fecha_fin'])) {
                 $ts = strtotime($data['fecha_fin']);
@@ -1192,5 +1194,23 @@ TXT;
         }
 
         return preg_match('/^\d+(\.\d{2})$/', $v) ? $v : '0.00';
+    }
+
+    private function resolveUsuarioId(): int
+    {
+        $contextUser = RequestContext::user();
+        if (is_array($contextUser) && !empty($contextUser['id'])) {
+            return (int)$contextUser['id'];
+        }
+
+        if (isset($_SESSION['user']['id'])) {
+            return (int)$_SESSION['user']['id'];
+        }
+
+        if (isset($_SESSION['user_id'])) {
+            return (int)$_SESSION['user_id'];
+        }
+
+        return 1;
     }
 }
