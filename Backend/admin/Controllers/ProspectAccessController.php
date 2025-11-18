@@ -5,7 +5,10 @@ namespace App\Controllers;
 
 require_once __DIR__ . '/../Middleware/AuthMiddleware.php';
 use App\Middleware\AuthMiddleware;
-AuthMiddleware::verificarSesion();
+
+if (!defined('REQUEST_IS_API') || REQUEST_IS_API === false) {
+    AuthMiddleware::verificarSesion();
+}
 require_once __DIR__ . '/../Helpers/MailHelper.php';
 require_once __DIR__ . '/../Helpers/JwtHelper.php';
 use App\Helpers\MailHelper;
@@ -16,10 +19,12 @@ use App\Models\ProspectAccessModel;
 class ProspectAccessController
 {
     private ProspectAccessModel $model;
+    private bool $requestIsApi;
 
-    public function __construct()
+    public function __construct(bool $requestIsApi = false)
     {
-        $this->model = new ProspectAccessModel();
+        $this->requestIsApi = $requestIsApi;
+        $this->model        = new ProspectAccessModel();
     }
 
     /** GET /prospectos/code  -> Render con tu layout principal */
@@ -28,6 +33,17 @@ class ProspectAccessController
         $title        = 'Emitir acceso - AS';
         $headerTitle  = 'Acceso para edición';
         $prefillEmail = filter_input(INPUT_GET, 'email', FILTER_SANITIZE_EMAIL) ?: '';
+
+        if ($this->requestIsApi) {
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode([
+                'ok'            => true,
+                'title'         => $title,
+                'headerTitle'   => $headerTitle,
+                'prefill_email' => $prefillEmail,
+            ]);
+            return;
+        }
 
         $contentView = __DIR__ . '/../Views/prospectos/code.php';
         include __DIR__ . '/../Views/layouts/main.php';
