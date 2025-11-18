@@ -32,10 +32,19 @@ require_once __DIR__ . '/../Middleware/AuthMiddleware.php';
 
 use App\Middleware\AuthMiddleware;
 
-AuthMiddleware::verificarSesion();
+if (!defined('REQUEST_IS_API') || REQUEST_IS_API === false) {
+    AuthMiddleware::verificarSesion();
+}
 
 class PolizaController
 {
+    private bool $requestIsApi;
+
+    public function __construct(bool $requestIsApi = false)
+    {
+        $this->requestIsApi = $requestIsApi;
+    }
+
     /* =========================
        Listado / PDF / Búsqueda
        ========================= */
@@ -64,6 +73,32 @@ class PolizaController
         $polizasVigentes    = (int)$model->contarPorEstado('1');
         $polizasConcluidas  = (int)$model->contarPorEstado('2');
         $polizasIncumplidas = (int)$model->contarPorEstado('4');
+
+        if ($this->requestIsApi) {
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode([
+                'ok'            => true,
+                'filters'       => [
+                    'estado' => $estado,
+                    'tipo'   => $tipo,
+                    'buscar' => $buscar,
+                ],
+                'pagination'    => [
+                    'per_page' => $porPagina,
+                    'page'     => $pagina,
+                    'pages'    => $totalPaginas,
+                    'total'    => $totalPolizas,
+                ],
+                'stats'         => [
+                    'vigentes'    => $polizasVigentes,
+                    'concluidas'  => $polizasConcluidas,
+                    'incumplidas' => $polizasIncumplidas,
+                    'ultima'      => $ultimaPoliza,
+                ],
+                'polizas'       => $polizas,
+            ]);
+            return;
+        }
 
         $title       = 'Pólizas - AS';
         $headerTitle = 'Pólizas Jurídicas';

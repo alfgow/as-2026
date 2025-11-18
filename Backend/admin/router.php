@@ -24,6 +24,10 @@ $uri = $uri === '/' ? '' : '/' . ltrim($uri, '/');
 $isApi = str_starts_with($uri, '/api');
 $requestIsApi = $isApi;
 
+if (!defined('REQUEST_IS_API')) {
+    define('REQUEST_IS_API', $requestIsApi);
+}
+
 if ($isApi) {
     $uri = substr($uri, 4);
     $uri = $uri === '' ? '' : '/' . ltrim($uri, '/');
@@ -56,8 +60,8 @@ if ($isApi) {
         }
     }
 
-    switch ($apiUri) {
-        case '/auth/login':
+    switch (true) {
+        case $apiUri === '/auth/login':
             if ($method !== 'POST') {
                 $methodNotAllowed();
                 exit;
@@ -67,7 +71,7 @@ if ($isApi) {
             (new \App\Controllers\Api\AuthApiController())->loginApi();
             exit;
 
-        case '/auth/refresh':
+        case $apiUri === '/auth/refresh':
             if ($method !== 'POST') {
                 $methodNotAllowed();
                 exit;
@@ -75,6 +79,36 @@ if ($isApi) {
 
             require __DIR__ . '/Controllers/Api/AuthApiController.php';
             (new \App\Controllers\Api\AuthApiController())->refreshToken();
+            exit;
+
+        case $apiUri === '/prospectos/code' && $method === 'POST':
+            require __DIR__ . '/Controllers/ProspectAccessController.php';
+            (new \App\Controllers\ProspectAccessController(true))->issue();
+            exit;
+
+        case $apiUri === '/prospectos/sendEmails' && $method === 'POST':
+            require __DIR__ . '/Controllers/ProspectAccessController.php';
+            (new \App\Controllers\ProspectAccessController(true))->sendEmails();
+            exit;
+
+        case $apiUri === '/arrendadores' && $method === 'GET':
+            require __DIR__ . '/Controllers/ArrendadorController.php';
+            (new \App\Controllers\ArrendadorController(true))->index();
+            exit;
+
+        case $apiUri === '/polizas' && $method === 'GET':
+            require __DIR__ . '/Controllers/PolizaController.php';
+            (new \App\Controllers\PolizaController(true))->index();
+            exit;
+
+        case $apiUri === '/polizas' && $method === 'POST':
+            require __DIR__ . '/Controllers/PolizaController.php';
+            (new \App\Controllers\PolizaController(true))->store();
+            exit;
+
+        case $apiUri === '/polizas/actualizar' && $method === 'POST':
+            require __DIR__ . '/Controllers/PolizaController.php';
+            (new \App\Controllers\PolizaController(true))->actualizar();
             exit;
 
         default:

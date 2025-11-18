@@ -6,7 +6,9 @@ require_once __DIR__ . '/../Middleware/AuthMiddleware.php';
 
 use App\Middleware\AuthMiddleware;
 
-AuthMiddleware::verificarSesion();
+if (!defined('REQUEST_IS_API') || REQUEST_IS_API === false) {
+    AuthMiddleware::verificarSesion();
+}
 
 require_once __DIR__ . '/../Models/ArrendadorModel.php';
 require_once __DIR__ . '/../Models/AsesorModel.php';
@@ -28,11 +30,13 @@ class ArrendadorController
 {
     protected $model;
     private AsesorModel $asesorModel;
+    private bool $requestIsApi;
 
-    public function __construct()
+    public function __construct(bool $requestIsApi = false)
     {
-        $this->model       = new ArrendadorModel();
-        $this->asesorModel = new AsesorModel();
+        $this->requestIsApi = $requestIsApi;
+        $this->model        = new ArrendadorModel();
+        $this->asesorModel  = new AsesorModel();
     }
 
     /**
@@ -73,6 +77,17 @@ class ArrendadorController
             }
         }
         unset($a); // buena práctica para evitar referencias colgantes
+
+        if ($this->requestIsApi) {
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode([
+                'ok'            => true,
+                'query'         => $query,
+                'total'         => count($arrendadores),
+                'arrendadores'  => $arrendadores,
+            ]);
+            return;
+        }
 
         // 3) Preparar datos para la vista
         $title       = 'Arrendadores - AS';
