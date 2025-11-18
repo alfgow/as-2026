@@ -191,19 +191,19 @@ switch (true) {
         exit;
         break;
 
-    case $uri === '/api-clients' && $_SERVER['REQUEST_METHOD'] === 'GET':
+    case $uri === '/integrations/clients' && $_SERVER['REQUEST_METHOD'] === 'GET':
         require __DIR__ . '/Controllers/ApiClientController.php';
         (new \App\Controllers\ApiClientController())->index();
         exit;
         break;
 
-    case $uri === '/api-clients' && $_SERVER['REQUEST_METHOD'] === 'POST':
+    case $uri === '/integrations/clients' && $_SERVER['REQUEST_METHOD'] === 'POST':
         require __DIR__ . '/Controllers/ApiClientController.php';
         (new \App\Controllers\ApiClientController())->store();
         exit;
         break;
 
-    case $uri === '/api-clients/rotate-secret' && $_SERVER['REQUEST_METHOD'] === 'POST':
+    case $uri === '/integrations/clients/rotate-secret' && $_SERVER['REQUEST_METHOD'] === 'POST':
         require __DIR__ . '/Controllers/ApiClientController.php';
         (new \App\Controllers\ApiClientController())->rotateSecret();
         exit;

@@ -19,6 +19,8 @@ AuthMiddleware::verificarSesion();
 
 class ApiClientController
 {
+    private const PANEL_ROUTE = 'integrations/clients';
+
     public function __construct(private readonly ApiClientModel $apiClientModel = new ApiClientModel())
     {
     }
@@ -108,7 +110,7 @@ class ApiClientController
 
     private function redirectToIndex(): void
     {
-        header('Location: ' . admin_base_url('api-clients'));
+        header('Location: ' . admin_base_url(self::PANEL_ROUTE));
         exit;
     }
 
