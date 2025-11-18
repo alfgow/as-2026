@@ -87,6 +87,9 @@
 - Paginación y filtros con persistencia de parámetros
 - Identidad visual consistente en todo el sistema
 
+## 📚 Documentación de referencia
+- [Autenticación de la API](docs/api-auth.md): guía para configurar el flujo de tokens, permisos y clientes externos.
+
 ## ✅ Verificación manual reciente
 - Con `DB_CHARSET=utf8mb4_0900_ai_ci` en `admin/config/credentials.php`, la aplicación establece la conexión MySQL correctamente y ejecuta consultas sin errores.
 
