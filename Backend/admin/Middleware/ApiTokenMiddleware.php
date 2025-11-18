@@ -33,8 +33,7 @@ class ApiTokenMiddleware
         ?UserModel $userModel = null,
         ?ApiClientModel $apiClientModel = null,
         ?ApiTokenRevocationModel $revocationModel = null
-    )
-    {
+    ) {
         $this->userModel        = $userModel ?? new UserModel();
         $this->apiClientModel   = $apiClientModel ?? new ApiClientModel();
         $this->revocationModel  = $revocationModel ?? new ApiTokenRevocationModel();
@@ -193,7 +192,9 @@ class ApiTokenMiddleware
         if (isset($_SERVER['HTTP_AUTHORIZATION'])) {
             return (string)$_SERVER['HTTP_AUTHORIZATION'];
         }
-
+        if (isset($_SERVER['REDIRECT_HTTP_AUTHORIZATION'])) {
+            return (string)$_SERVER['REDIRECT_HTTP_AUTHORIZATION'];
+        }
         if (isset($_SERVER['Authorization'])) {
             return (string)$_SERVER['Authorization'];
         }
