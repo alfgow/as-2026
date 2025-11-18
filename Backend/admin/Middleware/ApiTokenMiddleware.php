@@ -7,10 +7,14 @@ namespace App\Middleware;
 require_once __DIR__ . '/../Core/RequestContext.php';
 require_once __DIR__ . '/../Helpers/JwtHelper.php';
 require_once __DIR__ . '/../Models/UserModel.php';
+require_once __DIR__ . '/../Models/ApiClientModel.php';
+require_once __DIR__ . '/../Models/ApiTokenRevocationModel.php';
 
 use App\Core\RequestContext;
 use App\Helpers\JwtHelper;
 use App\Models\UserModel;
+use App\Models\ApiClientModel;
+use App\Models\ApiTokenRevocationModel;
 use RuntimeException;
 use Throwable;
 
@@ -18,12 +22,22 @@ class ApiTokenMiddleware
 {
     private UserModel $userModel;
 
+    private ApiClientModel $apiClientModel;
+
+    private ApiTokenRevocationModel $revocationModel;
+
     /** @var array<string, array> */
     private static array $userCache = [];
 
-    public function __construct(?UserModel $userModel = null)
+    public function __construct(
+        ?UserModel $userModel = null,
+        ?ApiClientModel $apiClientModel = null,
+        ?ApiTokenRevocationModel $revocationModel = null
+    )
     {
-        $this->userModel = $userModel ?? new UserModel();
+        $this->userModel        = $userModel ?? new UserModel();
+        $this->apiClientModel   = $apiClientModel ?? new ApiClientModel();
+        $this->revocationModel  = $revocationModel ?? new ApiTokenRevocationModel();
     }
 
     public function handle(): void
@@ -34,7 +48,7 @@ class ApiTokenMiddleware
         }
 
         $claims = $this->validateToken($token);
-        $this->attachUser($claims);
+        $this->attachActor($claims);
     }
 
     public function parseRequest(): ?string
@@ -54,7 +68,7 @@ class ApiTokenMiddleware
     }
 
     /**
-     * @param array $claims
+     * @param array<string, mixed> $claims
      */
     public function attachUser(array $claims): void
     {
@@ -85,8 +99,7 @@ class ApiTokenMiddleware
         $contextUser['scope']       = (string)$claims['scope'];
         $contextUser['token_claims'] = $claims;
 
-        RequestContext::set('api_user', $contextUser);
-        $_SERVER['api_user'] = $contextUser;
+        $this->shareContext($contextUser);
     }
 
     /**
@@ -111,7 +124,68 @@ class ApiTokenMiddleware
             throw ApiTokenException::invalidToken();
         }
 
+        $jti = isset($claims['jti']) ? (string)$claims['jti'] : '';
+        if ($jti === '') {
+            throw ApiTokenException::invalidToken();
+        }
+
+        if ($this->revocationModel->isRevoked($jti)) {
+            throw ApiTokenException::revoked();
+        }
+
         return $claims;
+    }
+
+    /**
+     * @param array<string, mixed> $claims
+     */
+    private function attachActor(array $claims): void
+    {
+        if (isset($claims['cid'])) {
+            $this->attachClient($claims);
+
+            return;
+        }
+
+        $this->attachUser($claims);
+    }
+
+    /**
+     * @param array<string, mixed> $claims
+     */
+    private function attachClient(array $claims): void
+    {
+        $clientId = isset($claims['cid']) ? (int)$claims['cid'] : 0;
+        if ($clientId <= 0) {
+            throw ApiTokenException::invalidToken();
+        }
+
+        $client = $this->apiClientModel->findById($clientId);
+        if ($client === null || ($client['status'] ?? '') !== ApiClientModel::STATUS_ACTIVE) {
+            throw ApiTokenException::invalidToken();
+        }
+
+        $context = [
+            'id'            => null,
+            'usuario'       => $client['client_id'] ?? null,
+            'email'         => null,
+            'nombre'        => $client['name'] ?? null,
+            'tipo_usuario'  => 'api_client',
+            'scope'         => (string)$claims['scope'],
+            'token_claims'  => $claims,
+            'api_client'    => $client,
+        ];
+
+        $this->shareContext($context);
+    }
+
+    /**
+     * @param array<string, mixed> $context
+     */
+    private function shareContext(array $context): void
+    {
+        RequestContext::set('api_user', $context);
+        $_SERVER['api_user'] = $context;
     }
 
     private function getAuthorizationHeader(): ?string
@@ -167,5 +241,10 @@ class ApiTokenException extends RuntimeException
     public static function expired(): self
     {
         return new self('Expired API token', 'token_expired');
+    }
+
+    public static function revoked(): self
+    {
+        return new self('Revoked API token', 'token_revoked');
     }
 }

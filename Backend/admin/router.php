@@ -191,6 +191,24 @@ switch (true) {
         exit;
         break;
 
+    case $uri === '/api-clients' && $_SERVER['REQUEST_METHOD'] === 'GET':
+        require __DIR__ . '/Controllers/ApiClientController.php';
+        (new \App\Controllers\ApiClientController())->index();
+        exit;
+        break;
+
+    case $uri === '/api-clients' && $_SERVER['REQUEST_METHOD'] === 'POST':
+        require __DIR__ . '/Controllers/ApiClientController.php';
+        (new \App\Controllers\ApiClientController())->store();
+        exit;
+        break;
+
+    case $uri === '/api-clients/rotate-secret' && $_SERVER['REQUEST_METHOD'] === 'POST':
+        require __DIR__ . '/Controllers/ApiClientController.php';
+        (new \App\Controllers\ApiClientController())->rotateSecret();
+        exit;
+        break;
+
     // Logout
     case $uri === '/logout':
         require __DIR__ . '/Controllers/AuthController.php';
