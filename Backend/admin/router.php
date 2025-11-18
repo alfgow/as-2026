@@ -3,8 +3,6 @@
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
-
-session_start();
 require_once __DIR__ . '/config/config.php';
 require_once __DIR__ . '/Helpers/url.php';
 require_once __DIR__ . '/aws-sdk-php/aws-autoloader.php';
@@ -32,6 +30,55 @@ if ($isApi) {
 }
 
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+if ($isApi) {
+    $apiUri = $uri === '' ? '' : $uri;
+
+    $jsonResponse = static function (array $data, int $statusCode = 200): void {
+        http_response_code($statusCode);
+        header('Content-Type: application/json');
+        echo json_encode($data);
+    };
+
+    $methodNotAllowed = static function () use ($jsonResponse): void {
+        $jsonResponse(['error' => 'method_not_allowed'], 405);
+    };
+
+    switch ($apiUri) {
+        case '/auth/login':
+            if ($method !== 'POST') {
+                $methodNotAllowed();
+                exit;
+            }
+
+            require __DIR__ . '/Controllers/Api/AuthApiController.php';
+            (new \App\Controllers\Api\AuthApiController())->loginApi();
+            exit;
+
+        case '/auth/refresh':
+            if ($method !== 'POST') {
+                $methodNotAllowed();
+                exit;
+            }
+
+            require __DIR__ . '/Controllers/Api/AuthApiController.php';
+            (new \App\Controllers\Api\AuthApiController())->refreshToken();
+            exit;
+
+        default:
+            if ($apiUri === '/auth' || str_starts_with($apiUri, '/auth/')) {
+                $jsonResponse(['error' => 'not_found'], 404);
+                exit;
+            }
+
+            $jsonResponse(['error' => 'not_found'], 404);
+            exit;
+    }
+}
+
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
 // Rutas públicas (NO requieren sesión)
 
 // Flags
