@@ -194,6 +194,10 @@ class ApiTokenMiddleware
             return (string)$_SERVER['HTTP_AUTHORIZATION'];
         }
 
+        if (isset($_SERVER['REDIRECT_HTTP_AUTHORIZATION'])) {
+            return (string)$_SERVER['REDIRECT_HTTP_AUTHORIZATION'];
+        }
+
         if (isset($_SERVER['Authorization'])) {
             return (string)$_SERVER['Authorization'];
         }
